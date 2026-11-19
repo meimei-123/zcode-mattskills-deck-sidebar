@@ -1,4 +1,5 @@
-// MattSkills 面板文案表(工单 09):全部界面中文单处集中,键名按上游 copy 词表
+// MattSkills 面板(Panel,即 Surface 页签加载的 Web 文档)文案表(工单 09):全部界面中文
+// 单处集中,键名按上游 copy 词表
 // (config/copy/*.yaml)组织,为 M3 i18n 配置化留缝——届时把本表换成上游同键名的
 // 多语言词表即可,渲染点不动。纯脚本无 import,build 时拼进 bundle-0.txt(段序第一),
 // Node 测试直接 import 执行同一 IIFE。

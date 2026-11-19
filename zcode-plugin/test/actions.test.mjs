@@ -57,7 +57,9 @@ function sliceLadder() {
 // ---------------------------------------------------------------------------
 function slicePrompts() {
   const URL = "#demo/01 诊断档票（E:\\x\\.scratch\\demo\\issues\\01-diagnose.md）";
-  // execute(grill/research 同文)全文等于 mapTicketAdvance 的完整展开,逐字对照笔记
+  // execute(grill/research 同文)全文等于 mapTicketAdvance 的完整展开,逐字对照笔记。
+  // M1 裁剪,上游原文见 port-notes/action-prompts.md:sharedTools 里点名 deck_issue_report /
+  // suggest_next_steps 两句,这两个工具不在 M1 工具面,已改成不点工具名的诚实表述(其余逐字不动)。
   const MAP_ADVANCE = [
     "/wayfinder",
     URL,
@@ -77,8 +79,8 @@ function slicePrompts() {
     "",
     "## 工具",
     "- [ ] issue 相关操作优先使用 deck_ 开头的工具处理，如果deck_工具异常，根据当前工作区选择合适方式处理。",
-    "- [ ] 及时使用 deck_issue_report 工具上报处理过、处理中的 issue 编号。",
-    "- [ ] 每轮回复收尾时先判断一次：用户接下来几乎一定会做什么？想得到就调用 suggest_next_steps 给出 2~4 条最可能被他选中的做法；这一轮在等用户拍板时，其中一条把每题的推荐答案列好；想不到就不调用。",
+    "- [ ] 及时在回复中说明处理过、处理中的 issue 编号。",
+    "- [ ] 每轮回复收尾时先判断一次：用户接下来几乎一定会做什么？想得到就在回复里给出 2~4 条最可能被他选中的做法；这一轮在等用户拍板时，其中一条把每题的推荐答案列好；想不到就不给。",
   ].join("\n");
 
   const cases = [
@@ -106,7 +108,9 @@ function slicePrompts() {
       p.includes("从第一性原理出发。") === !!USES_FP[kind]);
     check(`prompt: ${kind} investigation ${USES_INV[kind] ? "在" : "不在"}`,
       p.includes("## 调查（建议先查后问）") === !!USES_INV[kind]);
-    check(`prompt: ${kind} 含 sharedTools 收尾`, p.includes("## 工具") && p.includes("deck_issue_report"));
+    check(`prompt: ${kind} 含 sharedTools 收尾(不点 M1 没有的工具)`,
+      p.includes("## 工具") && p.includes("deck_ 开头的工具") &&
+        !p.includes("deck_issue_report") && !p.includes("suggest_next_steps"));
   }
 
   // execute 全文逐字对照(mapTicketAdvance = Opening + WrapUp 拼接)

@@ -1,7 +1,7 @@
 // MattSkills 数据面(工单 02):`.scratch/` 本地 Markdown 卡片的解析、扫描与计数。
 // 口径逐条对照上游 1.9.0-beta.33 本地 Markdown 后端子集(见 port-notes/markdown-backend.md):
 //   - 目录约定:`.scratch/<工作单元>/{spec.md|map.md|issues/NN-slug.md}`;根级扁平 map.md+issues/ 只读兼容。
-//   - 票文件名:`^\d+-` 编号唯一 → 两位编号身份;重复或无编号 → 文件名退化身份(目录/文件名)。
+//   - 卡片文件名:`^\d+-` 编号唯一 → 两位编号身份;重复或无编号 → 文件名退化身份(目录/文件名)。
 //   - 字段行:Status/Type/Blocked by/Labels(可加粗),冒号后只吃同行空白;围栏代码块内不算。
 //   - 关闭词集:resolved/completed/closed/done;其余 open。
 //   - 评论:`## Comments` 段按 `### ` 切块,块头 `谁 — ISO时间`。
@@ -262,7 +262,7 @@ function isNonTicketFileName(name) {
   return n === "map.md" || n === "spec.md" || n === "notes.md";
 }
 
-/** 一个 issues/ 目录里的票文件清单与目录内身份:
+/** 一个 issues/ 目录里的卡片文件清单与目录内身份:
  *  编号(`NN-` 前缀)唯一 → 两位编号;重复或无编号 → 文件名去 .md 退化身份。 */
 export function ticketEntriesOf(names) {
   const md = names.filter((f) => !!f && !f.startsWith(".") && f.toLowerCase().endsWith(".md") && !isNonTicketFileName(f));
@@ -346,7 +346,7 @@ export function ticketKey(effortId, tf) {
 /**
  * 扫描工作区 `.scratch/`:返回全部卡行(容器行 + 票行,排序 effortId → key)。
  * 空态语义:根目录不存在 → { exists:false, rows:[] },由调用方转成明确空态结果,不是错误。
- * 读不动的票文件静默跳过并记入 unreadable(list 语义永远跳过;counts 语义由调用方按
+ * 读不动的卡片文件静默跳过并记入 unreadable(list 语义永远跳过;counts 语义由调用方按
  * 监听状态分派——工单 08)。目录读不出来抛错如实失败。
  */
 export function scanWorkspace(root) {
@@ -360,7 +360,7 @@ export function scanWorkspace(root) {
     try {
       text = readFileSync(path, "utf8");
     } catch {
-      if (fallback === "ticket") unreadable.push(path); // 票读不动:记给 counts 分派;行照旧跳过
+      if (fallback === "ticket") unreadable.push(path); // 卡片文件读不动:记给 counts 分派;行照旧跳过
       return null;
     }
     return parseCard(text, meta);

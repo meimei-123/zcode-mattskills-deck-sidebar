@@ -2,7 +2,7 @@
 // 工作区是临时目录(拷贝 fixtures 后真实改盘),断言:
 //   - counts/list 响应携带数据修订号 revision,文件改动后 revision 递增、无改动稳定;
 //   - 防抖合并窗内的多次改动合并成一次修订;
-//   - counts「票文件读不动」语义按监听状态分派(在线整体拒绝 / 离线静默跳过);
+//   - counts「卡片文件读不动」语义按监听状态分派(在线整体拒绝 / 离线静默跳过);
 //   - 断链(监听目录被整删)后退避重连,监听重新在线。
 // 发条经 ZCODE_REFRESH_* 环境收短(缺省数值另由 slice 0 对照 port-notes 断言),不睡真 1.2s/4s。
 import { spawn } from "node:child_process";
@@ -164,7 +164,7 @@ async function sliceMerge() {
 }
 
 // ---------------------------------------------------------------------------
-// 切片 3:counts「票文件读不动」语义分派(工单 02 遗留,上游口径)。
+// 切片 3:counts「卡片文件读不动」语义分派(工单 02 遗留,上游口径)。
 //   坏票 = issues/ 下一个叫 NN-*.md 的目录(readFileSync 必抛 EISDIR,跨平台稳定)。
 //   在线(监听挂得上)→ counts 整体拒绝(不给偏小的数),list 仍静默跳过。
 // ---------------------------------------------------------------------------
@@ -174,7 +174,7 @@ async function sliceRejectOnline() {
   const s = await startServer(ws);
   try {
     const c = await s.call("deck_issue_counts", {});
-    check("counts(在线): 票文件读不动 → 整体拒绝(isError + 中文说明)",
+    check("counts(在线): 卡片文件读不动 → 整体拒绝(isError + 中文说明)",
       c.result?.isError === true && /读不动/.test(c.result?.content?.[0]?.text || "") && /整体拒绝/.test(c.result?.content?.[0]?.text || ""),
       JSON.stringify(c.result?.isError && c.result?.content?.[0]?.text));
     const l = await s.call("deck_issue_list", {});

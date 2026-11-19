@@ -5,15 +5,23 @@
 ## Language
 
 **Surface(页签)**:
-插件 manifest `ui.surfaces` 声明的会话侧边栏面板,即 "MattSkills" 页签本体,页面经 `ui://` 协议加载。
-_Avoid_: 标签页组件、panel、注入式页签
+插件 manifest `ui.surfaces` 声明的会话侧边栏页签,即 "MattSkills" 页签本体;面板(Panel)经 `ui://` 协议加载进它。
+_Avoid_: 标签页组件、面板(指 Surface 时)、注入式页签
+
+**面板(Panel)**:
+Surface 加载的 `ui://` Web UI 文档(panel.html 与 bundle),看板界面的实现件;Surface(页签)是产品概念,两者不混用。标识符(`window.MattSkillsPanel`、`panel.*` 键、panel.html 文件名)沿用不改。
+_Avoid_: 用面板指页签/Surface
 
 **卡片(Card)**:
 `.scratch/` 下一条工单/地图/规格所对应的 markdown 文件,看板的最小展示单元。
 _Avoid_: 工单文件、ticket file、条目
 
+**票(工单)**:
+`.scratch/` 里的工作单元(ticket/map/spec 三型之一;口语泛指全部卡片),卡片(Card)是它的看板/文件呈现。指文件时说「卡片文件」,不写「票文件」。
+_Avoid_: 票文件(指文件时用卡片文件)、票据
+
 **DeckState**:
-MCP 服务从 `.scratch/` 解析出的看板状态投影,页签与 agent 工具消费同一形状。
+MCP 服务从 `.scratch/` 解析出的看板状态投影,面板与 agent 工具消费同一形状。
 _Avoid_: 面板数据、store
 
 **PixelCards**:
@@ -21,7 +29,7 @@ _Avoid_: 面板数据、store
 _Avoid_: 卡片组件库、UI kit
 
 **ext-apps 桥**:
-页签页面与插件 MCP 服务通信的官方协议桥(`@modelcontextprotocol/ext-apps`,callTool/sendMessage 等)。
+面板与插件 MCP 服务通信的官方协议桥(`@modelcontextprotocol/ext-apps`,callTool/sendMessage 等)。
 _Avoid_: postMessage 通道、注入桥
 
 **宿主接缝(hostShim)**:

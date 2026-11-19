@@ -1,7 +1,7 @@
 // MattSkills 写面(工单 06):`.scratch/` 卡片的受限写——状态行 / 标签行 / 评论追加,
 // 正文永不重排。纪律逐条对照 port-notes/markdown-backend.md §6 写回纪律:
 //   1. 读整份 → 内存 apply → 有变化才写回(noop 不写盘,不换 mtime);
-//   2. 单写者队列 withFileWriter(同一票文件的读-改-写排队);建票取号走 withWorkspaceWriter;
+//   2. 单写者队列 withFileWriter(同一卡片文件的读-改-写排队);建票取号走 withWorkspaceWriter;
 //   3. 原子发布 publishTextFile(同目录临时文件 + rename,失败退回整份直写);
 //   4. 写前校验:key 存在性、同号多卡 conflict 不猜文件、旧布局只读、expectedUpdatedAt 队内核;
 //   5. 写回读回校验:发布前先 parseCard 验证所写能被读回还原,验不过一个字不落盘;
@@ -11,7 +11,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync, statSync, unlinkSy
 import { join, dirname, basename } from "node:path";
 import { scanWorkspace, parseCard, splitTicketKey, CLOSED_STATUS_WORDS } from "./cards.mjs";
 
-// ---- 单写者队列:同一票文件的读-改-写排队(并发「发评论+关门」不互相抹) ----
+// ---- 单写者队列:同一卡片文件的读-改-写排队(并发「发评论+关门」不互相抹) ----
 const fileLocks = new Map(); // path -> Promise(已排队的上一步)
 export function withFileWriter(path, fn) {
   const prev = fileLocks.get(path) || Promise.resolve();
@@ -62,7 +62,7 @@ function displayKeyOf(card) {
   return `#${card.effortId ? `${card.effortId}/` : ""}${key}`;
 }
 
-// ---- 写前校验:按 key 定位唯一票文件(write 口径,与 get 的读口径只差一条:多命中拒绝猜) ----
+// ---- 写前校验:按 key 定位唯一卡片文件(write 口径,与 get 的读口径只差一条:多命中拒绝猜) ----
 function resolveWriteTarget(root, key) {
   const k = String(key === undefined || key === null ? "" : key).trim();
   if (!k) return { ok: false, kind: "parse", message: "缺少 key:请给卡编号(如 01)或带目录前缀(如 m1-core-board/01)。" };
@@ -103,7 +103,7 @@ function mutateCardFile(root, key, opts, apply) {
     try {
       raw = readFileSync(path, "utf8");
     } catch {
-      return { ok: false, kind: "not-found", message: `找不到卡 ${key}:票文件读不到(可能刚被移动或删除),本次一个字都没写。` };
+      return { ok: false, kind: "not-found", message: `找不到卡 ${key}:卡片文件读不到(可能刚被移动或删除),本次一个字都没写。` };
     }
     if (opts.expectedUpdatedAt !== undefined && opts.expectedUpdatedAt !== null && String(opts.expectedUpdatedAt)) {
       const cur = mtimeIso(path);

@@ -1,6 +1,7 @@
 // MattSkills MCP 服务(工单 01 骨架 + 工单 02 只读工具 + 工单 06 写工具):stdio JSON-RPC 握手
 // + panel.html 资源供给 + deck_issue_list / deck_issue_get / deck_issue_counts 三个读工具
-// (上游契约 list/get/counts 的直翻)+ create/update/setLabels/comment/close/reopen 六件写工具,
+// (上游契约 list/get/counts 的直翻)+ deck_issue_list_labels(规范标签与内置色表,纯常量)
+// + create/update/setLabels/comment/close/reopen 六件写工具,
 // 返回结构化结果 + 中文人话摘要。零依赖;工作区根取宿主注入的 ZCODE_WORKSPACE_ROOT。
 import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
@@ -20,6 +21,24 @@ const PANEL_MIME = "text/html;profile=mcp-app";
 const ASSET_PREFIX = `ui://${PLUGIN_NAME}/assets/`;
 const ASSET_RE = /^(panel\.css|bundle-\d+\.txt|assets\.json)$/;
 const ASSET_LIMIT = 8 * 1024 * 1024;
+
+// 规范标签(docs/agents/triage-labels.md,与上游 canonical-labels.ts 一字不差)与
+// 内置标签色表——与面板色表同源(src/ui/app.js 的 LABEL_COLORS,上游 defaultLabelPalette
+// 直拷;src/ui/detail.mjs 有同值副本),deck_issue_list_labels 原样返回这两份。
+const CANONICAL_LABELS = ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"];
+const LABEL_COLORS = {
+  "bug": "d73a4a",
+  "needs-triage": "fbca04",
+  "needs-info": "5319e7",
+  "ready-for-agent": "0e8a16",
+  "ready-for-human": "b60205",
+  "wontfix": "ffffff",
+  "wayfinder:map": "8b5cf6",
+  "wayfinder:research": "0ea5e9",
+  "wayfinder:prototype": "f59e0b",
+  "wayfinder:grilling": "9d7cd8",
+  "wayfinder:task": "10b981",
+};
 
 const reply = (id, result) =>
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
@@ -62,7 +81,13 @@ const TOOLS = [
   {
     name: "deck_issue_counts",
     description:
-      "当前工作区各口径计数:open/closed/total 与面板胶囊口径(可接=frontier、占用、认领、阻塞、故障=bug、诊断=needs-triage)。空工作区返回 0 与 empty 标志,不是错误。响应携带数据修订号 revision;.scratch 监听在线时,票文件读不动则整体拒绝(不给偏小的数),离线降级为静默跳过。",
+      "当前工作区各口径计数:open/closed/total 与面板胶囊口径(可接=frontier、占用、认领、阻塞、故障=bug、诊断=needs-triage)。空工作区返回 0 与 empty 标志,不是错误。响应携带数据修订号 revision;.scratch 监听在线时,卡片文件读不动则整体拒绝(不给偏小的数),离线降级为静默跳过。",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "deck_issue_list_labels",
+    description:
+      "返回规范标签五枚(needs-triage、needs-info、ready-for-agent、ready-for-human、wontfix,口径见 docs/agents/triage-labels.md)与内置 11 色标签色表(hex 无 # 前缀,与面板色表同源)。纯常量查询,不读工作区;给卡打标签与配色展示都按这份。",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -240,13 +265,13 @@ function handleCall(name, args) {
   }
 
   if (name === "deck_issue_counts") {
-    // 票文件读不动的分派(工单 02 遗留):监听在线按上游「整体拒绝」(不给偏小的数);
+    // 卡片文件读不动的分派(工单 02 遗留):监听在线按上游「整体拒绝」(不给偏小的数);
     // 离线是降级态,回落静默跳过(list 永远静默跳过)。
     if (deckWatch.state().online && Array.isArray(scan.unreadable) && scan.unreadable.length) {
       const rel = scan.unreadable.map((p) => relative(root, p)).join("、");
       return {
         content: [
-          { type: "text", text: `有 ${scan.unreadable.length} 张票文件读不动(${rel}),counts 整体拒绝:不给偏小的数。可先 deck_issue_list 看可读部分,修复文件后会自动跟上。` },
+          { type: "text", text: `有 ${scan.unreadable.length} 张卡片文件读不动(${rel}),counts 整体拒绝:不给偏小的数。可先 deck_issue_list 看可读部分,修复文件后会自动跟上。` },
         ],
         isError: true,
       };
@@ -254,6 +279,14 @@ function handleCall(name, args) {
     const counts = computeCounts(scan.rows);
     const sc = { workspaceRoot: root, revision: deckWatch.state().revision, empty: scan.empty, counts };
     return { content: [{ type: "text", text: summarizeCounts(sc) }], structuredContent: sc };
+  }
+
+  if (name === "deck_issue_list_labels") {
+    const sc = { labels: CANONICAL_LABELS, colors: LABEL_COLORS };
+    return {
+      content: [{ type: "text", text: `规范标签 ${CANONICAL_LABELS.length} 枚:${CANONICAL_LABELS.join("、")};内置标签色 ${Object.keys(LABEL_COLORS).length} 枚(与面板色表同源,hex 无 # 前缀)。` }],
+      structuredContent: sc,
+    };
   }
 
   // ---- 工单 06:写工具六件套(全部走 write.mjs 的单写者队列;返回 Promise) ----

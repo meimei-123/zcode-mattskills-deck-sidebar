@@ -4,7 +4,7 @@ MattSkills 任务看板的 ZCode 插件:侧边栏 "MattSkills" 页签(官方 `ui
 
 ## 架构一句话
 
-官方 UI Plugin 形态——manifest 声明 Surface 页签,页面经 `ui://` 资源加载并由内置桥(工具调用/消息发话/资源读取)连接同进程 MCP 服务;数据契约是上游 DSH deck 1.9.0-beta.33 本地 Markdown 后端子集(见 `GLOSSARY.md` 与 `docs/adr/`)。
+官方 UI Plugin 形态——manifest 声明 Surface 页签,面板经 `ui://` 资源加载并由内置桥(工具调用/消息发话/资源读取)连接同进程 MCP 服务;数据契约是上游 DSH deck 1.9.0-beta.33 本地 Markdown 后端子集(见 `GLOSSARY.md` 与 `docs/adr/`)。
 
 ## 安装
 

@@ -1,6 +1,6 @@
 // MattSkills 动作域(工单 07):详情页动作栏的 prompt 生成与门控,纯函数。
-// 真源:port-notes/action-prompts.md(九模板 zh 全文、{{shared:*}} 五节原文、
-// 十级判定表)与 detail-page.md §4(detailTopGate:未知状态不置灰)。
+// 真源:port-notes/action-prompts.md(九模板 zh 全文、{{shared:*}} 五节原文(sharedTools
+// 两句 M1 裁剪,见下)、十级判定表)与 detail-page.md §4(detailTopGate:未知状态不置灰)。
 // 裁剪口径(与工单验收一致,取舍见工单报告):
 //   - 保留十级阶梯产出的九档动作模板(diagnose/fix/implement/takeover/supplement/
 //     discuss/execute/research/prototype;discuss/execute/research 三档同文 mapTicketAdvance);
@@ -19,13 +19,15 @@
   })();
 
   // ---- 公共小节(shared-sections.yaml zh 全文;mapTicketAdvance = Opening + WrapUp 拼接) ----
+  // M1 裁剪:sharedTools 两句点名 deck_issue_report / suggest_next_steps,这两个工具不在
+  // M1 工具面,改成不点工具名的诚实表述(其余逐字不动);上游原文见 port-notes/action-prompts.md。
   var SHARED_SECTIONS = {
     firstPrinciples: "从第一性原理出发。",
     sharedTools: [
       "## 工具",
       "- [ ] issue 相关操作优先使用 deck_ 开头的工具处理，如果deck_工具异常，根据当前工作区选择合适方式处理。",
-      "- [ ] 及时使用 deck_issue_report 工具上报处理过、处理中的 issue 编号。",
-      "- [ ] 每轮回复收尾时先判断一次：用户接下来几乎一定会做什么？想得到就调用 suggest_next_steps 给出 2~4 条最可能被他选中的做法；这一轮在等用户拍板时，其中一条把每题的推荐答案列好；想不到就不调用。",
+      "- [ ] 及时在回复中说明处理过、处理中的 issue 编号。",
+      "- [ ] 每轮回复收尾时先判断一次：用户接下来几乎一定会做什么？想得到就在回复里给出 2~4 条最可能被他选中的做法；这一轮在等用户拍板时，其中一条把每题的推荐答案列好；想不到就不给。",
     ].join("\n"),
     investigation: [
       "## 调查（建议先查后问）",

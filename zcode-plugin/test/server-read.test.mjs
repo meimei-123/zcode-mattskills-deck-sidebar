@@ -71,7 +71,8 @@ async function sliceList() {
   try {
     const tools = await s.rpc("tools/list", {});
     const names = (tools.result?.tools || []).map((t) => t.name);
-    check("list: tools/list 声明三个工具", ["deck_issue_list", "deck_issue_get", "deck_issue_counts"].every((n) => names.includes(n)), JSON.stringify(names));
+    check("list: tools/list 声明读工具面(list/get/counts/list_labels)",
+      ["deck_issue_list", "deck_issue_get", "deck_issue_counts", "deck_issue_list_labels"].every((n) => names.includes(n)), JSON.stringify(names));
 
     const r = await s.call("deck_issue_list", {});
     check("list: 应答无错误", !r.error && !r.result?.isError, JSON.stringify(r.error || r.result?.isError));
@@ -307,6 +308,44 @@ async function sliceFilter() {
 
 await sliceEmpty();
 await sliceFilter();
+
+// ---------------------------------------------------------------------------
+// 切片 7:list_labels 规范标签 + 内置标签色表(纯常量查询,不读工作区)。
+//   期望值独立于实现:标签串 = docs/agents/triage-labels.md 五规范标签(与上游
+//   canonical-labels.ts 一字不差);色表 11 项 = 上游 defaultLabelPalette 直值,
+//   与面板色表(src/ui/app.js LABEL_COLORS)同源。
+// ---------------------------------------------------------------------------
+async function sliceLabels() {
+  const s = await startServer(join(FIXTURES, "no-scratch"));
+  try {
+    const tools = await s.rpc("tools/list", {});
+    const names = (tools.result?.tools || []).map((t) => t.name);
+    check("labels: tools/list 声明 deck_issue_list_labels", names.includes("deck_issue_list_labels"), JSON.stringify(names));
+
+    const r = await s.call("deck_issue_list_labels", {});
+    check("labels: 应答无错误", !r.error && !r.result?.isError, JSON.stringify(r.error || r.result?.isError));
+    const sc = r.result?.structuredContent || {};
+    check("labels: 规范标签五枚(triage-labels.md 顺序)",
+      JSON.stringify(sc.labels) === JSON.stringify(["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"]),
+      JSON.stringify(sc.labels));
+    const want = {
+      "bug": "d73a4a", "needs-triage": "fbca04", "needs-info": "5319e7",
+      "ready-for-agent": "0e8a16", "ready-for-human": "b60205", "wontfix": "ffffff",
+      "wayfinder:map": "8b5cf6", "wayfinder:research": "0ea5e9", "wayfinder:prototype": "f59e0b",
+      "wayfinder:grilling": "9d7cd8", "wayfinder:task": "10b981",
+    };
+    const got = sc.colors || {};
+    check("labels: 内置色表 11 项与面板色表同源(hex 无 # 前缀)",
+      Object.keys(got).length === 11 && Object.keys(want).every((k) => got[k] === want[k]) && Object.keys(got).every((k) => k in want),
+      JSON.stringify(got));
+    check("labels: 摘要是中文人话", /规范标签/.test(r.result?.content?.[0]?.text || ""), r.result?.content?.[0]?.text);
+    check("labels: 纯常量——空工作区照常返回(无 .scratch 不是空态/错误)",
+      Array.isArray(sc.labels) && sc.labels.length === 5 && Object.keys(got).length === 11);
+  } finally {
+    await s.stop();
+  }
+}
+await sliceLabels();
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);
 process.exit(failures === 0 ? 0 : 1);

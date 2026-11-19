@@ -143,10 +143,10 @@ async function smoke() {
     send({ jsonrpc: "2.0", method: "notifications/initialized" }); // 通知不应答,不挂
 
     const tools = await rpc("tools/list", {});
-    // 工单 02 起工具面不再为空:三个只读工具(骨架期这条断言过"空列表",随工具面落地演进)。
+    // 工单 02 起工具面不再为空:只读工具面随工具面落地演进(list_labels 补 spec 操作目录/用户故事 18)。
     const toolNames = (tools.result?.tools || []).map((t) => t.name);
-    check("tools/list 声明只读工具面(工单 02)",
-      ["deck_issue_list", "deck_issue_get", "deck_issue_counts"].every((n) => toolNames.includes(n)),
+    check("tools/list 声明只读工具面(工单 02 + list_labels)",
+      ["deck_issue_list", "deck_issue_get", "deck_issue_counts", "deck_issue_list_labels"].every((n) => toolNames.includes(n)),
       JSON.stringify(toolNames));
 
     const rl = await rpc("resources/list", {});
