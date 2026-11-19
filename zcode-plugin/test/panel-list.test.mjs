@@ -886,6 +886,69 @@ async function sliceFilterClosed() {
   }
 }
 
+// 切片 F(工单 08):实时刷新 —— 可见时按间隔轮询 counts 的 revision,变化才重拉列表;
+//   document 不可见暂停,转回可见恢复;强刷钩子 refresh() 不依赖 revision 变化。
+//   stub 侧用 server 代理接管 deck_issue_counts 应答的 revision(喂失效信号),数据本身不变。
+// ---------------------------------------------------------------------------
+async function sliceRefresh() {
+  const server = await startServer(join(FIXTURES, "mixed"));
+  let feed = 1; // counts 应答携带的 revision 由测试接管(真值来自服务端监听,缝 1 已测)
+  const proxied = {
+    rpc: async (method, params) => {
+      const r = await server.rpc(method, params);
+      if (!r.error && method === "tools/call" && params?.name === "deck_issue_counts" && r.result?.structuredContent) {
+        r.result.structuredContent.revision = feed;
+      }
+      return r;
+    },
+    stop: () => server.stop(),
+  };
+  const host = makeStubHost({ server: proxied });
+  host.start();
+  await until(() => byClass(host.root, "ms-row").length > 0, "rows render");
+  // 引导页用缺省发条(5s);这里重挂快发条驱动轮询(真宿主不受影响)
+  host.win.MattSkillsPanel.boot({ client: host.win.__pluginClient, doc: host.doc, root: host.root, pollMs: 100 });
+  await until(() => byClass(host.root, "ms-row").length > 0, "rows render after reboot");
+  const listCalls = () => host.sent.filter((m) => m.method === "tools/call" && m.params?.name === "deck_issue_list").length;
+  const countsCalls = () => host.sent.filter((m) => m.method === "tools/call" && m.params?.name === "deck_issue_counts").length;
+  try {
+    const base = listCalls();
+    const countsBase = countsCalls();
+    await sleep(450); // ≥4 个轮询格
+    check("refresh: revision 不变只轮 counts、不重拉列表", listCalls() === base, `${base} -> ${listCalls()}`);
+    check("refresh: 可见时轮询在跑", countsCalls() >= countsBase + 3, `${countsBase} -> ${countsCalls()}`);
+
+    feed = 2;
+    const pulled = await until(() => listCalls() > base, "list re-pulled on revision change", 2000);
+    check("refresh: revision 变化 → 重拉列表", pulled, `${base} -> ${listCalls()}`);
+    await sleep(300);
+    check("refresh: 重拉一次后按新 revision 稳住(不循环)", listCalls() === base + 1, `${base} -> ${listCalls()}`);
+    check("refresh: 重拉后列表照常渲染(T04 起默认 6 行,closed 折叠)", byClass(host.root, "ms-row").length === 6, String(byClass(host.root, "ms-row").length));
+
+    host.doc.hidden = true;
+    const countsAtHide = countsCalls();
+    const listAtHide = listCalls();
+    await sleep(450);
+    check("refresh: 不可见暂停轮询(不空耗)", countsCalls() === countsAtHide && listCalls() === listAtHide,
+      `counts ${countsAtHide} -> ${countsCalls()}, list ${listAtHide} -> ${listCalls()}`);
+    host.doc.hidden = false;
+    feed = 3;
+    const resumed = await until(() => listCalls() > listAtHide, "list re-pulled after resume", 2000);
+    check("refresh: 转回可见恢复轮询并跟上失效信号", resumed, `${listAtHide} -> ${listCalls()}`);
+
+    feed = 3; // revision 与面板已知一致:下一轮 tick 不重拉
+    const beforeHook = listCalls();
+    await sleep(250);
+    check("refresh: revision 未变不重拉(钩子前置)", listCalls() === beforeHook, `${beforeHook} -> ${listCalls()}`);
+    host.win.MattSkillsPanel.refresh();
+    const hooked = await until(() => listCalls() > beforeHook, "list re-pulled by refresh hook", 1500);
+    check("refresh: 强刷钩子立即重拉(写操作/动作后调,T06/T07)", hooked, `${beforeHook} -> ${listCalls()}`);
+  } finally {
+    if (host.win.MattSkillsPanel && typeof host.win.MattSkillsPanel.stopPolling === "function") host.win.MattSkillsPanel.stopPolling();
+    await server.stop();
+  }
+}
+
 await sliceBootstrap();
 await sliceRows();
 await sliceCounts();
@@ -896,6 +959,7 @@ sliceCardsPure();
 await slicePixelFace();
 sliceViewPure();
 await sliceFilterClosed();
+await sliceRefresh();
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);
 process.exit(failures === 0 ? 0 : 1);
