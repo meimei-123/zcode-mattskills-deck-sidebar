@@ -346,19 +346,22 @@ export function ticketKey(effortId, tf) {
 /**
  * 扫描工作区 `.scratch/`:返回全部卡行(容器行 + 票行,排序 effortId → key)。
  * 空态语义:根目录不存在 → { exists:false, rows:[] },由调用方转成明确空态结果,不是错误。
- * 读不动的票文件静默跳过(list 语义);目录读不出来抛错如实失败(counts 语义由调用方收)。
+ * 读不动的票文件静默跳过并记入 unreadable(list 语义永远跳过;counts 语义由调用方按
+ * 监听状态分派——工单 08)。目录读不出来抛错如实失败。
  */
 export function scanWorkspace(root) {
   const scratch = join(String(root || "."), ".scratch");
-  if (!existsSync(scratch)) return { exists: false, scratch, units: [], rows: [], empty: true };
+  if (!existsSync(scratch)) return { exists: false, scratch, units: [], rows: [], unreadable: [], empty: true };
   const units = listUnits(scratch);
   const rows = [];
+  const unreadable = [];
   const readCard = (path, meta, fallback) => {
     let text;
     try {
       text = readFileSync(path, "utf8");
     } catch {
-      if (fallback === "skip") return null; // 容器/票文件读不动:静默跳过(上游 list 行为)
+      if (fallback === "ticket") unreadable.push(path); // 票读不动:记给 counts 分派;行照旧跳过
+      return null;
     }
     return parseCard(text, meta);
   };
@@ -382,7 +385,7 @@ export function scanWorkspace(root) {
     }
     for (const tf of ticketEntriesOf(names)) {
       const p = join(idir, tf.file);
-      const t = readCard(p, { key: ticketKey(u.effortId, tf), parentKey, isMap: false, effortId: u.effortId, url: p, createdAt: mtimeIso(p), updatedAt: mtimeIso(p) }, "skip");
+      const t = readCard(p, { key: ticketKey(u.effortId, tf), parentKey, isMap: false, effortId: u.effortId, url: p, createdAt: mtimeIso(p), updatedAt: mtimeIso(p) }, "ticket");
       if (t) rows.push(t);
     }
   }
@@ -401,7 +404,7 @@ export function scanWorkspace(root) {
     }
   }
   // 空态:根目录不存在,或存在但一个工作单元都没有(空 .scratch)——都给面板明确的引导态。
-  return { exists: true, scratch, units, rows, empty: units.length === 0 };
+  return { exists: true, scratch, units, rows, unreadable, empty: units.length === 0 };
 }
 
 /** key 拆「工作单元前缀 + 目录内身份」:退化身份带 `目录/` 前缀。 */

@@ -5,7 +5,7 @@
 // fixtures 期望值独立于实现,来自卡片文件手工盘点。
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { makeStubHost, startServer, byClass, byAttr, findAll, until } from "./stub-host.mjs";
+import { makeStubHost, startServer, byClass, byAttr, findAll, sleep, until } from "./stub-host.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url))); // zcode-plugin/
 const FIXTURES = join(ROOT, "test", "fixtures");
@@ -347,12 +347,38 @@ async function sliceMarkdown() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 切片 G(与工单 08 合流的回归):详情态下刷新不打扰画面——轮询/强刷钩子重拉的全套数据
+// 只进缓存,详情视图不动;返回列表时用的就是刷新后的那批
+// ---------------------------------------------------------------------------
+async function sliceRefreshGuard() {
+  const { server, host } = await boardHost();
+  try {
+    await enterDetail(host, "#m1-core-board/01");
+    await until(() => byClass(host.root, "ms-md-p").length > 0, "detail body");
+    host.win.MattSkillsPanel.refresh(); // 强刷钩子(静默重拉全套,工单 08)
+    await sleep(200); // 等重拉应答回来
+    check("merge: 详情态强刷不打扰画面",
+      byClass(host.root, "ms-detail").length === 1 && byClass(host.root, "ms-md-p").length > 0,
+      host.root.textContent.slice(0, 60));
+    byClass(host.root, "ms-back")[0].click();
+    const back = await until(() => byClass(host.root, "ms-row").length === 8, "board back");
+    check("merge: 返回列表照常恢复(缓存被刷新更新过)", back);
+  } finally {
+    if (host.win.MattSkillsPanel && typeof host.win.MattSkillsPanel.stopPolling === "function") {
+      host.win.MattSkillsPanel.stopPolling();
+    }
+    await server.stop();
+  }
+}
+
 await sliceEnter();
 await sliceStates();
 await sliceBack();
 await sliceFold();
 await sliceCommentsPage();
 await sliceMarkdown();
+await sliceRefreshGuard();
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);
 process.exit(failures === 0 ? 0 : 1);
