@@ -20,6 +20,26 @@
     stateClosed: "已关闭",
     markClaimed: "已认领",
     markBlocked: "被阻塞",
+    // cards.yaml 中文键(card.*):结案章/认领后缀/阻塞脚注/角标与容器 chip
+    cardClosedSeal: "结案",
+    cardBlockedBy: "被 {n} 挡住",
+    cardBug: "BUG",
+    cardDoing: "在办",
+    cardPickReady: "可接",
+    // 筛选行与折叠(list 词表中文内联)
+    filterAll: "全部",
+    filterOpen: "进行中",
+    filterClosed: "已关闭",
+    filterBlocked: "被阻塞",
+    filterFrontier: "可接",
+    sortUpdatedAt: "更新时间",
+    sortCreatedAt: "创建时间",
+    sortNumber: "编号",
+    sortTitle: "标题",
+    filterLabelAll: "全部",
+    filterCollapse: "收起",
+    listNone: "没有匹配的工单",
+    listClosedN: "已关闭 ({n})",
   };
 
   // 九条计数口径:顺序即胶囊条从左到右;前三枚带 KPI 色值(list-page.md KPI 行:
@@ -54,6 +74,11 @@
   function labelColorOf(name) {
     return LABEL_COLORS[name] || "cccccc";
   }
+
+  // PixelCards 域(工单 04,src/ui/cards.mjs;拼接进 bundle 后挂 globalThis)。
+  var Cards = globalThis.MattSkillsCards || {};
+  // 页面 colorOf 表:标签配置色 + implement 档塞规格身份色(pixel-cards.md §1)。
+  var COLOR_OF = Object.assign({}, LABEL_COLORS, { implement: Cards.CONTAINER_ACCENT ? Cards.CONTAINER_ACCENT.spec.slice(1) : "1D4ED8" });
 
   // ---- 小工具 ----
   function el(doc, tag, cls, text) {
@@ -149,35 +174,163 @@
     }
     return bar;
   }
-  function renderRow(doc, row) {
-    var cls = "ms-row ms-kind-" + (row.type || "issue") + " " + (row.state === "closed" ? "ms-closed" : "ms-open");
+  /** open 阻塞者数(断链按安全阻塞计,与 isBlocked 同口径)。 */
+  function openBlockerCount(row) {
+    if (!Array.isArray(row.blockedBy)) return 0;
+    return row.blockedBy.filter(function (r) {
+      return !r || r.state !== "closed";
+    }).length;
+  }
+  /** 容器子票统计:同工作单元的票行 → {total, closed}(container-view 三态的输入)。 */
+  function containerStatsOf(rows) {
+    var stats = {};
+    for (var row of rows) {
+      if (row.type !== "map" && row.type !== "spec") continue;
+      var s = stats[row.effortId] || (stats[row.effortId] = { total: 0, closed: 0 });
+      for (var t of rows) {
+        if (t.effortId === row.effortId && t.type !== "map" && t.type !== "spec") {
+          s.total++;
+          if (t.state === "closed") s.closed++;
+        }
+      }
+    }
+    return stats;
+  }
+
+  /** 票行动作主色:档位 → colorOf 表 → 档位兜底色。 */
+  function actionHexOf(row) {
+    var action = Cards.rowActionKind ? Cards.rowActionKind(row) : "execute";
+    var style = (Cards.CARD_ACTION_STYLE || {})[action] || {};
+    return Cards.cardColorOf ? Cards.cardColorOf(style.colorKey, COLOR_OF, action) : "8b5cf6";
+  }
+
+  /** 编号徽章(PixelCardNo):实心档底=主色、字=cardInkOn、罩纱带挂标记;描线档边=主色。 */
+  function appendBadge(doc, host, row, hex) {
+    var style = (Cards.CARD_ACTION_STYLE || {})[Cards.rowActionKind ? Cards.rowActionKind(row) : ""] || {};
+    var badge = el(doc, "span", "ms-num cd-no");
+    badge.textContent = numberText(row);
+    badge.setAttribute("title", numberText(row));
+    if (style.hollow) {
+      badge.className += " cd-nonum line";
+      badge.style.borderColor = "#" + hex;
+    } else {
+      badge.style.background = "#" + hex;
+      badge.style.color = Cards.cardInkOn ? Cards.cardInkOn(hex) : "#1c1004";
+      if (Cards.cardBoostOn && Cards.cardBoostOn(hex)) badge.setAttribute("data-cd-boost", "1");
+    }
+    host.append(badge);
+    return badge;
+  }
+
+  /** 容器角标:身份色 chip(地图/规格);票行状态角标:BUG 三角 / 在办 / 可接。 */
+  function appendCornerMark(doc, host, row, occupied) {
+    if (row.type === "map" || row.type === "spec") {
+      var chip = el(doc, "span", "dsws-chip dsws-chip-container " + ((Cards.CONTAINER_CHIP_CLASS || {})[row.type] || ""));
+      chip.textContent = (Cards.CONTAINER_CHIP_LABEL || {})[row.type] || "";
+      chip.style.color = (Cards.CONTAINER_ACCENT || {})[row.type] || "";
+      host.append(chip);
+      return;
+    }
+    var hasBug = (row.labels || []).some(function (l) {
+      return l && l.name === "bug";
+    });
+    if (row.state === "closed") {
+      // closed 票无状态角标(bug 除外)
+      if (hasBug) {
+        var bugC = el(doc, "span", "cd-corner", COPY.cardBug);
+        bugC.style.color = "#d73a4a"; // --cd-mark-bug
+        host.append(bugC);
+      }
+      return;
+    }
+    if (occupied) {
+      var doing = el(doc, "span", "cd-ckb", COPY.cardDoing);
+      doing.style.color = "#2b62b0"; // --cd-mark-doing
+      host.append(doing);
+      return;
+    }
+    if (hasBug) {
+      var bug = el(doc, "span", "cd-corner", COPY.cardBug);
+      bug.style.color = "#d73a4a"; // --cd-mark-bug
+      host.append(bug);
+      return;
+    }
+    var ready = el(doc, "span", "cd-ckj", COPY.cardPickReady);
+    ready.style.color = "#10b981"; // --cd-mark-ready
+    host.append(ready);
+  }
+
+  function renderRow(doc, row, ctx) {
+    var closed = row.state === "closed";
+    var occupied = !closed && (isClaimed(row) || isBlocked(row));
+    var cls = "ms-row ms-kind-" + (row.type || "issue") + " " + (closed ? "ms-closed" : "ms-open");
     if (isClaimed(row)) cls += " ms-claimed";
     if (isBlocked(row)) cls += " ms-blocked";
     var r = el(doc, "div", cls);
     r.setAttribute("data-num", numberText(row));
 
+    // 图钉(PixelCardPin):closed 票胶带,open 票圆图钉 #c0392b
+    if (closed) {
+      r.append(el(doc, "span", "cd-pin-tape"));
+    } else {
+      var pin = el(doc, "span", "cd-pin");
+      pin.style.background = "#c0392b";
+      r.append(pin);
+    }
+
+    var isContainer = row.type === "map" || row.type === "spec";
+    var hex = isContainer
+      ? ((Cards.containerNumberColor || function () { return "#8b5cf6"; })(
+          row.type,
+          (Cards.containerStateOf || function () { return "open"; })((ctx.containerStats || {})[row.effortId])
+        )).slice(1)
+      : actionHexOf(row);
+    r.setAttribute("data-cd-act", "#" + hex);
+    if (isContainer) {
+      // 容器行身份色:左边框 accent + 底色 tint(container-view)
+      r.style.borderLeft = "3px solid " + ((Cards.CONTAINER_ACCENT || {})[row.type] || "");
+      r.style.background = (Cards.CONTAINER_TINT || {})[row.type] || "";
+    }
+
     var head = el(doc, "div", "ms-row-head");
-    var num = el(doc, "span", "ms-num", numberText(row));
-    num.setAttribute("title", numberText(row));
-    head.append(num);
+    appendCornerMark(doc, head, row, occupied);
+    appendBadge(doc, head, row, hex);
+    if (closed) {
+      // 结案章(PixelClosedSeal):#a3231a 底 #fff9ec 字
+      var seal = el(doc, "span", "cd-sealcn", COPY.cardClosedSeal);
+      seal.style.background = "#a3231a";
+      seal.style.color = "#fff9ec";
+      head.append(seal);
+    }
     var title = el(doc, "span", "ms-title", row.title || "");
     title.setAttribute("title", row.title || "");
     head.append(title);
-    head.append(el(doc, "span", "ms-state-chip", row.state === "closed" ? COPY.stateClosed : COPY.stateOpen));
+    head.append(el(doc, "span", "ms-state-chip", closed ? COPY.stateClosed : COPY.stateOpen));
     r.append(head);
+
+    // 红色脚注(PixelCardNote):被 open 阻塞时「被 {n} 挡住」
+    var blockers = openBlockerCount(row);
+    if (blockers > 0 && !closed) {
+      r.append(el(doc, "div", "cd-note", COPY.cardBlockedBy.replace("{n}", String(blockers))));
+    }
 
     var foot = el(doc, "div", "ms-row-foot");
     var tags = el(doc, "div", "ms-tags");
     var labels = Array.isArray(row.labels) ? row.labels : [];
     for (var lab of labels) {
       if (!lab || !lab.name) continue;
-      var hex = "#" + labelColorOf(lab.name);
-      var chip = el(doc, "span", "ms-label");
+      var lhex = labelColorOf(lab.name);
+      var chip = el(doc, "span", "ms-label cd-lb");
       var dot = el(doc, "span", "ms-label-dot");
-      dot.setAttribute("data-color", hex);
-      dot.style.background = hex;
+      dot.setAttribute("data-color", "#" + lhex);
+      dot.style.background = "#" + lhex;
       chip.append(dot);
       chip.append(lab.name);
+      // 标签墨块(PixelCardTags):真实标签色实心底 + cardInkOn 字色 + 罩纱标记;边 = darken(色,.16)
+      chip.style.background = "#" + lhex;
+      chip.style.color = Cards.cardInkOn ? Cards.cardInkOn(lhex) : "#1c1004";
+      chip.style.borderColor = Cards.darkenHex ? Cards.darkenHex(lhex, 0.16) : "";
+      if (Cards.cardBoostOn && Cards.cardBoostOn(lhex)) chip.setAttribute("data-cd-boost", "1");
       tags.append(chip);
     }
     foot.append(tags);
@@ -188,15 +341,154 @@
     r.append(foot);
     return r;
   }
-  function renderBoard(doc, root, rows, counts) {
+  // ---- 看板视图状态(工单 04):筛选/排序/标签点击记忆/关闭票折叠,内存态 ----
+  var view = {
+    state: "all", // all | open | closed | blocked | frontier(list-page.md 状态组)
+    sortKey: "number", // updatedAt | createdAt | number | title;默认档「编号升序」
+    sortDir: 1,
+    labels: [], // 标签多选 OR
+    clicks: {}, // 标签点击记忆 {name:{n,ts}}
+    labelsOpen: false, // 标签组展开
+    closedOpen: false, // 关闭票折叠区展开
+  };
+  var boardData = null; // 最近一次成功加载的 {rows, counts},筛选变化时原地重渲染
+
+  function rerender(doc, root) {
+    if (!boardData) return;
+    renderBoard(doc, root, boardData.rows, boardData.counts, view);
+  }
+
+  /** 筛选行(listFilterRow.md:list-page.md §2):状态紫/排序蓝/标签真实色三组墨块。 */
+  function renderFilterRow(doc, rows, view) {
+    var bar = el(doc, "div", "ms-filter");
+    var STATE_KEYS = [
+      ["all", COPY.filterAll], ["open", COPY.filterOpen], ["closed", COPY.filterClosed],
+      ["blocked", COPY.filterBlocked], ["frontier", COPY.filterFrontier],
+    ];
+    var SORT_KEYS = [
+      ["updatedAt", COPY.sortUpdatedAt], ["createdAt", COPY.sortCreatedAt],
+      ["number", COPY.sortNumber], ["title", COPY.sortTitle],
+    ];
+    var sep = function () {
+      return el(doc, "i", "ms-filter-sep");
+    };
+
+    // 状态组(单选):选中墨块紫(rgba(188,140,255,.18)/.6 边,#c084fc 字 = CONTAINER_ACCENT.map)
+    STATE_KEYS.forEach(function (pair, i) {
+      var chip = el(doc, "span", "ms-chip ms-chip-state" + (view.state === pair[0] ? " is-on" : ""), pair[1]);
+      chip.setAttribute("data-state", pair[0]);
+      if (view.state === pair[0]) {
+        chip.style.color = (Cards.CONTAINER_ACCENT || {}).map || "#c084fc";
+        chip.style.background = "rgba(188,140,255,.18)";
+        chip.style.borderColor = "rgba(188,140,255,.6)";
+      }
+      chip.addEventListener("click", function () {
+        view.state = pair[0];
+        rerender(doc, doc.getElementById("root"));
+      });
+      bar.append(chip);
+      if (i === STATE_KEYS.length - 1) bar.append(sep());
+    });
+
+    // 排序组(单选+翻转):点同键翻转 asc/desc;换键时 title 默认 asc、其余 desc
+    SORT_KEYS.forEach(function (pair, i) {
+      var on = view.sortKey === pair[0];
+      var chip = el(doc, "span", "ms-chip ms-chip-sort" + (on ? " is-on" : ""),
+        pair[1] + (on ? (view.sortDir === 1 ? " ↑" : " ↓") : ""));
+      chip.setAttribute("data-sort", pair[0]);
+      if (on) {
+        chip.style.color = "#58a6ff";
+        chip.style.background = "rgba(88,166,255,.16)";
+        chip.style.borderColor = "rgba(88,166,255,.55)";
+      }
+      chip.addEventListener("click", function () {
+        if (view.sortKey === pair[0]) view.sortDir = -view.sortDir;
+        else {
+          view.sortKey = pair[0];
+          view.sortDir = pair[0] === "title" ? 1 : -1;
+        }
+        rerender(doc, doc.getElementById("root"));
+      });
+      bar.append(chip);
+      if (i === SORT_KEYS.length - 1) bar.append(sep());
+    });
+
+    // 标签组(多选 OR):全部恒清空;普通标签真实色;默认 4 颗,+N 展开/收起
+    var allChip = el(doc, "span", "ms-chip ms-chip-label ms-chip-all" + (view.labels.length === 0 ? " is-on" : ""), COPY.filterLabelAll);
+    allChip.setAttribute("data-label", "");
+    if (view.labels.length === 0) {
+      allChip.style.background = "rgba(255,255,255,.08)";
+      allChip.style.borderColor = "rgba(255,255,255,.65)";
+    }
+    allChip.addEventListener("click", function () {
+      view.labels = [];
+      rerender(doc, doc.getElementById("root"));
+    });
+    bar.append(allChip);
+
+    var catalog = Cards.labelCatalog ? Cards.labelCatalog(rows) : new Map();
+    var sortedLabels = Cards.sortLabelChips ? Cards.sortLabelChips(catalog, view.clicks) : [];
+    var shown = view.labelsOpen ? sortedLabels : sortedLabels.slice(0, 4);
+    shown.forEach(function (item) {
+      var hex = labelColorOf(item.name);
+      var known = !!LABEL_COLORS[item.name];
+      var on = view.labels.indexOf(item.name) >= 0;
+      var chip = el(doc, "span", "ms-chip ms-chip-label" + (on ? " is-on" : ""), item.name);
+      chip.setAttribute("data-label", item.name);
+      chip.style.color = known ? "#" + hex : "#bc8cff";
+      chip.style.background = Cards.hexA ? Cards.hexA(hex, 0.18) : "";
+      chip.style.borderColor = Cards.darkenHex ? Cards.darkenHex(hex, 0.16) : "";
+      chip.addEventListener("click", function () {
+        var at = view.labels.indexOf(item.name);
+        if (at >= 0) view.labels.splice(at, 1);
+        else view.labels.push(item.name);
+        var mem = view.clicks[item.name] || (view.clicks[item.name] = { n: 0, ts: 0 });
+        mem.n += 1;
+        mem.ts = Date.now();
+        rerender(doc, doc.getElementById("root"));
+      });
+      bar.append(chip);
+    });
+    if (sortedLabels.length > 4) {
+      var more = el(doc, "span", "ms-chip ms-chip-more", view.labelsOpen ? COPY.filterCollapse : "+" + (sortedLabels.length - 4));
+      more.addEventListener("click", function () {
+        view.labelsOpen = !view.labelsOpen;
+        rerender(doc, doc.getElementById("root"));
+      });
+      bar.append(more);
+    }
+    return bar;
+  }
+
+  function renderBoard(doc, root, rows, counts, view) {
     var app = el(doc, "div", "ms-app ms-board");
     var head = el(doc, "div", "ms-head");
     head.append(el(doc, "span", "ms-head-title", COPY.boardTitle));
     app.append(head);
     app.append(renderCountsBar(doc, counts));
+    app.append(renderFilterRow(doc, rows, view));
+
+    var v = Cards.applyView ? Cards.applyView(rows, view) : { openRows: rows, closedRows: [] };
+    var openRows = Cards.sortViewRows ? Cards.sortViewRows(v.openRows, view.sortKey, view.sortDir) : sortRows(v.openRows);
+    var closedRows = Cards.sortViewRows ? Cards.sortViewRows(v.closedRows, view.sortKey, view.sortDir) : sortRows(v.closedRows);
+    var visible = view.state === "closed" ? closedRows : openRows.concat(view.closedOpen ? closedRows : []);
+
     var list = el(doc, "div", "ms-rows");
-    for (var row of sortRows(rows)) list.append(renderRow(doc, row));
+    var ctx = { containerStats: containerStatsOf(rows) };
+    for (var row of visible) list.append(renderRow(doc, row, ctx));
     app.append(list);
+    if (visible.length === 0) app.append(el(doc, "div", "ms-none", COPY.listNone));
+    if (view.state === "all" && closedRows.length > 0) {
+      var fold = el(doc, "div", "ms-closed-fold" + (view.closedOpen ? " open" : ""),
+        COPY.listClosedN.replace("{n}", String(closedRows.length)));
+      if (view.closedOpen) fold.append(el(doc, "span", "ms-fold-arrow", "▾"));
+      else fold.append(el(doc, "span", "ms-fold-arrow", "▸"));
+      fold.addEventListener("click", function () {
+        view.closedOpen = !view.closedOpen;
+        rerender(doc, root);
+      });
+      app.append(fold);
+    }
     root.replaceChildren(app);
   }
 
@@ -221,7 +513,11 @@
         renderGuide(doc, root);
         return;
       }
-      renderBoard(doc, root, Array.isArray(listSc.rows) ? listSc.rows : [], countsSc.counts || {});
+      boardData = {
+        rows: Array.isArray(listSc.rows) ? listSc.rows : [],
+        counts: countsSc.counts || {},
+      };
+      renderBoard(doc, root, boardData.rows, boardData.counts, view);
     } catch (e) {
       renderError(doc, root, e);
     }

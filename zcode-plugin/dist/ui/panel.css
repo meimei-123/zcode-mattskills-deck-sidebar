@@ -1,7 +1,8 @@
-/* MattSkills 面板样式(M1 基础卡面):深色皮肤令牌 + 计数胶囊条 + 卡片行。
-   完整 PixelCards 色卡体系(皮肤令牌/卡面结构/对比度罩纱)是工单 04,本文件只取基线值:
-   间距(行1 gap 8 / 行2 gap 6,上游 LIST_ROW_SHAPE)、圆角(墨块 99px,上游 INK_RADIUS)、
-   等宽编号(ui-monospace)、KPI 三色(list-page.md)。 */
+/* MattSkills 面板样式(M1 基础卡面 + 工单 04 像素卡部件):深色底 + 计数胶囊条 + 卡片行。
+   基线值来源:间距(行1 gap 8 / 行2 gap 6,上游 LIST_ROW_SHAPE)、圆角(墨块 99px,上游
+   INK_RADIUS)、等宽编号(ui-monospace)、KPI 三色(list-page.md)。工单 04 起行内叠 cd-
+   部件(编号徽章/结案章/图钉/角标/红色脚注/标签墨块),部件色值由 JS 内联(色表真源在
+   src/ui/cards.mjs),此处只管形状与排印;罩纱规则同上游只在浅色主题生效(M1 面板恒深色)。 */
 
 :root {
   color-scheme: dark;
@@ -228,4 +229,136 @@ body {
 .ms-mark-blocked {
   color: var(--ms-bad);
   background: rgba(248, 113, 113, 0.16);
+}
+
+/* ---- 像素卡部件(工单 04) ---- */
+.ms-row {
+  position: relative; /* 图钉/胶带的定位基准 */
+}
+/* 编号徽章(PixelCardNo):实心底与空心描线由 JS 内联上色,这里给形状 */
+.ms-num.cd-no {
+  flex: none;
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-family: var(--ms-num-font);
+}
+.ms-num.cd-no.cd-nonum.line {
+  background: transparent;
+}
+/* 标签墨块(PixelCardTags):底/字色内联,边框 = darken(色, 0.16) 同内联 */
+.ms-label.cd-lb {
+  border: 1px solid transparent;
+}
+/* 双阈值罩纱(PixelCardTheme #1388):只在浅色主题加一层深墨罩纱,深色主题不生效(同上游门控) */
+body:not([data-ds-dark-theme]) [data-cd-boost="1"] {
+  box-shadow: inset 0 0 0 999px rgba(28, 16, 4, 0.16);
+}
+/* 角标(PixelCornerMark):BUG 三角/可接/在办;字色内联,边随 currentColor */
+.cd-corner,
+.cd-ckj,
+.cd-ckb {
+  flex: none;
+  font-size: 9px;
+  line-height: 1.5;
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  letter-spacing: 1px;
+}
+/* 结案章(PixelClosedSeal):宋体、字距 4px、双线框(pixel-cards.md §6) */
+.cd-sealcn {
+  flex: none;
+  font-family: SimSun, NSimSun, STZhongsong, serif;
+  letter-spacing: 4px;
+  min-width: 64px;
+  text-align: center;
+  padding: 1px 8px 1px 12px; /* 右侧补 letter-spacing 尾空 */
+  border: 2px solid #7d1a12;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 2px #fff9ec;
+  z-index: 5;
+}
+/* 图钉(PixelCardPin):open 圆图钉(色内联 #c0392b)/ closed 胶带 */
+.cd-pin {
+  position: absolute;
+  top: -5px;
+  left: 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.5);
+}
+.cd-pin-tape {
+  position: absolute;
+  top: -4px;
+  left: 8px;
+  width: 34px;
+  height: 10px;
+  background: rgba(227, 169, 47, 0.32);
+  border: 1px dashed rgba(227, 169, 47, 0.8);
+  transform: rotate(-4deg);
+}
+/* 红色脚注(PixelCardNote):上游纸卡上是深红 #8b241a,深色列表底改亮红保可读 */
+.cd-note {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--ms-bad);
+}
+
+/* ---- 筛选行(listFilterRow:状态紫/排序蓝/标签真实色三组墨块) ---- */
+.ms-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.ms-chip {
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 1px 9px;
+  border-radius: var(--ms-chip-radius);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ms-ink-dim);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ms-chip:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.ms-filter-sep {
+  flex: none;
+  width: 1px;
+  height: 12px;
+  background: #2a2d35; /* 上游 --dsw-alias-border-l1 */
+}
+.ms-chip-more {
+  border: 1px dashed rgba(188, 140, 255, 0.55);
+  color: #bc8cff;
+  background: transparent;
+}
+/* 关闭票折叠行(ListTabClosed 的 details 摘要行风格) */
+.ms-closed-fold {
+  align-self: flex-start;
+  font-size: 11px;
+  color: var(--ms-ink-dim);
+  border: 1px dashed var(--ms-border);
+  border-radius: var(--ms-chip-radius);
+  padding: 3px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.ms-closed-fold:hover {
+  color: var(--ms-ink);
+}
+.ms-fold-arrow {
+  margin-left: 4px;
+}
+/* 筛选无结果的居中灰字(list.none) */
+.ms-none {
+  text-align: center;
+  color: var(--ms-ink-faint);
+  padding: 16px 0;
 }
