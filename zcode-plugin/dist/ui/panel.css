@@ -1,0 +1,231 @@
+/* MattSkills 面板样式(M1 基础卡面):深色皮肤令牌 + 计数胶囊条 + 卡片行。
+   完整 PixelCards 色卡体系(皮肤令牌/卡面结构/对比度罩纱)是工单 04,本文件只取基线值:
+   间距(行1 gap 8 / 行2 gap 6,上游 LIST_ROW_SHAPE)、圆角(墨块 99px,上游 INK_RADIUS)、
+   等宽编号(ui-monospace)、KPI 三色(list-page.md)。 */
+
+:root {
+  color-scheme: dark;
+  --ms-bg: #101216;
+  --ms-panel: #161a21;
+  --ms-border: #262a33;
+  --ms-ink: #d7dae0;
+  --ms-ink-dim: #9aa1ac;
+  --ms-ink-faint: #6b7280;
+  --ms-accent: #7ab7ff;
+  --ms-ok: #4ade80;
+  --ms-occupy: #f0883e;
+  --ms-closed-ink: #8b8b95;
+  --ms-bad: #f87171;
+  --ms-num-font: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  --ms-radius: 10px;
+  --ms-chip-radius: 99px;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--ms-bg);
+  color: var(--ms-ink);
+  font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+#root {
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+/* ---- 状态视图 ---- */
+.ms-state {
+  max-width: 460px;
+  margin: 24px auto;
+  padding: 20px 22px;
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius);
+  background: var(--ms-panel);
+}
+.ms-loading,
+.ms-error {
+  text-align: center;
+}
+.ms-error-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ms-bad);
+}
+.ms-error-detail {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ms-ink-dim);
+  word-break: break-all;
+}
+.ms-empty-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8eaee;
+}
+.ms-empty-body {
+  margin: 0 0 12px;
+  color: var(--ms-ink-dim);
+}
+.ms-empty code,
+.ms-error code {
+  font-family: var(--ms-num-font);
+  font-size: 12px;
+  color: var(--ms-accent);
+  background: #1d232d;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.ms-empty-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ms-ink-faint);
+}
+
+/* ---- 看板 ---- */
+.ms-app {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ms-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ms-head-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8eaee;
+}
+
+/* 计数胶囊条:九条口径一行铺开,换行容忍 */
+.ms-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ms-pill {
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 2px 10px;
+  border-radius: var(--ms-chip-radius);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--ms-ink-dim);
+  white-space: nowrap;
+}
+
+/* 卡片行列表 */
+.ms-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ms-row {
+  background: var(--ms-panel);
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius);
+  padding: 10px 11px;
+}
+.ms-row.ms-closed {
+  opacity: 0.72;
+}
+.ms-row.ms-closed .ms-title {
+  color: var(--ms-ink-dim);
+}
+.ms-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ms-num {
+  flex: none;
+  max-width: 85px; /* 上游 TICKET_LABEL_MAX_WIDTH_PX */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--ms-num-font);
+  font-size: 11px;
+  color: var(--ms-accent);
+}
+.ms-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.ms-state-chip {
+  flex: none;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 1px 8px;
+  border-radius: var(--ms-chip-radius);
+}
+.ms-open .ms-state-chip {
+  color: var(--ms-ok);
+  background: rgba(74, 222, 128, 0.12);
+}
+.ms-closed .ms-state-chip {
+  color: var(--ms-closed-ink);
+  background: rgba(139, 139, 149, 0.12);
+}
+
+.ms-row-foot {
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ms-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.ms-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 1px 8px;
+  border-radius: var(--ms-chip-radius);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--ms-ink-dim);
+}
+.ms-label-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+.ms-marks {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.ms-mark {
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 1px 8px;
+  border-radius: var(--ms-chip-radius);
+}
+.ms-mark-claimed {
+  color: var(--ms-occupy);
+  background: rgba(240, 136, 62, 0.14);
+}
+.ms-mark-blocked {
+  color: var(--ms-bad);
+  background: rgba(248, 113, 113, 0.16);
+}

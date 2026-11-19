@@ -238,7 +238,8 @@ export function parseCard(text, meta = {}) {
   // 认领:Status 行在时给明确名单(Assignees 行 / DSH-ASSIGNEES);claimed 但没记名字 → 空名占位。
   if (statusRaw) {
     const assignees = (() => {
-      const m = /^[ \t]*Assignees[ \t]*[:\uFF1A][ \t]*(.*)$/im.exec(field);
+      // 字段名两侧 ** 当装饰剥掉,与 Status/Labels 同纪律(markdown-backend.md §4)
+      const m = /^\s*(?:\*\*)?Assignees(?:\*\*)?\s*[:\uFF1A][ \t]*(.*)$/im.exec(field);
       if (m) {
         const names = String(m[1] || "").split(/[,\uFF0C]+/).map((s) => s.trim()).filter(Boolean);
         return { found: true, value: names.map((login) => ({ login, kind: "user" })) };

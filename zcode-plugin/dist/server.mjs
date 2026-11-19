@@ -12,6 +12,11 @@ const PLUGIN_NAME = "zcode-mattpocock-skills-deck";
 const VERSION = "0.1.0";
 const PANEL_URI = `ui://${PLUGIN_NAME}/panel.html`;
 const PANEL_MIME = "text/html;profile=mcp-app";
+// 面板次级资产(panel.css / bundle-*.txt / assets.json):资源模板 + 白名单 + 大小上限
+// (ui-host.md,同 excalidraw 惯例:JS 段故意 .txt 后缀,资源通道只搬文本)。
+const ASSET_PREFIX = `ui://${PLUGIN_NAME}/assets/`;
+const ASSET_RE = /^(panel\.css|bundle-\d+\.txt|assets\.json)$/;
+const ASSET_LIMIT = 8 * 1024 * 1024;
 
 const reply = (id, result) =>
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
@@ -56,9 +61,11 @@ const TOOLS = [
   },
 ];
 
-/** 卡的显示标签:#effort/编号(根级无目录前缀)。 */
+/** 卡的显示标签:#effort/编号(根级无目录前缀);退化身份的 key 已带目录前缀,不重复拼。 */
 function displayKey(card) {
-  return `#${card.effortId ? `${card.effortId}/` : ""}${card.key}`;
+  const key = String(card.key || "");
+  if (key.includes("/")) return `#${key}`;
+  return `#${card.effortId ? `${card.effortId}/` : ""}${key}`;
 }
 
 function labelNames(card) {
@@ -177,10 +184,27 @@ createInterface({ input: process.stdin }).on("line", (line) => {
         resources: [{ uri: PANEL_URI, name: "MattSkills panel", mimeType: PANEL_MIME }],
       });
     case "resources/read": {
-      if (m.params?.uri !== PANEL_URI) return fail(m.id, -32002, "resource not found");
-      return reply(m.id, {
-        contents: [{ uri: PANEL_URI, mimeType: PANEL_MIME, text: readFileSync(join(HERE, "ui", "panel.html"), "utf8") }],
-      });
+      const uri = String(m.params?.uri || "");
+      if (uri === PANEL_URI) {
+        return reply(m.id, {
+          contents: [{ uri: PANEL_URI, mimeType: PANEL_MIME, text: readFileSync(join(HERE, "ui", "panel.html"), "utf8") }],
+        });
+      }
+      if (uri.startsWith(ASSET_PREFIX)) {
+        const name = uri.slice(ASSET_PREFIX.length);
+        if (!ASSET_RE.test(name)) return fail(m.id, -32002, `invalid_resource: Unknown UI asset ${name}`);
+        let text;
+        try {
+          text = readFileSync(join(HERE, "ui", name), "utf8");
+        } catch {
+          return fail(m.id, -32002, `resource not found: ${uri}`);
+        }
+        if (Buffer.byteLength(text, "utf8") > ASSET_LIMIT) return fail(m.id, -32002, "resource_too_large: Asset exceeds limit");
+        return reply(m.id, {
+          contents: [{ uri, mimeType: name.endsWith(".json") ? "application/json" : "text/plain", text }],
+        });
+      }
+      return fail(m.id, -32002, `resource not found: ${uri}`);
     }
     default:
       return fail(m.id, -32601, `method not found: ${m.method}`);

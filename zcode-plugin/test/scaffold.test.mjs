@@ -71,18 +71,32 @@ if (existsSync(mkPath)) {
     JSON.stringify(p?.source));
 }
 
-// --- 4. panel.html 引导态(中文文案,深色,无演示数据) ---
+// --- 4. panel.html 是小引导页:经 __pluginClient 资源机制拉真 UI 资产(ui-host.md 引导五步)。
+//        引导态/列表文案随应用进 bundle,深色兜底留在页内。 ---
 const panelPath = join(ROOT, "dist", "ui", "panel.html");
+const bundlePath = join(ROOT, "dist", "ui", "bundle-0.txt");
 if (existsSync(panelPath)) {
   const html = readFileSync(panelPath, "utf8");
-  check("panel 含中文引导文案", html.includes(GUIDE_TEXT));
-  check("panel 指向 setup 技能", html.includes("/setup-matt-pocock-skills"));
-  check("panel 指向 to-tickets 技能", html.includes("/to-tickets"));
+  check("panel 是引导页:内置 __pluginClient", html.includes("__pluginClient"));
+  check("panel 引导先拉 assets.json 清单", html.includes("assets.json"));
+  check("panel 资产走 readResource(ui:// 插件名/assets/)", html.includes("ui://zcode-mattpocock-skills-deck/assets/"));
+  check("panel 初始加载文案", html.includes("正在加载"));
+  check("panel 引导失败兜底文案", html.includes("看板加载失败"));
   check("panel 深色背景", /background(-color)?:\s*#0|background(-color)?:\s*#1/.test(html));
   const body = html.replace(/<script[\s\S]*?<\/script>/g, "");
   check("panel 无演示卡片数据", !/TODO-\d|ticket-\d|MS-\d/i.test(body));
 } else {
   check("panel.html 可读(供文案断言)", false);
+}
+check("dist/ui/bundle-0.txt 存在(app.js 换名产物)", existsSync(bundlePath));
+check("dist/ui/panel.css 存在", existsSync(join(ROOT, "dist", "ui", "panel.css")));
+check("dist/ui/assets.json 存在", existsSync(join(ROOT, "dist", "ui", "assets.json")));
+if (existsSync(bundlePath)) {
+  const bundle = readFileSync(bundlePath, "utf8");
+  check("bundle 含中文引导文案(空工作区引导态)", bundle.includes(GUIDE_TEXT));
+  check("bundle 指向 setup 技能", bundle.includes("/setup-matt-pocock-skills"));
+  check("bundle 指向 to-tickets 技能", bundle.includes("/to-tickets"));
+  check("bundle 无 import(资源通道只搬文本)", !/\bimport\s*["'"]/.test(bundle));
 }
 
 // --- 5. server 冒烟:spawn → initialize → tools/list → resources/list → resources/read ---
@@ -143,7 +157,21 @@ async function smoke() {
 
     const rr = await rpc("resources/read", { uri: PANEL_URI });
     const text = rr.result?.contents?.[0]?.text ?? "";
-    check("resources/read 返回 panel HTML 且含引导文案", text.includes(GUIDE_TEXT));
+    check("resources/read 返回 panel HTML(引导页)", text.includes("__pluginClient"));
+
+    // 资产模板(工单 03):白名单内可读,白名单外与未知 URI 都拒绝
+    const css = await rpc("resources/read", { uri: "ui://zcode-mattpocock-skills-deck/assets/panel.css" });
+    check("assets/read panel.css(text/plain)",
+      css.result?.contents?.[0]?.mimeType === "text/plain" && /\.ms-/.test(css.result?.contents?.[0]?.text || ""),
+      JSON.stringify(css.error || css.result?.contents?.[0]?.mimeType));
+    const bundle = await rpc("resources/read", { uri: "ui://zcode-mattpocock-skills-deck/assets/bundle-0.txt" });
+    check("assets/read bundle-0.txt", !bundle.error && /MattSkillsPanel/.test(bundle.result?.contents?.[0]?.text || ""));
+    const manifest = await rpc("resources/read", { uri: "ui://zcode-mattpocock-skills-deck/assets/assets.json" });
+    check("assets/read assets.json(application/json)",
+      manifest.result?.contents?.[0]?.mimeType === "application/json" &&
+        JSON.parse(manifest.result?.contents?.[0]?.text || "{}")?.scripts?.[0] === "bundle-0.txt");
+    const evil = await rpc("resources/read", { uri: "ui://zcode-mattpocock-skills-deck/assets/server.mjs" });
+    check("assets 白名单外文件拒绝", evil.error?.code === -32002, JSON.stringify(evil.error));
 
     const bad = await rpc("resources/read", { uri: "ui://nope/x.html" });
     check("resources/read 未知 URI 报错", bad.error?.code === -32002, JSON.stringify(bad.error));

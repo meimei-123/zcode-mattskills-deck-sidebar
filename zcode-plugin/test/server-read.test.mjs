@@ -233,6 +233,9 @@ async function sliceBroken() {
   }
 }
 
+await sliceList();
+await sliceGet();
+await sliceCounts();
 await sliceBroken();
 
 // ---------------------------------------------------------------------------
@@ -299,6 +302,7 @@ async function sliceFilter() {
   }
 }
 
+await sliceEmpty();
 await sliceFilter();
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);
