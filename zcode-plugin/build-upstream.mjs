@@ -126,6 +126,25 @@ function findUnfixableModuleForm(code) {
   return /^[^\S\r\n]*export\s*(\{|\*|default\b)/m.exec(maskNonCodeText(code));
 }
 
+/** 删掉片段里「从中央时间参数引名字」的单行 import/export-from(上游 transpile-unit.mts
+ *  stripTimeConfigRefs 同款)。leaf:tip 这类叶子真源里那一行 import 是宿主/门禁把它当模块
+ *  跑时用的真引用;拼进闭包时该行删掉、名字由 shared:timeConfig 片段提供(值出
+ *  config/intervals.yaml)。只认说明符带 time-config 的行首单行写法,注释与字符串里的举例
+ *  不受影响(按涂掉非代码后的文本认行首,行号用原行对);被删的行整行变空,不挪行号。 */
+export function stripTimeConfigRefs(code) {
+  const masked = maskNonCodeText(code).split("\n");
+  return code
+    .split("\n")
+    .map((line, i) => {
+      const m = masked[i] || "";
+      if (!/time-config/.test(line)) return line;
+      if (/^[^\S\r\n]*import[\s{"'*]/.test(m)) return "";
+      if (/^[^\S\r\n]*export[\s{"'*]/.test(m) && /\bfrom\b/.test(m)) return "";
+      return line;
+    })
+    .join("\n");
+}
+
 function lineAt(text, index) {
   const end = text.indexOf("\n", index);
   return text.slice(index, end < 0 ? text.length : end).trim();
@@ -172,14 +191,17 @@ export function inlineExportDeclarations(code, prefix) {
  * 剥完仍留模块级 import/export 当场报(判据看涂掉字符串注释后的文本)。
  */
 export function toSpliceableFragment(code, { source }) {
-  const hit = findUnfixableModuleForm(code);
+  // 中央时间参数的引用行先删再查(上游 toSpliceableFragment 同序):它们拼进闭包时由
+  // shared:timeConfig 片段提供名字,是片段里唯一被允许出现过的模块写法。
+  const withoutCentral = stripTimeConfigRefs(code);
+  const hit = findUnfixableModuleForm(withoutCentral);
   if (hit) {
     throw new Error(
-      `片段 ${source} 里是模块导出写法「${lineAt(code, hit.index)}」:拼进闭包的片段只能写 ` +
+      `片段 ${source} 里是模块导出写法「${lineAt(withoutCentral, hit.index)}」:拼进闭包的片段只能写 ` +
         "`export <声明>` 这种行首形式,`export {…}` / `export * from` / `export default` 去掉 export 之后不是合法语句。"
     );
   }
-  const stripped = code
+  const stripped = withoutCentral
     .split("\n")
     .map((line) => line.replace(/^(\s*)export\s+/, "$1"))
     .join("\n")
@@ -209,12 +231,17 @@ export function stripTsToSpliceable(tsCode, { source }) {
 // 拼接管线:叶子清单(后续工单往这里加)+ 骨架标记序校验 + 拼接
 // ---------------------------------------------------------------------------
 
-/** 本票叶子清单(工单 U02 扩充):id 即上游 index.ts 的标记名;file 相对上游仓库根,
- *  own:true 表示 file 相对本仓 ROOT(.tmp 生成物)。kernel:ctx 不在此列 —— 它与上游
- *  wireCtx 同位:apply 头部注入,不走标记。标记序一律对着上游 index.ts 校验(见
- *  spliceSkeleton 三道对账),这里只登记名字与真源。 */
+/** 本票叶子清单(工单 U02 扩 kernel 域、U03 扩视觉层):id 即上游 index.ts 的标记名;file 相对
+ *  上游仓库根,own:true 表示 file 相对本仓 ROOT(.tmp 生成物)。kernel:ctx 不在此列 —— 它与
+ *  上游 wireCtx 同位:apply 头部注入,不走标记。登记序即上游标记序(骨架与测试都按这个序对
+ *  上游 index.ts 校验,见 spliceSkeleton 三道对账)。 */
 export const LEAVES = [
   { id: "leaf:hostShim", file: "src/client/hostShim.ts" },
+  // ---- 工单 U03:中央时间参数(上游 shared:timeConfig 的拼接输入,本仓生成物按需摘名,
+  //      见 generateUpstreamLeaves 的 CLIENT_TIME_NAMES)与挂顶底座(HoverTip 的 portalTop,
+  //      ReactDOM 缺席时退化为原地渲染不抛)----
+  { id: "shared:timeConfig", file: ".tmp/upstream-leaves/time-config.client.js", own: true },
+  { id: "kernel:portal", file: "src/client/kernel/portal.ts" },
   { id: "kernel:containerView", file: "src/client/kernel/container-view.ts" },
   { id: "kernel:ticketLabel", file: "src/client/kernel/ticket-label.ts" },
   { id: "kernel:motion", file: "src/client/kernel/motion.ts" },
@@ -225,11 +252,46 @@ export const LEAVES = [
   { id: "kernel:localeData", file: ".tmp/upstream-leaves/locale-data.ts", own: true },
   { id: "kernel:locale", file: "src/client/kernel/locale.ts" },
   { id: "shared:trackerConstants", file: ".tmp/upstream-leaves/vocabulary.client.js", own: true },
+  // 通用图标集(工单 U03:chips 的 TypeChip 用 Ic)
+  { id: "kernel:icons", file: "src/client/kernel/icons.ts" },
   { id: "kernel:promptData", file: ".tmp/upstream-leaves/prompt-data.ts", own: true },
   { id: "kernel:prompts", file: "src/client/kernel/prompts.ts" },
   { id: "kernel:deckState", file: "src/client/kernel/deck-state.ts" },
   { id: "kernel:storeDerived", file: "src/client/kernel/store-derived.ts" },
   { id: "kernel:issuePages", file: "src/client/kernel/issue-pages.ts" },
+  // ---- 工单 U03:视觉小件家族(上游 build.mts LEAF_MODULES 同名同序) ----
+  { id: "leaf:chips", file: "src/client/views/shared/chips.ts" },
+  { id: "leaf:tipPlace", file: "src/client/views/primitives/tipPlace.ts" },
+  { id: "leaf:hoverTip", file: "src/client/views/primitives/HoverTip.ts" },
+  { id: "leaf:tip", file: "src/client/views/primitives/Tip.ts" },
+  { id: "leaf:ticketBadge", file: "src/client/views/shared/ticketBadge.ts" },
+  { id: "leaf:openFolder", file: "src/client/views/shared/openFolder.ts" },
+  { id: "leaf:liquidInk", file: "src/client/views/shared/liquidInk.ts" },
+  { id: "leaf:pixelBtn", file: "src/client/views/pixel/PixelBtn.ts" },
+  { id: "leaf:pixelDot", file: "src/client/views/pixel/PixelDot.ts" },
+  { id: "leaf:pixelNum", file: "src/client/views/pixel/PixelNum.ts" },
+  { id: "leaf:pixelStateIcon", file: "src/client/views/pixel/PixelStateIcon.ts" },
+  { id: "leaf:pixelSeal", file: "src/client/views/pixel/PixelSeal.ts" },
+  { id: "leaf:pixelSkeleton", file: "src/client/views/pixel/PixelSkeleton.ts" },
+  { id: "leaf:pixelBanner", file: "src/client/views/pixel/PixelBanner.ts" },
+  { id: "leaf:pixelStatusLine", file: "src/client/views/pixel/PixelStatusLine.ts" },
+  // cards 家族 16 件(S1/S6/S7 三张卡:先主题与皮肤,再共享小件,最后大卡,次序即依赖次序)
+  { id: "leaf:cardsTheme", file: "src/client/views/cards/PixelCardTheme.ts" },
+  { id: "leaf:cardsStyles", file: "src/client/views/cards/PixelCardsStyles.ts" },
+  { id: "leaf:cardPin", file: "src/client/views/cards/PixelCardPin.ts" },
+  { id: "leaf:cardTitle", file: "src/client/views/cards/PixelCardTitle.ts" },
+  { id: "leaf:cardNo", file: "src/client/views/cards/PixelCardNo.ts" },
+  { id: "leaf:cardTags", file: "src/client/views/cards/PixelCardTags.ts" },
+  { id: "leaf:cardNote", file: "src/client/views/cards/PixelCardNote.ts" },
+  { id: "leaf:cardFoot", file: "src/client/views/cards/PixelCardFoot.ts" },
+  { id: "leaf:cardStamp", file: "src/client/views/cards/PixelCardStamp.ts" },
+  { id: "leaf:blockedChrome", file: "src/client/views/cards/PixelBlockedChrome.ts" },
+  { id: "leaf:cardBtns", file: "src/client/views/cards/PixelCardBtns.ts" },
+  { id: "leaf:mapDots", file: "src/client/views/cards/PixelMapDots.ts" },
+  { id: "leaf:cardHead", file: "src/client/views/cards/PixelCardHead.ts" },
+  { id: "leaf:issueCard", file: "src/client/views/cards/PixelIssueCard.ts" },
+  { id: "leaf:issueMapCard", file: "src/client/views/cards/PixelIssueMapCard.ts" },
+  { id: "leaf:mapCard", file: "src/client/views/cards/PixelMapCard.ts" },
 ];
 const CTX_BLOCK_FILE = "src/client/kernel/ctx.ts";
 
@@ -335,8 +397,14 @@ function runInMirror(scriptRel, label) {
   }
 }
 
+// 中央时间参数的客户端片段(上游 shared:timeConfig 同位):locale 生成器先跑时间参数生成器
+// (上游同链路,镜子里落 src/shared/time-config/src/values.ts);上游 buildTimeConfigClientFragment
+// 从域构建产物 values.js 里摘全量 ~200 名,本仓按当前叶子集用到的名字摘 —— 名单加叶子时同步扩。
+const CLIENT_TIME_NAMES = ["TIP_SHOW_DELAY_MS", "TIP_HIDE_DELAY_MS"]; // leaf:tip(Tip 预设的两档延时)
+
 /** 生成三类拼接输入到 .tmp/upstream-leaves:locale-data / prompt-data(生成器直出)+
- *  vocabulary.client.js(词表五份合段)。幂等:每次构建重算。 */
+ *  vocabulary.client.js(词表五份合段)+ time-config.client.js(中央时间参数按需摘名)。
+ *  幂等:每次构建重算。 */
 export function generateUpstreamLeaves() {
   const outDir = join(ROOT, ".tmp", "upstream-leaves");
   mkdirSync(outDir, { recursive: true });
@@ -366,6 +434,26 @@ export function generateUpstreamLeaves() {
     join(outDir, "vocabulary.client.js"),
     "// AUTO-GENERATED(词表五份合段,上游 buildVocabularySpliceInput 同款)。\n" +
       buildCombinedFragment(VOCABULARY_PARTS, { source: "vocabulary.client.js" }),
+    "utf8"
+  );
+  // 中央时间参数:镜像里的 values.ts(时间参数生成器直出)按全仓唯一口径转译后逐名摘行 ——
+  // 与上游「读域构建产物摘 export const 行」同一判定,值同源(config/intervals.yaml)。
+  const timeValues = readFileSync(join(GEN_MIRROR, "src", "shared", "time-config", "src", "values.ts"), "utf8");
+  const timeJs = inlineExportDeclarations(
+    esbuild.transformSync(timeValues, TRANSPILE_OPTIONS).code.replace(/\r\n/g, "\n").replace(/\s+$/, "") + "\n",
+    "time-config values"
+  );
+  const timeLines = [];
+  for (const name of CLIENT_TIME_NAMES) {
+    const hit = timeJs.split("\n").filter((l) => l.startsWith(`export const ${name} = `));
+    if (hit.length !== 1) throw new Error(`[build-upstream] 中央时间参数摘不到 ${name}(期望恰好一行 export const,实得 ${hit.length} 行)`);
+    timeLines.push(hit[0]);
+  }
+  writeFileSync(
+    join(outDir, "time-config.client.js"),
+    `// AUTO-GENERATED(中央时间参数客户端片段,上游 shared:timeConfig 同位;按需摘 ${CLIENT_TIME_NAMES.length} 名,值源 config/ YAML)。\n` +
+      timeLines.join("\n") +
+      "\n",
     "utf8"
   );
   writeFileSync(

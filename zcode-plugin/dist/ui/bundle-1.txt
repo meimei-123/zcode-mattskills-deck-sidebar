@@ -3,6 +3,12 @@
 
 (() => {
   var __defProp = Object.defineProperty;
+  var __require = /* @__PURE__ */ ((x4) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x4, {
+    get: (a3, b3) => (typeof require !== "undefined" ? require : a3)[b3]
+  }) : x4)(function(x4) {
+    if (typeof require !== "undefined") return require.apply(this, arguments);
+    throw Error('Dynamic require of "' + x4 + '" is not supported');
+  });
   var __export = (target, all) => {
     for (var name in all)
       __defProp(target, name, { get: all[name], enumerable: true });
@@ -1135,6 +1141,7 @@
 
   // .tmp/upstream-entry.spliced.mjs
   var React = compat_module_exports;
+  var ReactDOM = compat_module_exports;
   var styles = {
     // 上游 B2 style 接缝(pkg 方言 shim 同款):插 <style> 进 head,返回撤销器
     insert(css) {
@@ -1225,6 +1232,33 @@
       }
     };
     const h3 = React.createElement;
+    const TIP_SHOW_DELAY_MS = 400;
+    const TIP_HIDE_DELAY_MS = 160;
+    const RDOM = function() {
+      try {
+        if (typeof ReactDOM !== "undefined" && ReactDOM && ReactDOM.createPortal) return ReactDOM;
+      } catch (e3) {
+      }
+      try {
+        if (typeof window !== "undefined" && window.ReactDOM && window.ReactDOM.createPortal) return window.ReactDOM;
+      } catch (e3) {
+      }
+      try {
+        if (typeof __require === "function") {
+          const m3 = __require("react-dom");
+          if (m3 && m3.createPortal) return m3;
+        }
+      } catch (e3) {
+      }
+      return null;
+    }();
+    const portalTop = function(node) {
+      if (RDOM && typeof document !== "undefined" && document.body) return RDOM.createPortal(node, document.body);
+      return node;
+    };
+    const PortalOverlay = function(props, children) {
+      return portalTop(h3("div", props || {}, children));
+    };
     const CONTAINER_ACCENT = { map: "#c084fc", spec: "#1D4ED8" };
     const CONTAINER_TINT = { map: "rgba(188,140,255,.07)", spec: "rgba(29,78,216,.10)" };
     const CONTAINER_CHIP_CLASS = { map: "dsws-chip-m", spec: "dsws-chip-s" };
@@ -7612,6 +7646,141 @@ Execution: after the user confirms with the reply "Apply it", you do not change 
         });
       });
     }
+    const TYPE_ICON = { research: "search", prototype: "hammer", grilling: "chat", task: "gear", map: "map" };
+    const ICON_SCHEMES = [
+      { id: "compass", label: "罗盘" },
+      { id: "beacon", label: "灯塔" },
+      { id: "radar", label: "雷达" },
+      { id: "pin", label: "图钉" }
+    ];
+    const WORD_SCHEMES = ["沉淀", "落纸", "存档", "快照"];
+    const Icon = ({ scheme, size }) => {
+      const s3 = size || 16;
+      const common = { viewBox: "0 0 24 24", width: s3, height: s3, fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round", style: { display: "inline-block", verticalAlign: "-2px", flex: "none" } };
+      if (scheme === "beacon") return h3("svg", common, [h3("circle", { cx: 12, cy: 12, r: 4, fill: "currentColor", stroke: "none" }), h3("path", { d: "M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" })]);
+      if (scheme === "radar") return h3("svg", common, [h3("circle", { cx: 12, cy: 12, r: 9 }), h3("circle", { cx: 12, cy: 12, r: 5 }), h3("circle", { cx: 12, cy: 12, r: 1.2, fill: "currentColor", stroke: "none" }), h3("path", { d: "M12 12L19 8" }), h3("circle", { cx: 16.5, cy: 6.5, r: 1.1, fill: "currentColor", stroke: "none" })]);
+      if (scheme === "pin") return h3("svg", common, [h3("path", { d: "M12 21s-6-5.1-6-10a6 6 0 1112 0c0 4.9-6 10-6 10z" }), h3("circle", { cx: 12, cy: 11, r: 2.2, fill: "currentColor", stroke: "none" })]);
+      return h3("svg", common, [h3("circle", { cx: 12, cy: 12, r: 9 }), h3("polygon", { points: "15.5 8.5 13 13 8.5 15.5 11 11", fill: "currentColor", stroke: "none" })]);
+    };
+    const Ic = ({ n: n2, size, color, colors, bodyFill, bodyStroke }) => {
+      const s3 = size || 13;
+      const common = { viewBox: "0 0 24 24", width: s3, height: s3, fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round", style: { display: "inline-block", verticalAlign: "-2px", flex: "none" }, color: color || void 0 };
+      switch (n2) {
+        case "dot":
+          return h3("svg", common, [h3("circle", { cx: 12, cy: 12, r: 4.5, fill: "currentColor", stroke: "none" })]);
+        case "target":
+          return h3("svg", common, [h3("circle", { cx: 12, cy: 12, r: 8 }), h3("circle", { cx: 12, cy: 12, r: 2.4, fill: "currentColor", stroke: "none" })]);
+        case "lock":
+          return h3("svg", common, [h3("rect", { x: 5, y: 11, width: 14, height: 9, rx: 2 }), h3("path", { d: "M8 11V8a4 4 0 018 0v3" })]);
+        case "map":
+          return h3("svg", common, [h3("path", { d: "M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z" }), h3("path", { d: "M9 3v15M15 6v15" })]);
+        case "compass":
+          return h3("svg", common, [h3("circle", { cx: 12, cy: 12, r: 9 }), h3("polygon", { points: "15.5 8.5 13 13 8.5 15.5 11 11", fill: "currentColor", stroke: "none" })]);
+        case "gear":
+          return h3("svg", common, [h3("circle", { cx: 12, cy: 12, r: 3 }), h3("path", { d: "M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" })]);
+        case "refresh":
+          return h3("svg", common, [h3("path", { d: "M21 12a9 9 0 11-2.6-6.4" }), h3("polyline", { points: "21 3 21 9 15 9" })]);
+        // #191：仓库名右侧切换后端按钮（与 handoff 同源交换语义，stroke 风格统一）
+        case "swap":
+          return h3("svg", common, [h3("path", { d: "M7 7h11l-3-3" }), h3("path", { d: "M17 17H6l3 3" }), h3("polyline", { points: "17 7 14 4" }), h3("polyline", { points: "7 17 10 20" })]);
+        case "note":
+          return h3("svg", common, [h3("rect", { x: 4, y: 4, width: 16, height: 16, rx: 2 }), h3("path", { d: "M8 9h8M8 13h8M8 17h5" })]);
+        case "fog":
+          return h3("svg", common, [h3("path", { d: "M8 17a4 4 0 010-8 5 5 0 019.6-1.6A3.5 3.5 0 0118 17z" }), h3("path", { d: "M3 21h18" })]);
+        case "ban":
+          return h3("svg", common, [h3("circle", { cx: 12, cy: 12, r: 9 }), h3("path", { d: "M5.6 5.6l12.8 12.8" })]);
+        case "person":
+          return h3("svg", common, [h3("circle", { cx: 12, cy: 8, r: 3.5 }), h3("path", { d: "M5 20a7 7 0 0114 0" })]);
+        case "check":
+          return h3("svg", common, [h3("circle", { cx: 12, cy: 12, r: 9 }), h3("path", { d: "M8.5 12.5l2.5 2.5 4.5-5" })]);
+        case "play":
+          return h3("svg", common, [h3("path", { d: "M8 5.5l11 6.5-11 6.5z", fill: "currentColor", stroke: "none" })]);
+        case "link":
+          return h3("svg", common, [h3("path", { d: "M10 14a5 5 0 007.1 0l2.8-2.8a5 5 0 00-7.1-7.1L11 5.9" }), h3("path", { d: "M14 10a5 5 0 00-7.1 0l-2.8 2.8a5 5 0 007.1 7.1L13 18.1" })]);
+        case "back":
+          return h3("svg", common, [h3("path", { d: "M19 12H5" }), h3("polyline", { points: "12 19 5 12 12 5" })]);
+        case "alert":
+          return h3("svg", common, [h3("path", { d: "M12 3l10 18H2z" }), h3("path", { d: "M12 9.5V14" }), h3("circle", { cx: 12, cy: 17, r: 0.7, fill: "currentColor", stroke: "none" })]);
+        case "x":
+          return h3("svg", common, [h3("path", { d: "M6 6l12 12M18 6L6 18" })]);
+        // #422 · 折叠箭头（横幅收起/展开，stroke 风格与通用集统一）
+        case "chev-up":
+          return h3("svg", common, [h3("polyline", { points: "6 15 12 9 18 15" })]);
+        case "chev-down":
+          return h3("svg", common, [h3("polyline", { points: "6 9 12 15 18 9" })]);
+        case "star":
+          return h3("svg", common, [h3("path", { d: "M12 3l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2-5.6-3.2-5.6 3.2 1.3-6.2L3 9.5l6.3-.7z", fill: "currentColor", stroke: "none" })]);
+        case "search":
+          return h3("svg", common, [h3("circle", { cx: 11, cy: 11, r: 7 }), h3("path", { d: "M21 21l-4.3-4.3" })]);
+        case "hammer":
+          return h3("svg", common, [h3("path", { d: "M14 4l6 6-2.5 2.5-6-6z" }), h3("path", { d: "M3 21l7.5-7.5" }), h3("path", { d: "M12.5 9.5l2 2" })]);
+        case "chat":
+          return h3("svg", common, [h3("path", { d: "M21 15a2 2 0 01-2 2H8l-5 4V5a2 2 0 012-2h14a2 2 0 012 2z" })]);
+        case "clipboard":
+          return h3("svg", common, [h3("rect", { x: 5, y: 4, width: 14, height: 16, rx: 2 }), h3("path", { d: "M9 2h6v4H9z" }), h3("path", { d: "M9 11h6M9 15h4" })]);
+        case "list":
+          return h3("svg", common, [h3("path", { d: "M8 6h12M8 12h12M8 18h12" }), h3("circle", { cx: 4, cy: 6, r: 0.8, fill: "currentColor", stroke: "none" }), h3("circle", { cx: 4, cy: 12, r: 0.8, fill: "currentColor", stroke: "none" }), h3("circle", { cx: 4, cy: 18, r: 0.8, fill: "currentColor", stroke: "none" })]);
+        // #1285：跨会话在办表的入口图标 —— 一张表（表头行、左边一列、右边两行字），
+        //   与通用集同一套写法（24 的 viewBox、currentColor、描边 1.8）。
+        case "workroute":
+          return h3("svg", common, [h3("rect", { x: 3, y: 4, width: 18, height: 16, rx: 2 }), h3("path", { d: "M3 9h18" }), h3("path", { d: "M9 9v11" }), h3("path", { d: "M12 12.5h6" }), h3("path", { d: "M12 16h4" })]);
+        // #1288：在办表那一行的悬停提示里用的两枚图标 —— 一张卡片（粗标题行 + 两行正文）代表票标题，
+        //   一个带尾巴、里面有两行字的气泡代表会话名。与通用集同一套写法（24 的 viewBox、currentColor、描边 1.8）。
+        case "ticket-title":
+          return h3("svg", common, [h3("rect", { x: 4, y: 3, width: 16, height: 18, rx: 2 }), h3("rect", { x: 7, y: 7, width: 9, height: 2.2, rx: 1.1, fill: "currentColor", stroke: "none" }), h3("path", { d: "M7 13h10M7 16.5h6" })]);
+        case "session":
+          return h3("svg", common, [h3("path", { d: "M20 14a2 2 0 01-2 2H8l-4 3.5V6a2 2 0 012-2h12a2 2 0 012 2z" }), h3("path", { d: "M8 8.5h8M8 12h5" })]);
+        // #818 版本管理页签：分支图标（一条主干、两个提交点、一条岔出去的弧）。手写、无外部依赖，
+        //   与相邻条目同一套写法（24 的 viewBox、currentColor、通用集的描边粗细）；调用点给 12 像素的视觉尺寸。
+        case "branch":
+          return h3("svg", common, [h3("path", { d: "M6 3v12" }), h3("circle", { cx: 6, cy: 18, r: 3 }), h3("circle", { cx: 18, cy: 6, r: 3 }), h3("path", { d: "M18 9a9 9 0 01-9 9" })]);
+        case "info":
+          return h3("svg", common, [h3("circle", { cx: 12, cy: 12, r: 9 }), h3("path", { d: "M12 11v5" }), h3("circle", { cx: 12, cy: 8, r: 0.7, fill: "currentColor", stroke: "none" })]);
+        case "handoff":
+          return h3("svg", common, [h3("path", { d: "M7 17l-4-4 4-4" }), h3("path", { d: "M3 13h6a6 6 0 016 6" }), h3("path", { d: "M17 7l4 4-4 4" }), h3("path", { d: "M21 11h-6a6 6 0 00-6-6" })]);
+        // 需求1（2026-08-18）：交接文档 + 出箭头 —— 「新会话交接」小按钮
+        case "handoff-open":
+          return h3("svg", common, [h3("path", { d: "M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" }), h3("path", { d: "M14 3v5h5" }), h3("path", { d: "M10 15l4-4" }), h3("path", { d: "M11 11h3v3" })]);
+        // 需求1·rev（2026-08-18）：禁用态“文档暂不可开” —— 交接文档 + 斜杠（未生成时右侧按钮的静止样式）
+        case "handoff-off":
+          return h3("svg", common, [h3("path", { d: "M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" }), h3("path", { d: "M14 3v5h5" }), h3("path", { d: "M8 16l8-8" })]);
+        // 需求2（2026-08-18）：2×2 网格 —— 技能列表按钮
+        case "skills":
+          return h3("svg", common, [h3("rect", { x: 3, y: 3, width: 7, height: 7, rx: 1 }), h3("rect", { x: 14, y: 3, width: 7, height: 7, rx: 1 }), h3("rect", { x: 3, y: 14, width: 7, height: 7, rx: 1 }), h3("rect", { x: 14, y: 14, width: 7, height: 7, rx: 1 })]);
+        // #394：与 nav.handoff 同图标造成「交接 / 新开会话」二义；新会话按钮换 external-link 消歧
+        case "external-link":
+          return h3("svg", common, [h3("path", { d: "M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" }), h3("polyline", { points: "15 3 21 3 21 9" }), h3("line", { x1: 10, y1: 14, x2: 21, y2: 3 })]);
+        // 新增BUG入口（issue #4）：虫形图标 —— 「+ 新增BUG单」按钮 / 状态栏 BUG 悬停菜单「新增」
+        case "bug":
+          return h3("svg", common, [h3("path", { d: "M8 2l1.88 1.88" }), h3("path", { d: "M14.12 3.88L16 2" }), h3("path", { d: "M9 7.13v-1a3.003 3.003 0 116 0v1" }), h3("path", { d: "M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 014-4h4a4 4 0 014 4v3c0 3.3-2.7 6-6 6" }), h3("path", { d: "M12 20v-9" }), h3("path", { d: "M6.53 9C4.6 8.8 3 7.1 3 5" }), h3("path", { d: "M6 13H2" }), h3("path", { d: "M3 21c0-2.1 1.7-3.9 3.8-4" }), h3("path", { d: "M20.97 5c0 2.1-1.6 3.8-3.5 4" }), h3("path", { d: "M22 13h-4" }), h3("path", { d: "M17.2 17c2.1.1 3.8 1.9 3.8 4" })]);
+        // issue #100：定位图钉 pin —— 状态栏 issuePath 胶囊（替代 emoji 📌），复用 Icon pin 的图钉形态
+        case "pin":
+          return h3("svg", common, [h3("path", { d: "M12 21s-6-5.1-6-10a6 6 0 1112 0c0 4.9-6 10-6 10z" }), h3("circle", { cx: 12, cy: 11, r: 2.2, fill: "currentColor", stroke: "none" })]);
+        case "prototype":
+          return h3("svg", common, [h3("rect", { x: 3, y: 8.5, width: 13, height: 9, rx: 2, opacity: 0.52 }), h3("rect", { x: 7.8, y: 3.8, width: 13, height: 9, rx: 2 })]);
+        // #621 标签配色入口：调色盘图标（盘身 + 四个颜料点），描边粗细与通用集一致（线宽 1.8）。
+        // #637 整只上色：盘身与四颗颜料点都不再是灰的。颜色全部由调用点从纯函数层
+        // （views/labels/labelColorPalette.js 的 lcEntryPaletteOf 与 LC_ENTRY_PALETTE_BODY）算好，
+        // 经 colors / bodyFill / bodyStroke 传进来，图标自己不决定颜色。按钮尺寸（16×16 里画 10 像素）、
+        // 颜料点位置与半径（1.1）一个字不动——负责人原话：「按钮什么都不改，只是上色」。
+        // 没传颜色的老写法退回以前的样子（盘身不填色、四点取当前文字色），图标在任何调用下都画得出来。
+        case "palette": {
+          const pColors = Array.isArray(colors) ? colors : [];
+          const pDot = function(i3) {
+            return typeof pColors[i3] === "string" && pColors[i3] !== "" ? pColors[i3] : "currentColor";
+          };
+          const pFill = typeof bodyFill === "string" && bodyFill !== "" ? bodyFill : "none";
+          const pStroke = typeof bodyStroke === "string" && bodyStroke !== "" ? bodyStroke : "currentColor";
+          return h3("svg", common, [h3("path", { d: "M12 21a9 9 0 010-18c4.97 0 9 3.58 9 8 0 1.06-.47 2.08-1.32 2.83-.84.75-1.99 1.17-3.18 1.17h-2.5a2 2 0 00-1 3.75A1.3 1.3 0 0112 21z", fill: pFill, stroke: pStroke }), h3("circle", { cx: 6.5, cy: 11.5, r: 1.1, fill: pDot(0), stroke: "none" }), h3("circle", { cx: 9.5, cy: 7.5, r: 1.1, fill: pDot(1), stroke: "none" }), h3("circle", { cx: 14.5, cy: 7.5, r: 1.1, fill: pDot(2), stroke: "none" }), h3("circle", { cx: 17.5, cy: 11.5, r: 1.1, fill: pDot(3), stroke: "none" })]);
+        }
+        // #1697 面板内通知中心的入口：铃铛（倒扣的钟形 + 下面一颗小圆锤），与通用集同一套写法
+        //   （24 的 viewBox、currentColor、描边 1.8）；调用点给 12 像素的视觉尺寸。
+        case "bell":
+          return h3("svg", common, [h3("path", { d: "M18 9a6 6 0 10-12 0c0 5-2 6-2 6h16s-2-1-2-6" }), h3("path", { d: "M10 20a2 2 0 004 0" })]);
+        default:
+          return null;
+      }
+    };
     const TEMPLATES_WORKSPACE_INITIALIZATION = Object.freeze({
       "setupRun": Object.freeze({
         version: 16,
@@ -9643,6 +9812,1509 @@ ${formatProgressEntry(entry)}
       return { progressOf, labels, stats, blockedByKeys };
     }
     const DECK_DERIVE = Object.freeze({ version: 1 });
+    const Dot = ({ level }) => {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      return h4("span", { className: "dsws-dot", style: { background: level === "ok" ? "#4ade80" : level === "warn" ? "#f59e0b" : level === "bad" ? "#f87171" : "#52525b" } });
+    };
+    const TypeChip = ({ type }) => {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const cls = { research: "dsws-chip-r", prototype: "dsws-chip-p", grilling: "dsws-chip-g", task: "dsws-chip-t", map: "dsws-chip-m", spec: "dsws-chip-s", issue: "dsws-chip-i" }[type] || "";
+      const icon = TYPE_ICON[type] || (type === "spec" ? "map" : void 0);
+      return h4("span", { className: "dsws-chip " + cls }, [
+        icon ? Ic({ n: icon, size: 11 }) : null,
+        h4("span", null, tr("type." + type))
+      ]);
+    };
+    const chipKeyDown = function(e3) {
+      const k4 = e3 && e3.key;
+      if (k4 === "Enter" || k4 === " ") {
+        try {
+          if (e3.preventDefault) e3.preventDefault();
+        } catch (_3) {
+        }
+        try {
+          if (e3.currentTarget) e3.currentTarget.click();
+        } catch (_3) {
+        }
+      }
+    };
+    let chipLogSeq = 0;
+    const chipProps = function(p3) {
+      return Object.assign({ tabIndex: 0, role: "button", onKeyDown: chipKeyDown, "data-press": "chip", "data-log": "chip.fallback." + ++chipLogSeq }, p3 || {});
+    };
+    const computeTipPlace = function(anchorRect, tipSize, viewport, maxWidth) {
+      const GAP = 8;
+      const EDGE = 4;
+      const raw = anchorRect || {};
+      const numOr = function(v3, fb) {
+        return typeof v3 === "number" && isFinite(v3) ? v3 : fb;
+      };
+      const aLeft = numOr(raw.left, numOr(raw.x, 0));
+      const aTop = numOr(raw.top, numOr(raw.y, 0));
+      const aWidth = numOr(raw.width, numOr(raw.right, aLeft) - aLeft);
+      const aHeight = numOr(raw.height, numOr(raw.bottom, aTop) - aTop);
+      const aRight = numOr(raw.right, aLeft + aWidth);
+      const aBottom = numOr(raw.bottom, aTop + aHeight);
+      const aCenterX = (aLeft + aRight) / 2;
+      const aCenterY = (aTop + aBottom) / 2;
+      const tip = tipSize || {};
+      const tipW = Math.max(0, numOr(tip.width, 0));
+      const tipH = Math.max(0, numOr(tip.height, 0));
+      const vp = viewport || {};
+      const vpW = Math.max(0, numOr(vp.width, numOr(vp.w, 0)));
+      const vpH = Math.max(0, numOr(vp.height, numOr(vp.h, 0)));
+      const asked = typeof maxWidth === "number" && isFinite(maxWidth) && maxWidth > 0 ? maxWidth : 320;
+      const availW = Math.max(0, vpW - EDGE * 2);
+      const availH = Math.max(0, vpH - EDGE * 2);
+      const baseEffective = Math.max(0, Math.min(asked, availW));
+      const placeW = Math.max(0, Math.min(tipW, baseEffective, availW));
+      const placeH = Math.max(0, Math.min(tipH, availH));
+      const clampX = function(x4, w4) {
+        if (w4 >= availW) return EDGE;
+        return Math.max(EDGE, Math.min(Math.round(x4), Math.floor(vpW - w4 - EDGE)));
+      };
+      const clampY = function(y3, h4) {
+        if (h4 >= availH) return EDGE;
+        return Math.max(EDGE, Math.min(Math.round(y3), Math.floor(vpH - h4 - EDGE)));
+      };
+      const yAbove = aTop - GAP - placeH;
+      if (yAbove >= EDGE) {
+        return { placement: "above", x: clampX(aCenterX - placeW / 2, placeW), y: Math.round(yAbove), effectiveMaxWidth: baseEffective };
+      }
+      const yBelow = aBottom + GAP;
+      if (yBelow + placeH <= vpH - EDGE) {
+        return { placement: "below", x: clampX(aCenterX - placeW / 2, placeW), y: Math.round(yBelow), effectiveMaxWidth: baseEffective };
+      }
+      const xRight = aRight + GAP;
+      if (xRight + placeW <= vpW - EDGE) {
+        return { placement: "right", x: Math.round(xRight), y: clampY(aCenterY - placeH / 2, placeH), effectiveMaxWidth: baseEffective };
+      }
+      const xLeft = aLeft - GAP - placeW;
+      if (xLeft >= EDGE) {
+        return { placement: "left", x: Math.round(xLeft), y: clampY(aCenterY - placeH / 2, placeH), effectiveMaxWidth: baseEffective };
+      }
+      const spaceAbove = aTop - EDGE;
+      const spaceBelow = vpH - aBottom - EDGE;
+      const spaceRight = vpW - aRight - EDGE;
+      const spaceLeft = aLeft - EDGE;
+      let best = "above";
+      let bestSpace = spaceAbove;
+      if (spaceBelow > bestSpace) {
+        best = "below";
+        bestSpace = spaceBelow;
+      }
+      if (spaceRight > bestSpace) {
+        best = "right";
+        bestSpace = spaceRight;
+      }
+      if (spaceLeft > bestSpace) {
+        best = "left";
+        bestSpace = spaceLeft;
+      }
+      if (best === "right") {
+        const sideAvail = Math.max(0, vpW - aRight - GAP - EDGE);
+        const eff = Math.max(0, Math.min(baseEffective, sideAvail));
+        return { placement: "right", x: Math.round(Math.max(EDGE, aRight + GAP)), y: clampY(aCenterY - placeH / 2, placeH), effectiveMaxWidth: eff };
+      }
+      if (best === "left") {
+        const sideAvail = Math.max(0, aLeft - GAP - EDGE);
+        const eff = Math.max(0, Math.min(baseEffective, sideAvail));
+        const fw = Math.max(0, Math.min(placeW, sideAvail));
+        return { placement: "left", x: Math.round(Math.max(EDGE, aLeft - GAP - fw)), y: clampY(aCenterY - placeH / 2, placeH), effectiveMaxWidth: eff };
+      }
+      if (best === "below") {
+        return { placement: "below", x: clampX(aCenterX - placeW / 2, placeW), y: Math.round(Math.max(EDGE, aBottom + GAP)), effectiveMaxWidth: baseEffective };
+      }
+      return { placement: "above", x: clampX(aCenterX - placeW / 2, placeW), y: Math.round(Math.max(EDGE, aTop - GAP - placeH)), effectiveMaxWidth: baseEffective };
+    };
+    let __hoverTipGlobalActive = null, __hoverTipGlobalSeq = 0, __hoverTipGlobalPending = null;
+    const HoverTip = function(props) {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const __hoverTipIdRef = React.useRef(null);
+      if (__hoverTipIdRef.current === null) __hoverTipIdRef.current = ++__hoverTipGlobalSeq;
+      const __hoverTipId = __hoverTipIdRef.current;
+      const rawContent = props.content !== void 0 && props.content !== null ? props.content : props.children;
+      let trigger = null;
+      let tipContent = rawContent;
+      if (props.content !== void 0 && props.content !== null && props.children && typeof props.children === "object" && props.children.type !== void 0) {
+        trigger = props.children;
+        tipContent = props.content;
+      }
+      const resolveContent = function(c3) {
+        if (typeof c3 === "function") {
+          try {
+            return c3();
+          } catch (e3) {
+            return null;
+          }
+        }
+        return c3;
+      };
+      tipContent = resolveContent(tipContent);
+      const hasTip = tipContent !== null && tipContent !== void 0 && tipContent !== "";
+      const maxWidth = typeof props.maxWidth === "number" ? props.maxWidth : 320;
+      const zIndex = typeof props.zIndex === "number" ? props.zIndex : 2147483e3;
+      const delayShow = props.delay && typeof props.delay.show === "number" ? props.delay.show : 0;
+      const delayHide = props.delay && typeof props.delay.hide === "number" ? props.delay.hide : 160;
+      const isControlled = props.visible !== void 0;
+      const [visibleInner, setVisibleInner] = React.useState(false);
+      const visible = isControlled ? !!props.visible : visibleInner;
+      const setVisible = function(next) {
+        if (!isControlled) setVisibleInner(next);
+        if (typeof props.onVisibleChange === "function") {
+          try {
+            props.onVisibleChange(next);
+          } catch (e3) {
+          }
+        }
+        if (next && typeof props.onShow === "function") {
+          try {
+            props.onShow();
+          } catch (e3) {
+          }
+        }
+        if (!next && typeof props.onHide === "function") {
+          try {
+            props.onHide();
+          } catch (e3) {
+          }
+        }
+      };
+      const anchorRefInternal = React.useRef(null);
+      const anchorRef = props.targetRef || anchorRefInternal;
+      const eventRef = React.useRef(null);
+      const tipRef = React.useRef(null);
+      const [pos, setPos] = React.useState({ left: 0, top: 0, eff: maxWidth });
+      const hideTimerRef = React.useRef(null);
+      const clearTimer = function() {
+        if (hideTimerRef.current !== null) {
+          try {
+            clearTimeout(hideTimerRef.current);
+          } catch (e3) {
+          }
+          hideTimerRef.current = null;
+        }
+      };
+      const scheduleShow = function() {
+        clearTimer();
+        try {
+          if (__hoverTipGlobalPending && __hoverTipGlobalPending.id !== __hoverTipId) {
+            try {
+              clearTimeout(__hoverTipGlobalPending.timer);
+            } catch (e3) {
+            }
+            try {
+              __hoverTipGlobalPending.clear();
+            } catch (e3) {
+            }
+            __hoverTipGlobalPending = null;
+          }
+        } catch (e3) {
+        }
+        if (__hoverTipGlobalActive && __hoverTipGlobalActive.id !== __hoverTipId) {
+          try {
+            __hoverTipGlobalActive.hide();
+          } catch (e3) {
+          }
+          __hoverTipGlobalActive = null;
+        }
+        const doShow = function() {
+          setVisible(true);
+          __hoverTipGlobalActive = { id: __hoverTipId, hide: function() {
+            try {
+              clearTimer();
+              setVisible(false);
+            } catch (e3) {
+            }
+          } };
+          __hoverTipGlobalPending = null;
+        };
+        if (delayShow <= 0) doShow();
+        else {
+          const t3 = setTimeout(function() {
+            hideTimerRef.current = null;
+            doShow();
+          }, delayShow);
+          hideTimerRef.current = t3;
+          __hoverTipGlobalPending = { id: __hoverTipId, timer: t3, clear: function() {
+            try {
+              clearTimeout(t3);
+            } catch (e3) {
+            }
+            try {
+              setVisible(false);
+            } catch (e3) {
+            }
+          } };
+        }
+      };
+      const scheduleHide = function() {
+        clearTimer();
+        const doHide = function() {
+          setVisible(false);
+          if (__hoverTipGlobalActive && __hoverTipGlobalActive.id === __hoverTipId) __hoverTipGlobalActive = null;
+        };
+        if (delayHide <= 0) doHide();
+        else hideTimerRef.current = setTimeout(function() {
+          hideTimerRef.current = null;
+          doHide();
+        }, delayHide);
+      };
+      const computePos = function() {
+        if (typeof window === "undefined") return null;
+        const vpW = window.innerWidth;
+        const vpH = window.innerHeight;
+        let rect = null;
+        try {
+          const evEl = eventRef.current;
+          if (evEl && typeof evEl.getBoundingClientRect === "function") rect = evEl.getBoundingClientRect();
+        } catch (e3) {
+        }
+        if (!rect) {
+          try {
+            if (anchorRef && anchorRef.current && typeof anchorRef.current.getBoundingClientRect === "function") rect = anchorRef.current.getBoundingClientRect();
+          } catch (e3) {
+          }
+        }
+        if (!rect || !rect.width && !rect.height) return null;
+        let tipW = 0;
+        let tipH = 0;
+        try {
+          if (tipRef.current && typeof tipRef.current.getBoundingClientRect === "function") {
+            const tipRect = tipRef.current.getBoundingClientRect();
+            if (tipRect && tipRect.width) tipW = tipRect.width;
+            if (tipRect && tipRect.height) tipH = tipRect.height;
+          }
+        } catch (e3) {
+        }
+        if (!tipW) tipW = Math.min(maxWidth, Math.max(0, vpW - 8)) || maxWidth;
+        if (!tipH) tipH = 32;
+        const placed = computeTipPlace(rect, { width: tipW, height: tipH }, { width: vpW, height: vpH }, maxWidth);
+        if (placed && typeof placed.x === "number" && typeof placed.y === "number") return { left: placed.x, top: placed.y, eff: placed.effectiveMaxWidth };
+        return null;
+      };
+      React.useEffect(function() {
+        if (!visible || !hasTip) return void 0;
+        let disposed = false;
+        const update = function() {
+          if (disposed) return;
+          const p3 = computePos();
+          if (p3) setPos(p3);
+        };
+        update();
+        const onScroll = function() {
+          update();
+        };
+        const onResize = function() {
+          update();
+        };
+        document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+        window.addEventListener("resize", onResize);
+        let ro = null;
+        try {
+          if (typeof ResizeObserver !== "undefined" && anchorRef && anchorRef.current) {
+            ro = new ResizeObserver(update);
+            ro.observe(anchorRef.current);
+          }
+        } catch (e3) {
+        }
+        return function() {
+          disposed = true;
+          document.removeEventListener("scroll", onScroll, true);
+          window.removeEventListener("resize", onResize);
+          if (ro) {
+            try {
+              ro.disconnect();
+            } catch (e3) {
+            }
+          }
+          clearTimer();
+        };
+      }, [visible, hasTip, maxWidth]);
+      React.useEffect(function() {
+        return function() {
+          clearTimer();
+        };
+      }, []);
+      const handleEnter = function(e3) {
+        try {
+          const el = e3 && (e3.currentTarget || e3.target) || null;
+          if (el && typeof el.getBoundingClientRect === "function") eventRef.current = el;
+        } catch (_3) {
+        }
+        clearTimer();
+        scheduleShow();
+      };
+      const handleLeave = function() {
+        scheduleHide();
+      };
+      let triggerNode = null;
+      if (trigger) {
+        const origProps = trigger.props || {};
+        const origRef = trigger.ref;
+        const mergedRef = function(el) {
+          anchorRefInternal.current = el;
+          if (typeof origRef === "function") try {
+            origRef(el);
+          } catch (e3) {
+          }
+          else if (origRef && typeof origRef === "object") try {
+            origRef.current = el;
+          } catch (e3) {
+          }
+        };
+        const cloneProps = {
+          ref: mergedRef,
+          onMouseEnter: function(e3) {
+            if (origProps.onMouseEnter) try {
+              origProps.onMouseEnter(e3);
+            } catch (e22) {
+            }
+            handleEnter(e3);
+          },
+          onMouseLeave: function(e3) {
+            if (origProps.onMouseLeave) try {
+              origProps.onMouseLeave(e3);
+            } catch (e22) {
+            }
+            handleLeave(e3);
+          }
+        };
+        try {
+          if (typeof tipContent === "string" && tipContent && origProps && !origProps["aria-label"] && !origProps["aria-labelledby"]) cloneProps["aria-label"] = tipContent;
+        } catch (e3) {
+        }
+        if (typeof React.cloneElement === "function") triggerNode = React.cloneElement(trigger, cloneProps);
+        else triggerNode = h4("span", { ref: mergedRef, onMouseEnter: handleEnter, onMouseLeave: handleLeave, style: { display: "inline-flex" } }, trigger);
+      }
+      if (props.targetRef && !trigger) {
+        React.useEffect(function() {
+          if (isControlled || !props.targetRef || !props.targetRef.current) return void 0;
+          const el = props.targetRef.current;
+          if (!el || typeof el.addEventListener !== "function") return void 0;
+          const onEnter = function(e3) {
+            handleEnter(e3);
+          };
+          const onLeave = function() {
+            handleLeave();
+          };
+          el.addEventListener("mouseenter", onEnter);
+          el.addEventListener("mouseleave", onLeave);
+          return function() {
+            try {
+              el.removeEventListener("mouseenter", onEnter);
+            } catch (e3) {
+            }
+            ;
+            try {
+              el.removeEventListener("mouseleave", onLeave);
+            } catch (e3) {
+            }
+          };
+        }, [isControlled]);
+      }
+      const _pad = props.padding !== void 0 ? props.padding : "7px 12px";
+      const effWidth = pos && typeof pos.eff === "number" && pos.eff > 0 ? pos.eff : maxWidth;
+      const tooltipStyle = { position: "fixed", left: pos.left, top: pos.top, boxSizing: "border-box", maxWidth: effWidth, zIndex, padding: _pad, borderRadius: 10, background: props.background || "var(--dsw-alias-bg-layer-3,#0c0e12)", border: props.border || "1px solid var(--dsw-alias-border-l2,#3a3f4a)", color: "var(--dsw-alias-label-primary,#e6edf3)", fontSize: 11, lineHeight: 1.5, pointerEvents: "none", boxShadow: "0 8px 24px rgba(0,0,0,.45)", whiteSpace: "pre-wrap", wordBreak: "break-word" };
+      if (props.style && typeof props.style === "object") Object.assign(tooltipStyle, props.style);
+      let tipPortal = null;
+      if (visible && hasTip) {
+        const live = computePos() || pos;
+        const liveEff = live && typeof live.eff === "number" && live.eff > 0 ? live.eff : effWidth;
+        const style = Object.assign({}, tooltipStyle, { left: live.left, top: live.top, maxWidth: liveEff });
+        const _tipProps = { style, ref: tipRef };
+        if (props.className) _tipProps.className = props.className;
+        tipPortal = portalTop(h4("div", _tipProps, [tipContent]));
+      }
+      if (triggerNode) return h4(React.Fragment, null, triggerNode, tipPortal);
+      return tipPortal;
+    };
+    const Tip = function(props) {
+      const p3 = props || {};
+      const content = p3.content;
+      const children = p3.children;
+      const preset = { delay: { show: TIP_SHOW_DELAY_MS, hide: TIP_HIDE_DELAY_MS }, maxWidth: 320, zIndex: 2147483e3, padding: "7px 12px" };
+      const merged = {};
+      merged.delay = p3.delay !== void 0 ? p3.delay : preset.delay;
+      merged.maxWidth = p3.maxWidth !== void 0 ? p3.maxWidth : preset.maxWidth;
+      merged.zIndex = p3.zIndex !== void 0 ? p3.zIndex : preset.zIndex;
+      let effChildren = children;
+      if (typeof content === "string" && content && children && typeof children === "object" && children.props && !children.props["aria-label"] && !children.props["aria-labelledby"]) {
+        try {
+          if (typeof React !== "undefined" && typeof React.cloneElement === "function") effChildren = React.cloneElement(children, { "aria-label": content });
+        } catch (e3) {
+        }
+      }
+      if (content !== void 0) merged.content = content;
+      if (effChildren !== void 0) merged.children = effChildren;
+      else if (children !== void 0) merged.children = children;
+      if (p3.targetRef !== void 0) merged.targetRef = p3.targetRef;
+      if (p3.visible !== void 0) merged.visible = p3.visible;
+      if (p3.onVisibleChange !== void 0) merged.onVisibleChange = p3.onVisibleChange;
+      if (p3.onShow !== void 0) merged.onShow = p3.onShow;
+      if (p3.onHide !== void 0) merged.onHide = p3.onHide;
+      merged.padding = p3.padding !== void 0 ? p3.padding : preset.padding;
+      if (p3.style !== void 0) merged.style = p3.style;
+      if (p3.className !== void 0) merged.className = p3.className;
+      if (p3.background !== void 0) merged.background = p3.background;
+      if (p3.border !== void 0) merged.border = p3.border;
+      return HoverTip(merged);
+    };
+    const ticketBadgeOf = function(h4, options) {
+      const o3 = options || {};
+      const key = o3.key;
+      const effortId = o3.effortId;
+      const surface = o3.surface || "badge";
+      const label = ticketLabelOf(key, effortId);
+      const outerStyle = { display: "inline-flex", alignItems: "center", maxWidth: TICKET_LABEL_MAX_WIDTH, overflow: "hidden" };
+      if (surface === "capsule") return h4(Tip, { content: label }, ticketLabelCapsuleFoldOf(h4, key, effortId));
+      if (surface === "cell") {
+        const cellStyle = Object.assign({ fontVariantNumeric: "tabular-nums", color: o3.color }, outerStyle, { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" });
+        return h4("span", { ref: o3.ref, style: cellStyle }, ticketLabelNodesOf(h4, key, effortId));
+      }
+      if (surface === "pill") {
+        const borderColor = o3.borderColor != null ? o3.borderColor : o3.color;
+        const pillStyle = Object.assign({ flex: "none" }, outerStyle, {
+          fontSize: 11,
+          lineHeight: "16px",
+          padding: "0 6px",
+          borderRadius: 99,
+          border: "1px solid " + borderColor,
+          color: o3.color
+        });
+        const segments = ticketLabelNodesOf(h4, key, effortId);
+        const children = o3.leadingIcon ? [o3.leadingIcon, h4("span", { style: { display: "inline-flex", alignItems: "center", minWidth: 0, overflow: "hidden" } }, segments)] : segments;
+        return h4(Tip, { content: label }, h4("span", { style: pillStyle }, children));
+      }
+      const badgeStyle = Object.assign({ color: o3.color, borderColor: o3.color, flex: "none" }, outerStyle);
+      return h4(Tip, { content: label }, h4("span", { className: "dsws-idnum", style: badgeStyle }, ticketLabelNodesOf(h4, key, effortId)));
+    };
+    function openFolderAt(host, dir, report) {
+      const fire = function(outcome, detail) {
+        try {
+          if (typeof report === "function") report(outcome, detail);
+        } catch (e3) {
+        }
+      };
+      const wanted = dir === null || dir === void 0 ? "" : String(dir);
+      if (!wanted.trim()) {
+        fire("missing");
+        return false;
+      }
+      const owner = host || null;
+      if (!owner || typeof owner.call !== "function") {
+        fire("open-failed");
+        return false;
+      }
+      let pending;
+      try {
+        pending = Promise.resolve(owner.call("wf.openFolder", { cwd: wanted }));
+      } catch (e3) {
+        fire("open-failed");
+        return false;
+      }
+      pending.then(function(res) {
+        const ok = !!res && typeof res === "object" && res.ok === true;
+        if (ok) {
+          fire("opened");
+          return;
+        }
+        const err = res && typeof res === "object" ? res.error : void 0;
+        fire("open-failed", typeof err === "string" && err.trim() ? err : void 0);
+      }, function() {
+        fire("open-failed");
+      });
+      return true;
+    }
+    const LIQUID_INK_CLASS = "dsws-ink";
+    const LIQUID_INK_HOST_CLASS = "dsws-ink-host";
+    const LIQUID_INK_ON_CLASS = "dsws-ink-on";
+    const LIQUID_INK_COVER_ATTR = "data-ink-cover";
+    const INK_INSTANT_CLASS = "dsws-ink-instant";
+    const INK_SQUASH_CLASS = "dsws-ink-squash";
+    const DEFAULT_BG = "rgba(255,255,255,.14)";
+    const DEFAULT_RADIUS = "6px";
+    function ensureHost(host) {
+      if (!host || !host.classList) return;
+      try {
+        if (host.classList.contains(LIQUID_INK_HOST_CLASS)) return;
+        host.classList.add(LIQUID_INK_HOST_CLASS);
+      } catch (e3) {
+      }
+    }
+    function liquidInkRemember(el, key, group) {
+      try {
+        const k4 = key === null || key === void 0 ? "" : String(key);
+        const g4 = group === null || group === void 0 ? "" : String(group);
+        if (g4 && el && el.setAttribute) {
+          let host = null;
+          for (let node = el; node && node.nodeType === 1; node = node.parentNode) {
+            if (node.classList && node.classList.contains(LIQUID_INK_HOST_CLASS)) {
+              host = node;
+              break;
+            }
+          }
+          const scope = host || el.ownerDocument;
+          try {
+            const olds = scope.querySelectorAll('[data-ink-pick="1"][data-ink-group="' + g4 + '"]');
+            for (let i3 = 0; i3 < olds.length; i3++) {
+              try {
+                olds[i3].removeAttribute("data-ink-pick");
+              } catch (eO) {
+              }
+            }
+          } catch (eQ) {
+          }
+          try {
+            el.setAttribute("data-ink-pick", "1");
+          } catch (eP) {
+          }
+        }
+        for (let node = el; node && node.nodeType === 1; node = node.parentNode) {
+          if (node.classList && node.classList.contains(LIQUID_INK_HOST_CLASS)) {
+            node.setAttribute("data-ink-key", k4);
+            return;
+          }
+        }
+      } catch (e3) {
+      }
+    }
+    function inkTargetOf(host, group) {
+      if (!host || !host.querySelector) return null;
+      const g4 = group === null || group === void 0 ? "" : String(group);
+      if (g4) {
+        const escapedG = g4.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        let picked = null;
+        try {
+          picked = host.querySelector("." + LIQUID_INK_ON_CLASS + '[data-ink-group="' + escapedG + '"][data-ink-pick="1"]');
+        } catch (eG) {
+          picked = null;
+        }
+        if (picked) return picked;
+        try {
+          picked = host.querySelector("." + LIQUID_INK_ON_CLASS + '[data-ink-group="' + escapedG + '"]');
+        } catch (eG2) {
+          picked = null;
+        }
+        return picked || null;
+      }
+      const key = host.getAttribute("data-ink-key");
+      if (key) {
+        let picked = null;
+        try {
+          const escaped = String(key).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+          picked = host.querySelector("." + LIQUID_INK_ON_CLASS + '[data-ink-key="' + escaped + '"]');
+          if (!picked) picked = host.querySelector('.dsws-tab.on[data-ink-key="' + escaped + '"]');
+        } catch (e3) {
+          picked = null;
+        }
+        if (picked) return picked;
+      }
+      const on2 = host.querySelector("." + LIQUID_INK_ON_CLASS) || host.querySelector(".dsws-tab.on");
+      return on2 || null;
+    }
+    function readPx(el, name) {
+      try {
+        const v3 = el[name];
+        return typeof v3 === "number" && isFinite(v3) ? v3 : 0;
+      } catch (e3) {
+        return 0;
+      }
+    }
+    function markCovered(ink, target) {
+      const prev = ink.__dswsInkCovered;
+      if (prev && prev !== target && prev.removeAttribute) {
+        try {
+          prev.removeAttribute(LIQUID_INK_COVER_ATTR);
+        } catch (e3) {
+        }
+      }
+      if (target && target.setAttribute) {
+        try {
+          if (target.getAttribute(LIQUID_INK_COVER_ATTR) !== "1") target.setAttribute(LIQUID_INK_COVER_ATTR, "1");
+        } catch (e22) {
+        }
+      }
+      ink.__dswsInkCovered = target || null;
+    }
+    function liquidInkPlace(host, ink) {
+      if (!host || !ink || !ink.style) return false;
+      ensureHost(host);
+      const group = ink.getAttribute && ink.getAttribute("data-ink-group") || "";
+      const target = inkTargetOf(host, group);
+      if (!target) {
+        markCovered(ink, null);
+        try {
+          ink.style.opacity = "0";
+          ink.style.pointerEvents = "none";
+        } catch (e3) {
+        }
+        return false;
+      }
+      const x4 = readPx(target, "offsetLeft");
+      const y3 = readPx(target, "offsetTop");
+      const w4 = readPx(target, "offsetWidth");
+      const h22 = readPx(target, "offsetHeight");
+      const bg = target.getAttribute && target.getAttribute("data-ink-bg") || DEFAULT_BG;
+      const bd = target.getAttribute && target.getAttribute("data-ink-bd") || "transparent";
+      const radius = host.getAttribute && host.getAttribute("data-ink-radius") || DEFAULT_RADIUS;
+      const targetKey = target.getAttribute && target.getAttribute("data-ink-key") || (target.textContent || "").slice(0, 24);
+      const sig = [targetKey, x4, y3, w4, h22, bg, bd, radius].join("|");
+      if (ink.__dswsInkPlaced && ink.__dswsInkSig === sig && ink.style.opacity === "1") return true;
+      markCovered(ink, target);
+      const first = !ink.__dswsInkPlaced;
+      try {
+        if (first) ink.classList.add(INK_INSTANT_CLASS);
+        ink.style.setProperty("--dsws-ink-x", x4 + "px");
+        ink.style.setProperty("--dsws-ink-y", y3 + "px");
+        ink.style.setProperty("--dsws-ink-w", w4 + "px");
+        ink.style.setProperty("--dsws-ink-h", h22 + "px");
+        ink.style.setProperty("--dsws-ink-bg", bg);
+        ink.style.setProperty("--dsws-ink-bd", bd);
+        ink.style.setProperty("--dsws-ink-radius", radius);
+        ink.style.opacity = "1";
+        ink.style.pointerEvents = "none";
+      } catch (e3) {
+      }
+      ink.__dswsInkSig = sig;
+      if (first) {
+        ink.__dswsInkPlaced = true;
+        const raf = typeof window !== "undefined" && window && window.requestAnimationFrame ? window.requestAnimationFrame : null;
+        const drop = function() {
+          try {
+            ink.classList.remove(INK_INSTANT_CLASS);
+          } catch (e3) {
+          }
+        };
+        if (raf) raf(drop);
+        else setTimeout(drop, 0);
+      } else {
+        try {
+          ink.classList.remove(INK_SQUASH_CLASS);
+          void ink.offsetWidth;
+          ink.classList.add(INK_SQUASH_CLASS);
+        } catch (e22) {
+        }
+      }
+      return true;
+    }
+    function useLiquidInk(hostRef, group) {
+      const inkRef = React.useRef(null);
+      const roRef = React.useRef(null);
+      const place = function() {
+        try {
+          liquidInkPlace(hostRef && hostRef.current, inkRef.current);
+        } catch (e3) {
+        }
+        try {
+          const host = hostRef && hostRef.current;
+          const ro = roRef.current;
+          if (host && ro && ro.observe) {
+            const opts = host.querySelectorAll(".dsws-tab,.dsws-chip,[data-ink-key]");
+            for (let i3 = 0; i3 < opts.length; i3++) {
+              try {
+                ro.observe(opts[i3]);
+              } catch (eO) {
+              }
+            }
+          }
+        } catch (e22) {
+        }
+      };
+      if (typeof React.useLayoutEffect === "function") {
+        React.useLayoutEffect(function() {
+          place();
+        });
+      } else {
+        React.useEffect(function() {
+          place();
+        });
+      }
+      React.useEffect(function() {
+        const onResize = function() {
+          place();
+        };
+        let cancelled = false;
+        try {
+          if (window && window.addEventListener) window.addEventListener("resize", onResize);
+        } catch (e3) {
+        }
+        try {
+          const host = hostRef && hostRef.current;
+          const RO = typeof window !== "undefined" && window && window.ResizeObserver ? window.ResizeObserver : null;
+          if (host && RO) {
+            const ro = new RO(function() {
+              if (!cancelled) place();
+            });
+            roRef.current = ro;
+            ro.observe(host);
+          }
+        } catch (eRO) {
+        }
+        let mo = null;
+        try {
+          const host = hostRef && hostRef.current;
+          if (host && typeof MutationObserver !== "undefined") {
+            mo = new MutationObserver(function(records) {
+              if (cancelled) return;
+              const ink = inkRef.current;
+              for (let i3 = 0; i3 < (records ? records.length : 0); i3++) {
+                const t3 = records[i3] && records[i3].target;
+                if (t3 && ink && (t3 === ink || t3.nodeType === 1 && ink.contains && ink.contains(t3))) continue;
+                if (t3 && t3.nodeType === 1 && t3.classList && t3.classList.contains(LIQUID_INK_CLASS)) continue;
+                place();
+                return;
+              }
+            });
+            mo.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "hidden"] });
+          }
+        } catch (e3) {
+        }
+        try {
+          if (document && document.fonts && document.fonts.ready && document.fonts.ready.then) {
+            document.fonts.ready.then(function() {
+              if (!cancelled) place();
+            });
+          }
+        } catch (e3) {
+        }
+        return function() {
+          cancelled = true;
+          try {
+            if (window && window.removeEventListener) window.removeEventListener("resize", onResize);
+          } catch (e3) {
+          }
+          try {
+            if (mo) mo.disconnect();
+          } catch (e3) {
+          }
+          try {
+            if (roRef.current) roRef.current.disconnect();
+          } catch (eRO2) {
+          }
+          try {
+            roRef.current = null;
+          } catch (eRO3) {
+          }
+        };
+      }, []);
+      const inkProps = { className: LIQUID_INK_CLASS, ref: inkRef, "aria-hidden": "true" };
+      if (group !== null && group !== void 0 && group !== "") inkProps["data-ink-group"] = String(group);
+      return h3("span", inkProps);
+    }
+    const PixelBtn = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const cls = "pixel-btn" + (p3.hot ? " hot" : "") + (p3.mini ? " mini" : "") + (p3.loading ? " loading" : "");
+      const logId = String((props || {})["data-log"] || "unnamed");
+      const press = String((props || {})["data-press"] || "button");
+      return h4("button", {
+        type: "button",
+        className: cls,
+        "data-press": press,
+        "data-log": "pixel.btn." + logId,
+        disabled: p3.disabled || p3.loading || void 0,
+        title: p3.title || void 0,
+        onClick: p3.loading ? void 0 : p3.onClick
+      }, [
+        h4("span", { key: "spin", className: "pixel-spin", "aria-hidden": true }),
+        h4("span", { key: "label" }, p3.children)
+      ]);
+    };
+    const PixelDot = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const bg = p3.color || (p3.level === "warn" ? "#f59e0b" : p3.level === "bad" ? "#a3231a" : p3.level === "ok" ? "#0e8a16" : "var(--pixel-dc,#0e8a16)");
+      return h4("span", { className: "pixel-dot", style: { background: bg }, "aria-hidden": true });
+    };
+    const PixelNum = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const n2 = Number(p3.n) || 0;
+      return h4("span", { className: "pixel-num", "aria-hidden": true }, n2 < 10 ? "0" + n2 : String(n2));
+    };
+    const PixelStateIcon = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const mark = p3.kind === "ok" ? "✓" : p3.kind === "err" ? "✕" : p3.kind === "warn" ? "!" : p3.kind === "loading" ? "…" : "○";
+      return h4("span", { className: "pixel-ic pixel-ic-" + (p3.kind || "idle"), "aria-hidden": true }, mark);
+    };
+    const PixelSeal = function() {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      return h4("span", { className: "pixel-seal", "aria-hidden": true });
+    };
+    const PixelSkeleton = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const widths = ["100%", "82%", "64%"];
+      const n2 = Math.max(1, Math.min(3, Number(p3.lines) || 3));
+      const bars = [];
+      for (let i3 = 0; i3 < n2; i3++) bars.push(h4("div", { key: i3, className: "pixel-skel", style: { width: widths[i3] } }));
+      return h4("div", { "aria-hidden": true }, bars);
+    };
+    const PixelBanner = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const warn = p3.kind === "warn";
+      return h4("div", { className: "pixel-banner" + (warn ? " warn" : ""), role: "alert" }, [
+        h4("b", { key: "mark" }, warn ? "!" : "✕"),
+        h4("span", { key: "text", className: "grow" }, p3.text),
+        // 两颗按钮各给一个定位名：同样的横幅会出现在好几处面板上，光看"重试"认不出是哪块横幅的重试。
+        // 按压形状写明是 button 档（这两颗带字）；像素风自带悬停反馈，不叠通用悬停样式。
+        p3.onRetry ? h4(PixelBtn, { key: "retry", "data-press": "button", "data-log": "banner.retry", onClick: p3.onRetry }, tr("sd.retry")) : null,
+        p3.onClose ? h4(PixelBtn, { key: "close", "data-press": "button", "data-log": "banner.dismiss", onClick: p3.onClose }, tr("sd.dismiss")) : null
+      ]);
+    };
+    const PixelStatusLine = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const seq = Array.isArray(p3.texts) && p3.texts.length ? p3.texts : null;
+      const line = seq ? h4("span", { key: "seq", className: "pixel-seq" }, seq.map(function(s3, i3) {
+        return h4("span", { key: i3, style: { animationDelay: i3 * MOTION.pixelStatusStepMs + "ms" } }, s3);
+      })) : h4("span", { key: "tx" }, p3.text);
+      return h4("div", { className: "pixel-statusline" }, [
+        h4(PixelStateIcon, { key: "ic", kind: p3.icon }),
+        line
+      ]);
+    };
+    const CARD_ACTION_COLORS = {
+      diagnose: "fbca04",
+      fix: "d73a4a",
+      execute: "10b981",
+      claim: "b60205",
+      supplement: "5319e7",
+      research: "0ea5e9",
+      grill: "9d7cd8",
+      proto: "f59e0b",
+      map: "8b5cf6",
+      block: "a3231a"
+      // 实施（implement）这一档没有自己的固定色：它在实施地图的子票上出现，底色就是实施地图的身份色
+      // （kernel/container-view.ts 的 CONTAINER_ACCENT.spec）。那个色值全仓只许在中央色表写一次，
+      // 所以卡片层不抄第二份，也不在注释里写它的字面量；页面层把身份色放进 colorOf 表交给卡片
+      // （MapDetailV2Page.ts 里 buildColorOf(st) 之后补 implement 这一项）。
+    };
+    const CARD_ACTION_STYLE = {
+      diagnose: { colorKey: "needs-triage", icon: "chat", hollow: false },
+      fix: { colorKey: "bug", icon: "hammer", hollow: false },
+      execute: { colorKey: "wayfinder:task", icon: "play", hollow: false },
+      claim: { colorKey: "ready-for-human", icon: "play", hollow: false },
+      supplement: { colorKey: "needs-info", icon: "play", hollow: false },
+      research: { colorKey: "wayfinder:research", icon: "search", hollow: true },
+      grill: { colorKey: "wayfinder:grilling", icon: "chat", hollow: true },
+      proto: { colorKey: "wayfinder:prototype", icon: "proto", hollow: true },
+      // #1401：实施以前没有自己的样张，卡面按执行画；现在补上。图标沿用 hammer（实施与修复都是
+      //「把改法落下去」），颜色与实心形态靠 implement 这一档区分，不再借 execute 的绿。
+      implement: { colorKey: "implement", icon: "hammer", hollow: false }
+    };
+    const cardColorOf = function(c3, m3) {
+      const tab = m3 || {};
+      const v3 = tab[c3] || CARD_ACTION_COLORS[c3] || "8b5cf6";
+      return String(v3).replace(/^#/, "").toLowerCase();
+    };
+    const cardLum = function(hex) {
+      const h4 = String(hex).split("#").join("");
+      const ch = function(i3) {
+        return parseInt(h4.substr(i3 * 2, 2), 16) / 255;
+      };
+      const f3 = function(x4) {
+        return x4 <= 0.03928 ? x4 / 12.92 : Math.pow((x4 + 0.055) / 1.055, 2.4);
+      };
+      return 0.2126 * f3(ch(0)) + 0.7152 * f3(ch(1)) + 0.0722 * f3(ch(2));
+    };
+    const cardInkOn = function(hex) {
+      const l3 = cardLum(hex);
+      return (l3 + 0.05) / 0.05 >= 1.05 / (l3 + 0.05) ? "#1c1004" : "#fff9ec";
+    };
+    const cardBoostOn = function(hex) {
+      try {
+        if (typeof cardLum !== "function") return false;
+        const lb = cardLum(hex);
+        const wOk = 1.05 / (lb + 0.05) >= 4.6;
+        const dOk = (lb + 0.05) / (cardLum("1c1004") + 0.05) >= 4.5;
+        return !wOk && !dOk;
+      } catch (e3) {
+        return false;
+      }
+    };
+    const PIXEL_CARDS_STYLE_TEXT = [
+      // 深色投影用纯黑（2026-10-23 维护者问「深色版有办法能看到阴影吗」）：原来的 #241a0c 与页面炭灰底 #1e2023
+      // 明度几乎一样（对比 1.05:1），6px 硬投影在深色下等于没画；纯黑对 #1e2023 是 1.29:1，硬边看得见。
+      // 浅色那一组仍是 #241a0c（纸面上够用），两张皮肤只在各自主题下生效。
+      ":root{--cd-frame:#3a2c14;--cd-card:#f2e4c0;--cd-old:#e4d5b0;--cd-ink:#2b2113;--cd-ink2:#6b5b3e;--cd-shadow:#000000;--cd-gold:#e3a92f;--cd-map:#8b5cf6;--cd-ok:#0e8a16;--cd-sel:#0ea5e9;--cd-warn:#f59e0b;--cd-bad:#a3231a;--cd-dim:#9a8f78;--cd-paper:#fffdf4;--cd-take:#4a86c8;}",
+      // #1380 浅色纸面：浅色下必须换一套的装饰色（棋盘底、点亮的墙格、红字、三种角标）先收成令牌。
+      // 深色这一行就是原来写死在下面规则里的字面量，一个值、一个字节都没改；浅色覆盖靠它换色。
+      ":root{--cd-stripe:#ddcda1;--cd-lit:#ffd97a;--cd-note:#8b241a;--cd-mark-bug:#d73a4a;--cd-mark-ready:#10b981;--cd-mark-doing:#2b62b0;}",
+      // 浅色（纸面便签：原型里选定的纸面底、卡片白、深色描边、深绿强调）只认宿主有没有挂深色标记，面板里没有第二个开关；这一段只写 --cd-* 令牌，不写结构。
+      // 纸色与技能列表（PixelStyles.ts 的 .pixel-tab）同一套：卡片底 = 纸面 #f6f1e6、纸底 = 卡片白 #fffdf8，
+      // 描边同 #3a2c14；强调绿 #15803d 与技能列表的 --pixel-acc 同值，跨文件门禁会逐条对。
+      // 地图身份色保留紫色一系：深色是亮紫 #8b5cf6，浅色纸上用深一档的墨紫 #6d28d9（对纸面 6.31:1），
+      // 不换成强调绿——地图卡与票卡要在同一屏上分得开，身份色不能跟着纸色一起变成绿色。
+      // 旧卡（old）用纸面下沉 #efe8d9；--cd-card2 只给浅色的棋盘墙当底，深色不定义，墙面保持透明。
+      "body:not([data-ds-dark-theme]) .cd-card{--cd-frame:#3a2c14;--cd-card:#f6f1e6;--cd-paper:#fffdf8;--cd-old:#efe8d9;--cd-ink:#221d15;--cd-ink2:#6f6252;--cd-shadow:#241a0c;--cd-gold:#15803d;--cd-ok:#15803d;--cd-sel:#1e40af;--cd-warn:#b45309;--cd-bad:#b91c1c;--cd-dim:#7d7061;--cd-take:#2456c9;--cd-map:#6d28d9;--cd-stripe:#e7ddc8;--cd-card2:#efe8d9;--cd-lit:#b45309;--cd-note:#b91c1c;--cd-mark-bug:#b91c1c;--cd-mark-ready:#15803d;--cd-mark-doing:#1e40af;}",
+      // 卡片容器自己落墨色（#1387 第一条）：卡片是浅纸，深色下继承宿主浅字只有约 1.07 比 1，标题之外的行都会跟着看不清。
+      // #1630 卡片自成一层：卡里为了压住暗层和卡面用了 z-index（结案章 5、暗层 5、点亮徽标 8），卡片
+      // 自己不成层时这些数会直接进页面层，跟粘性顶栏 .dsws-stickybar 的 z-index:5 平起平坐。卡片流在
+      // DOM 里排在顶栏后面，同一层级按先后绘制，结案章就画到了顶栏上面。isolation:isolate 让卡内层级
+      // 只在卡内比较，卡片整体滚到顶栏下面时被顶栏盖住；悬停时 transform 也不再引起章与顶栏的层级跳变。
+      ".cd-card{width:300px;background:var(--cd-card);color:var(--cd-ink);border:4px solid var(--cd-frame);box-shadow:inset 2px 2px 0 rgba(255,255,255,.45),inset -2px -2px 0 var(--cd-shadow),6px 6px 0 var(--cd-shadow);padding:10px 11px;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:6px;transition:transform " + MOTION.pixelPressMs + "ms steps(2,end),box-shadow " + MOTION.pixelPressMs + "ms steps(2,end)}",
+      ".cd-card.old{background:var(--cd-old);box-shadow:inset 2px 2px 0 #f7edd3,inset -2px -2px 0 #7d5730,6px 6px 0 var(--cd-shadow)}",
+      ".cd-card.wide{width:340px;padding:11px 13px;gap:8px;min-height:230px;cursor:pointer}",
+      ".cd-card.mapcard{width:404px;padding:11px 13px;gap:8px}",
+      ".cd-card:hover{transform:translate(-2px,-2px);box-shadow:inset 2px 2px 0 rgba(255,255,255,.45),inset -2px -2px 0 var(--cd-shadow),7px 8px 0 var(--cd-shadow)}",
+      // 按压态走委托挂的 .dsws-pressing（#1335 界面反馈）：不用 CSS 的 :active，
+      // 因为按住后把指针拖走 :active 会粘住，祖先元素还会跟着一起匹配。
+      ".cd-card.dsws-pressing{transform:translate(2px,2px);box-shadow:inset 2px 2px 0 rgba(255,255,255,.45),inset -2px -2px 0 var(--cd-shadow),0 0 0 2px var(--cd-frame),1px 1px 0 var(--cd-shadow)}",
+      // 点亮的卡片另有一条更重的悬停规则（层级更高），压下去时要压过它，否则按了看不出变化。
+      ".cd-card.lit.dsws-pressing,.cd-card.dim.lit.dsws-pressing{transform:translate(2px,2px)}",
+      "body[data-ds-dark-theme] .cd-card:focus-visible{outline:2px dashed var(--cd-gold);outline-offset:4px}",
+      // #1401 浅色主题的键盘焦点环：上面那两条只认深色标记，浅色主题下浏览器默认环落在 4px 深描边
+      // 与硬投影外面，几乎看不见。这里补同一套像素风虚线，只在没有 data-ds-dark-theme 时生效，深色原值一条不动。
+      // 颜色取宿主焦点环令牌（--dsw-focus-ring-color，缺省回落主题主色），与全仓其它浅色焦点环同一口径：
+      // 卡片皮肤只决定环的形状（2px 像素虚线、画在卡片外面），换肤时颜色跟着宿主走，不再自己挑一个墨色。
+      "body:not([data-ds-dark-theme]) .cd-card:focus-visible{outline:2px dashed var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#58a6ff));outline-offset:4px}",
+      "body:not([data-ds-dark-theme]) .cd-abtn:focus-visible{outline:2px dashed var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#58a6ff));outline-offset:2px}",
+      ".cd-card.lit,.cd-card.dim.lit{box-shadow:inset 2px 2px 0 rgba(255,255,255,.45),inset -2px -2px 0 var(--cd-shadow),0 0 0 2px var(--cd-frame),0 0 0 6px var(--cd-gold),6px 6px 0 var(--cd-shadow)}",
+      ".cd-card.lit:hover,.cd-card.dim.lit:hover{transform:translate(-2px,-2px);box-shadow:inset 2px 2px 0 rgba(255,255,255,.45),inset -2px -2px 0 var(--cd-shadow),0 0 0 2px var(--cd-frame),0 0 0 6px var(--cd-gold),7px 8px 0 var(--cd-shadow)}",
+      ".cd-pin{position:absolute;left:50%;top:-10px;margin-left:-8px;width:16px;height:16px;background:#c0392b;border:2px solid var(--cd-frame);box-shadow:inset 2px 2px 0 rgba(255,255,255,.5),inset -2px -2px 0 var(--cd-shadow)}",
+      ".cd-pin.big{margin-left:-10px;width:20px;height:20px;border-radius:50%}",
+      ".cd-tape{position:absolute;left:50%;top:-8px;margin-left:-26px;width:52px;height:14px;background:#d9c48a;transform:rotate(-4deg);box-shadow:inset 0 2px 0 rgba(255,255,255,.45),inset 0 -2px 0 rgba(0,0,0,.18),0 2px 0 rgba(0,0,0,.35)}",
+      ".cd-hd{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--cd-ink2);font-family:ui-monospace,Menlo,Consolas,monospace}",
+      ".cd-nonum{font-size:13px;font-weight:800;letter-spacing:1px;padding:2px 10px;border:2px solid var(--cd-frame);box-shadow:2px 2px 0 var(--cd-shadow);font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}",
+      ".cd-nonum.line{background:transparent;color:var(--cd-ink)}",
+      // 标题用纸面墨色写死：卡片本身是浅纸（深色主题下也是浅纸），标题若继承宿主的浅色字，对纸面只有 1.2:1，几乎看不清（#1387）。
+      ".cd-tt{margin:2px 0;font-size:13px;line-height:1.45;color:var(--cd-ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:38px}",
+      ".cd-tt.tall{-webkit-line-clamp:3;min-height:0}",
+      ".cd-take{font-size:11px;color:var(--cd-take)}",
+      ".cd-lbrow{margin:2px 0;display:flex;flex-wrap:wrap}",
+      ".cd-chip{display:inline-block;font-size:11px;font-weight:700;line-height:20px;padding:0 8px;white-space:nowrap;border:2px solid var(--cd-frame);box-shadow:inset 2px 2px 0 rgba(255,255,255,.35),inset -2px -2px 0 rgba(0,0,0,.28),2px 2px 0 var(--cd-shadow);font-family:ui-monospace,Menlo,Consolas,monospace;margin-right:6px;letter-spacing:1px}",
+      ".cd-note{font-size:11px;color:var(--cd-note)}",
+      ".cd-ft{border-top:3px solid var(--cd-frame);padding-top:5px;margin-top:auto;font-size:11px;color:var(--cd-ink2);display:flex;justify-content:space-between;font-family:ui-monospace,Menlo,Consolas,monospace}",
+      ".cd-sealcn{background:#a3231a;color:#fff9ec;opacity:1;border:2px solid #7d1a12;box-shadow:inset 0 0 0 2px #fff9ec,2px 2px 0 var(--cd-shadow);font-family:SimSun,NSimSun,STZhongsong,serif;letter-spacing:4px;padding:3px 10px;min-width:64px;text-align:center;font-size:13px;line-height:1.3;white-space:nowrap;position:relative;z-index:5;margin-left:auto}",
+      '.cd-card.closed::after{content:"";position:absolute;inset:-14px;background:rgba(28,16,4,.45);pointer-events:none}',
+      ".cd-corner,.cd-ckj,.cd-ckb{position:absolute;right:0;top:0;width:0;height:0;border-style:solid;border-width:0 38px 38px 0;pointer-events:none}",
+      ".cd-corner{border-color:transparent var(--cd-mark-bug) transparent transparent;border-width:0 34px 34px 0}",
+      ".cd-ckj{border-color:transparent var(--cd-mark-ready) transparent transparent}",
+      ".cd-ckb{border-color:transparent var(--cd-mark-doing) transparent transparent}",
+      ".cd-corner b,.cd-ckj b,.cd-ckb b{position:absolute;right:-36px;top:4px;font-size:9px;color:#fff;transform:rotate(45deg);font-weight:700;white-space:nowrap}",
+      ".cd-corner b{right:-32px;top:2px}",
+      ".cd-actions{display:flex;gap:6px;margin-top:2px}",
+      ".cd-abtn{border:3px solid var(--cd-frame);cursor:pointer;box-shadow:2px 2px 0 var(--cd-shadow);display:inline-flex;align-items:center;justify-content:center;gap:4px;font-family:ui-monospace,Menlo,Consolas,monospace;transition:transform " + MOTION.pixelPressMs + "ms steps(2,end),box-shadow " + MOTION.pixelPressMs + "ms steps(2,end)}",
+      // 主按钮与新会话按钮可以被压低：min-width:0 让它们在窄卡里一直缩到「图标 + 内边距」，多出来的空间还给同一行的图标按钮。
+      // 按钮里的文字包在 .cd-lbl 里，溢出裁掉；页面层会按整字算宽度（view/flow/TicketCardFlow.ts 的 fitFlowLabels），
+      // 所以收窄时是一整字一整字消失，不会停在半个字上。列表页卡片宽度固定，这段配置在那里没有可见变化。
+      ".cd-abtn.label{flex:1;min-width:0;overflow:hidden;font-size:12px;padding:5px 8px}",
+      ".cd-lbl{display:inline-block;min-width:0;max-width:100%;overflow:hidden;white-space:nowrap;vertical-align:bottom}",
+      ".cd-abtn.icon{flex:none;width:40px;padding:5px 0}",
+      ".cd-abtn.paper{background:var(--cd-card);color:var(--cd-ink)}",
+      ".cd-abtn:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--cd-shadow);outline:2px solid var(--cd-act,var(--cd-gold));outline-offset:1px}",
+      // 深色纸面按钮的焦点环用金虚线（#1387 第二条）：原来随卡动作色，深色下画出来是紫色。
+      "body[data-ds-dark-theme] .cd-abtn.paper:focus-visible{outline:2px dashed var(--cd-gold);outline-offset:2px}",
+      // 深色实心按钮的焦点环用自己的墨色虚线（#1387 第三条）：底色有十种，环若随动作色会与底同色；
+      // 金虚线对其中七种底色不足 3 比 1，例如金对亮黄只有 1.36 比 1，而随按钮墨色最低 4.36 比 1，虚线形状不变。
+      "body[data-ds-dark-theme] .cd-abtn.label:focus-visible{outline:2px dashed currentColor;outline-offset:2px}",
+      ".cd-abtn.dsws-pressing{transform:translate(2px,2px);box-shadow:0 0 0 var(--cd-shadow)}",
+      ".cd-abtn svg{flex:none;display:block}",
+      ".cd-bseal{position:absolute;left:-10px;top:64px;right:-10px;background:#a3231a;color:#fff;text-align:center;font-size:12px;letter-spacing:2px;padding:3px 6px 2px;border-top:3px solid var(--cd-frame);border-bottom:3px solid var(--cd-frame);transform:rotate(-6deg);box-shadow:3px 3px 0 var(--cd-shadow);pointer-events:none}",
+      ".cd-bseal-l1{display:block;line-height:1.35}",
+      // 第二行是挡路票标题（#1401）：封条宽度是卡片宽 + 两侧各 10px，标题再长也单行省略；
+      // 完整标题放在封条的 title 属性里，鼠标停住可看全。不换行是因为斜贴纸条一旦变高会压住标题。
+      ".cd-bseal-t{display:block;margin-top:1px;font-size:10px;letter-spacing:0;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.92}",
+      // 可跳转的卡上封条自己接点按（点亮挡路关系），其余卡上封条仍是纯装饰、不吃点击。
+      ".cd-bseal.act{pointer-events:auto;cursor:pointer}",
+      ".cd-dimveil{position:absolute;inset:-12px;background:rgba(58,36,19,.42);color:#fff9ec;display:flex;align-items:center;justify-content:center;font-size:12px;letter-spacing:2px;pointer-events:none;z-index:5}",
+      ".cd-card.lit .cd-dimveil{display:none}",
+      ".cd-card .cd-bchip{display:none;position:absolute;left:8px;top:8px;z-index:8;max-width:240px}",
+      ".cd-card.lit .cd-bchip{display:block}",
+      ".cd-bchip b{display:block;background:#a3231a;color:#fff;font-weight:700;font-size:12px;padding:3px 10px;border:2px solid #241a0c;box-shadow:3px 3px 0 var(--cd-shadow);text-shadow:1px 1px 0 #000;white-space:nowrap}",
+      ".cd-bchip i{display:block;font-style:normal;font-size:11px;background:var(--cd-card);border:2px solid var(--cd-frame);border-top:0;padding:2px 6px;box-shadow:3px 3px 0 var(--cd-shadow)}",
+      ".cd-mapcorner{position:absolute;right:0;top:0;width:0;height:0;border-style:solid;border-width:0 36px 36px 0;border-color:transparent var(--cd-map) transparent transparent;pointer-events:none;z-index:4}",
+      ".cd-mapcorner b{position:absolute;right:-34px;top:3px;font-size:9px;color:#fff;transform:rotate(45deg);font-weight:700;letter-spacing:1px}",
+      ".cd-grid2{display:grid;grid-template-columns:repeat(15,1fr);gap:2px;background:var(--cd-stripe);border:3px solid var(--cd-frame);padding:4px}",
+      ".cd-grid2 i{aspect-ratio:1/1;border:1px solid #0f0b05}",
+      ".cd-mstats{display:flex;gap:6px}",
+      ".cd-mstats span{flex:1;background:#e8dbf8;border:2px solid var(--cd-frame);font-size:10px;text-align:center;padding:2px 0;color:#4a3a8a;box-shadow:2px 2px 0 var(--cd-shadow)}",
+      ".cd-mstats b{font-size:13px;color:var(--cd-ink)}",
+      ".cd-mstate{font-size:10px;font-weight:700;padding:1px 8px;border:2px solid var(--cd-frame);box-shadow:2px 2px 0 var(--cd-shadow);color:#fff;white-space:nowrap}",
+      ".cd-sealtop{position:absolute;left:50%;top:-12px;margin-left:-10px;width:20px;height:20px;background:#c9503f;border:2px solid var(--cd-frame);box-shadow:inset 2px 2px 0 rgba(255,255,255,.4),inset -2px -2px 0 rgba(0,0,0,.4),2px 2px 0 var(--cd-shadow)}",
+      ".cd-wall{background:var(--cd-card2);border:4px solid var(--cd-frame);padding:6px;display:grid;grid-template-columns:repeat(15,1fr);gap:3px}",
+      ".cd-wall i{aspect-ratio:1/1;border:2px solid #0f0b05;cursor:default}",
+      ".cd-wall i.f{background:var(--cd-sel)}.cd-wall i.b{background:var(--cd-bad)}.cd-wall i.w{background:var(--cd-warn)}.cd-wall i.c{background:var(--cd-ok)}",
+      ".cd-wall i.lit{outline:3px solid var(--cd-lit)}",
+      ".cd-legend{display:flex;gap:8px;font-size:11px;color:var(--cd-ink2);font-family:ui-monospace,Menlo,Consolas,monospace}",
+      ".cd-legend i{display:inline-block;width:10px;height:10px;border:2px solid #0f0b05;margin-right:4px;vertical-align:-1px}",
+      ".cd-readout{font-size:12px;border:3px solid var(--cd-frame);border-top:10px solid var(--cd-dim);background:var(--cd-paper);color:var(--cd-ink);padding:5px 8px;min-height:60px;box-shadow:3px 3px 0 var(--cd-shadow)}",
+      ".cd-readout.f{border-top-color:var(--cd-sel)}.cd-readout.b{border-top-color:var(--cd-bad)}.cd-readout.w{border-top-color:var(--cd-warn)}.cd-readout.c{border-top-color:var(--cd-ok)}",
+      ".cd-readout .ro-k{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700}",
+      ".cd-readout .ro-s{margin-left:6px;padding:0 6px;color:#fff;font-size:11px;border:2px solid var(--cd-frame)}",
+      ".cd-readout.f .ro-s{background:var(--cd-sel)}.cd-readout.b .ro-s{background:var(--cd-bad)}.cd-readout.w .ro-s{background:var(--cd-warn)}.cd-readout.c .ro-s{background:var(--cd-ok)}",
+      ".cd-readout .ro-t{display:block;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4}",
+      ".cd-readout.idle{border-top-color:var(--cd-dim);color:var(--cd-ink2)}",
+      ".cd-hd b{font-size:13px;color:var(--cd-ink)}",
+      ".cd-st{margin-left:auto;padding:1px 8px;background:var(--cd-ok);color:#fff;font-size:11px;border:2px solid var(--cd-frame);transform:rotate(-6deg);box-shadow:2px 2px 0 var(--cd-shadow)}",
+      ".cd-st.open{background:var(--cd-sel)}",
+      // 地图卡标题同样落墨色（#1387 的另一半）：地图卡没有沿用票卡标题组件，h3 会继承宿主浅字。
+      ".cd-card.mapcard h3{margin:2px 0;font-size:13.5px;line-height:1.4;color:var(--cd-ink)}"
+    ];
+    const PixelCardPin = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      if (p3.kind === "tape") return h4("span", { className: "cd-tape", "aria-hidden": true });
+      if (p3.kind === "sealtop") return h4("span", { className: "cd-sealtop", "aria-hidden": true });
+      if (p3.kind === "big") return h4("span", { className: "cd-pin big", "aria-hidden": true });
+      return h4("span", { className: "cd-pin", "aria-hidden": true });
+    };
+    const PixelCardTitle = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      return h4("h3", { className: "cd-tt" + (p3.tall ? " tall" : "") }, [p3.text, p3.suffix || null]);
+    };
+    const PixelCardNo = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const st = CARD_ACTION_STYLE[p3.action || "execute"] || { colorKey: "wayfinder:task", hollow: false };
+      const c3 = cardColorOf(st.colorKey, p3.colorOf || null);
+      const hollow = p3.hollow !== void 0 ? p3.hollow : st.hollow;
+      const style = hollow ? { borderColor: "#" + c3 } : { background: "#" + c3, color: cardInkOn(c3) };
+      const boostMark = !hollow && typeof cardBoostOn === "function" && cardBoostOn(c3) ? "1" : void 0;
+      return h4("span", { className: "cd-nonum" + (hollow ? " line" : ""), "data-cd-boost": boostMark, style }, p3.text);
+    };
+    const PixelCardTags = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const tags = p3.tags || [];
+      return h4("div", { className: "cd-lbrow" }, tags.map(function(t3, i3) {
+        const c3 = String(t3.color || "8b5cf6").replace(/^#/, "");
+        const boost = typeof cardBoostOn === "function" ? cardBoostOn(c3) : false;
+        return h4("span", { key: String(i3), className: "cd-chip", "data-cd-boost": boost ? "1" : void 0, style: { background: "#" + c3, color: cardInkOn(c3) } }, t3.text);
+      }));
+    };
+    const PixelCardNote = function(props) {
+      const p3 = props || {};
+      if (!p3.text) return null;
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      return h4("div", { className: "cd-note" }, p3.text);
+    };
+    const PixelCardFoot = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      return h4("div", { className: "cd-ft" }, [
+        h4("span", { key: "l" }, p3.left),
+        h4("span", { key: "r" }, p3.right)
+      ]);
+    };
+    const PixelCornerMark = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      if (p3.kind === "bug") return h4("span", { className: "cd-corner" }, h4("b", null, tr("card.bug")));
+      if (p3.kind === "doing") return h4("span", { className: "cd-ckb" }, h4("b", null, tr("card.doing")));
+      if (p3.kind === "ready") return h4("span", { className: "cd-ckj" }, h4("b", null, tr("card.pickReady")));
+      return null;
+    };
+    const PixelInlineSign = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      if (p3.kind === "doing") return h4("span", { className: "cd-mstate", style: { background: "#2b62b0" } }, tr("card.doing"));
+      if (p3.kind === "ready") return h4("span", { className: "cd-mstate", style: { background: "#10b981" } }, tr("card.pickReady"));
+      return null;
+    };
+    const PixelClosedSeal = function() {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      return h4("span", { className: "cd-sealcn" }, tr("card.closedSeal"));
+    };
+    const PixelBlockedSeal = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const onActivate = typeof p3.onActivate === "function" ? p3.onActivate : null;
+      const attrs = { className: "cd-bseal" + (onActivate ? " act" : "") };
+      if (onActivate) {
+        attrs["data-press"] = "row";
+        attrs["data-log"] = "card.blockedSeal";
+        attrs.onClick = function(e3) {
+          try {
+            if (e3 && e3.stopPropagation) e3.stopPropagation();
+          } catch (err) {
+          }
+          if (onActivate) onActivate();
+        };
+      }
+      const noText = "#" + (p3.no || "");
+      const firstLine = tr("card.blockedSeal", { n: noText });
+      const title = p3.title || "";
+      if (title) attrs.title = firstLine + " " + title;
+      const lines = [h4("span", { key: "l1", className: "cd-bseal-l1" }, firstLine)];
+      if (title) lines.push(h4("span", { key: "t", className: "cd-bseal-t" }, title));
+      return h4("div", attrs, lines);
+    };
+    const PixelBlockerChip = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      return h4("span", { className: "cd-bchip" }, [
+        h4("b", { key: "b" }, tr("card.blockerIs")),
+        h4("i", { key: "i" }, "#" + (p3.no || "") + " " + (p3.title || ""))
+      ]);
+    };
+    const PixelDimVeil = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const quiet = !!p3.quiet;
+      return h4("div", { className: "cd-dimveil" + (quiet ? " quiet" : "") }, quiet ? null : tr("card.blockedDim"));
+    };
+    const ICB = {
+      chat: '<path d="M21 15a2 2 0 01-2 2H8l-5 4V5a2 2 0 012-2h14a2 2 0 012 2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      play: '<path d="M8 5.5l11 6.5-11 6.5z" fill="currentColor" stroke="none"/>',
+      search: '<circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
+    };
+    ICB.hammer = '<path d="M14 4l6 6-2.5 2.5-6-6z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 21l7.5-7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12.5 9.5l2 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>';
+    ICB.proto = '<rect x="3" y="8.5" width="13" height="9" rx="2" opacity="0.52" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="7.8" y="3.8" width="13" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>';
+    ICB.ext = '<path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><polyline points="15 3 21 3 21 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><line x1="10" y1="14" x2="21" y2="3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>';
+    ICB.clip = '<rect x="5" y="4" width="14" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9 2h6v4H9z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9 11h6M9 15h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>';
+    ICB.link = '<path d="M10 14a5 5 0 007.1 0l2.8-2.8a5 5 0 00-7.1-7.1L11 5.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M14 10a5 5 0 00-7.1 0l-2.8 2.8a5 5 0 007.1 7.1L13 18.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>';
+    const PixelCardIcon = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const g4 = h4("g", { dangerouslySetInnerHTML: { __html: ICB[p3.n || ""] || "" } });
+      return h4("svg", { viewBox: "0 0 24 24", width: 12, height: 12, style: { display: "block", flex: "none" } }, g4);
+    };
+    const PixelCardBtns = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const bg = "#" + String(p3.mainColor || "8b5cf6");
+      const logKey = String((props || {}).logKey || "");
+      const ink = cardInkOn(bg);
+      const boost = typeof cardBoostOn === "function" ? cardBoostOn(bg) : false;
+      const boostMark = boost ? "1" : void 0;
+      const stop = function(e3) {
+        if (e3 && e3.stopPropagation) e3.stopPropagation();
+      };
+      const st = { background: bg, color: ink };
+      return h4("div", { className: "cd-actions" }, [
+        // 四颗按钮是像素风控件：只接 data-press 与 data-log，不加 dsws-hov（像素按钮自己有那套外观，
+        // 悬停提亮与下沉位移由像素样式负责，叠两套会让按下时的位移对不上图标格）。
+        // 复制与打开是纯图标按钮，按压形状记 icon；有文字的主按钮与新会话按钮记 button。
+        h4("button", { key: "m", className: "cd-abtn label", style: st, "data-cd-boost": boostMark, "data-press": "button", "data-log": "card.btn." + logKey + ".main", onClick: function(e3) {
+          stop(e3);
+          if (p3.onMain) p3.onMain();
+        } }, [h4(PixelCardIcon, { key: "i", n: p3.icon }), h4("span", { key: "t", className: "cd-lbl" }, p3.mainLabel)]),
+        h4("button", { key: "n", className: "cd-abtn label", style: st, "data-cd-boost": boostMark, "data-press": "button", "data-log": "card.btn." + logKey + ".new", onClick: function(e3) {
+          stop(e3);
+          if (p3.onNew) p3.onNew();
+        } }, [h4(PixelCardIcon, { key: "i", n: "ext" }), h4("span", { key: "t", className: "cd-lbl" }, tr("card.newSession"))]),
+        h4("button", { key: "c", className: "cd-abtn paper icon", title: tr("card.copyLink"), "data-press": "icon", "data-log": "card.btn." + logKey + ".copy", onClick: function(e3) {
+          stop(e3);
+          if (p3.onCopy) p3.onCopy();
+        } }, h4(PixelCardIcon, { n: "clip" })),
+        h4("button", { key: "o", className: "cd-abtn paper icon", title: tr("card.openLink"), "data-press": "icon", "data-log": "card.btn." + logKey + ".open", onClick: function(e3) {
+          stop(e3);
+          if (p3.onOpen) p3.onOpen();
+        } }, h4(PixelCardIcon, { n: "link" }))
+      ]);
+    };
+    const PixelMapDots = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const cells = [];
+      (p3.cells || []).forEach(function(c3, gi) {
+        for (let j4 = 0; j4 < (c3.n || 0); j4++) cells.push(h4("i", { key: gi + "-" + j4, style: { background: c3.color } }));
+      });
+      return h4("div", { className: "cd-grid2" }, cells);
+    };
+    const PixelMapStats = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const cell = function(k4, label, v3) {
+        return h4("span", { key: k4 }, [label + " ", h4("b", { key: "b" }, String(v3 || 0))]);
+      };
+      return h4("div", { className: "cd-mstats" }, [
+        cell("k", tr("card.sub"), p3.kids),
+        cell("r", tr("card.pickReady"), p3.ready),
+        cell("b", tr("card.blockedCount"), p3.blocked)
+      ]);
+    };
+    const PixelMapCorner = function() {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      return h4("span", { className: "cd-mapcorner" }, h4("b", null, tr("card.map")));
+    };
+    const PixelCardHead = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      return h4("div", { className: "cd-hd" }, [
+        p3.no || null,
+        p3.sign ? h4(PixelInlineSign, { key: "s", kind: p3.sign }) : null,
+        p3.closed ? h4(PixelClosedSeal, { key: "c" }) : null
+      ]);
+    };
+    const PixelIssueCard = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const st = CARD_ACTION_STYLE[p3.action || "execute"] || CARD_ACTION_STYLE.execute;
+      const mainColor = cardColorOf(st.colorKey, p3.colorOf || null);
+      const blocked = !!(p3.blockedBy && p3.blockedBy.no);
+      const onCard = typeof p3.onCard === "function" ? p3.onCard : null;
+      const canOpen = onCard !== null;
+      const ini = p3.lit === void 0 ? false : !!p3.lit;
+      const pair = React.useState(ini);
+      const lit = p3.lit !== void 0 ? !!p3.lit : pair[0];
+      const setLit = pair[1];
+      const flip = function(v3) {
+        if (p3.lit === void 0) setLit(v3);
+        if (p3.onLitChange) p3.onLitChange(v3);
+        try {
+          const doc = typeof document !== "undefined" ? document : null;
+          const o3 = doc && p3.blockedBy && p3.blockedBy.cardId ? doc.getElementById(String(p3.blockedBy.cardId)) : null;
+          if (o3 && o3.classList) {
+            if (v3) o3.classList.add("lit");
+            else o3.classList.remove("lit");
+          }
+        } catch (err) {
+        }
+      };
+      const logKey = "issue." + (String(p3.noText || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24) || "x");
+      const cls = "cd-card" + (p3.closed ? " old closed" : "") + (blocked && !lit ? " dim" : "") + (lit ? " lit" : "");
+      const corner = p3.bugCorner ? "bug" : p3.closed ? null : p3.pickCorner === "ready" ? "ready" : p3.pickCorner === "doing" ? "doing" : null;
+      const setLitNow = function(e3, v3) {
+        try {
+          const el = e3 && e3.currentTarget ? e3.currentTarget : null;
+          if (el && el.classList) {
+            if (v3) el.classList.add("lit");
+            else el.classList.remove("lit");
+          }
+        } catch (err) {
+        }
+      };
+      const kids = [];
+      kids.push(h4(PixelCardPin, { key: "pin", kind: p3.closed ? "tape" : void 0 }));
+      if (corner) kids.push(h4(PixelCornerMark, { key: "cor", kind: corner }));
+      const headNo = h4(PixelCardNo, { key: "no", text: p3.noText, action: p3.action, colorOf: p3.colorOf || null });
+      kids.push(h4("div", { key: "hd", className: "cd-hd" }, [headNo, p3.closed ? h4(PixelClosedSeal, { key: "c" }) : null]));
+      if (blocked && p3.blockedBy) kids.push(h4(PixelBlockedSeal, { key: "bs", no: p3.blockedBy.no, title: p3.blockedBy.title || "", onActivate: canOpen ? function() {
+        flip(!lit);
+      } : null }));
+      const suffix = p3.claimedBy ? h4("span", { className: "cd-take" }, tr("card.claimedBy", { n: p3.claimedBy })) : null;
+      kids.push(h4(PixelCardTitle, { key: "tt", text: p3.title, suffix }));
+      kids.push(h4(PixelCardTags, { key: "tg", tags: p3.tags || [] }));
+      if (p3.note) kids.push(h4(PixelCardNote, { key: "nt", text: p3.note }));
+      kids.push(h4(PixelCardBtns, { key: "ab", logKey, mainLabel: tr("card.act." + (p3.action || "execute")), icon: st.icon, mainColor, onMain: p3.onMain || null, onNew: p3.onNew || null, onCopy: p3.onCopy || null, onOpen: p3.onOpen || null }));
+      if (p3.blocksChip) kids.push(h4(PixelBlockerChip, { key: "chip", no: p3.blocksChip.no, title: p3.blocksChip.title }));
+      kids.push(h4(PixelCardFoot, { key: "ft", left: tr("card.updated", { n: p3.updatedText || "" }), right: p3.footActionText || "" }));
+      if (blocked) kids.push(h4(PixelDimVeil, { key: "veil", quiet: !!(p3.blockedBy && p3.blockedBy.title) }));
+      const attrs = { className: cls, style: { "--cd-act": "#" + mainColor } };
+      if (blocked || canOpen) attrs.style.cursor = "pointer";
+      if (p3.cardId) attrs.id = p3.cardId;
+      if (blocked) {
+        Object.assign(attrs, {
+          tabIndex: 0,
+          onFocus: function(e3) {
+            if (e3 && e3.target === e3.currentTarget) {
+              setLitNow(e3, true);
+              flip(true);
+            }
+          },
+          onBlur: function(e3) {
+            setLitNow(e3, false);
+            try {
+              if (e3 && e3.currentTarget && e3.relatedTarget && e3.currentTarget.contains(e3.relatedTarget)) return;
+            } catch (err) {
+            }
+            flip(false);
+          }
+        });
+        if (!canOpen) {
+          attrs["data-press"] = "row";
+          attrs["data-log"] = "card.issue." + logKey + ".row";
+          attrs.onClick = function(e3) {
+            setLitNow(e3, true);
+            flip(true);
+          };
+        }
+      }
+      if (canOpen) {
+        attrs.tabIndex = 0;
+        attrs.role = "button";
+        attrs["data-press"] = "row";
+        attrs["data-log"] = "card.issue." + logKey + ".card";
+        attrs.onClick = function(e3) {
+          try {
+            if (e3 && e3.stopPropagation) e3.stopPropagation();
+          } catch (err) {
+          }
+          if (onCard) onCard();
+        };
+        attrs.onKeyDown = function(e3) {
+          if (!e3 || e3.target !== e3.currentTarget) return;
+          const k4 = e3.key;
+          if (k4 === "Enter" || k4 === " ") {
+            try {
+              if (e3.preventDefault) e3.preventDefault();
+            } catch (err) {
+            }
+            if (onCard) onCard();
+          }
+        };
+      }
+      return h4("div", attrs, kids);
+    };
+    const PixelIssueMapCard = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const blocked = !!(p3.blockedBy && p3.blockedBy.no);
+      const ini = p3.lit === void 0 ? false : !!p3.lit;
+      const pair = React.useState(ini);
+      const lit = p3.lit !== void 0 ? !!p3.lit : pair[0];
+      const flip = function(v3) {
+        if (p3.lit === void 0) pair[1](v3);
+        if (p3.onLitChange) p3.onLitChange(v3);
+        try {
+          const doc = typeof document !== "undefined" ? document : null;
+          const o3 = doc && p3.blockedBy && p3.blockedBy.cardId ? doc.getElementById(String(p3.blockedBy.cardId)) : null;
+          if (o3 && o3.classList) {
+            if (v3) o3.classList.add("lit");
+            else o3.classList.remove("lit");
+          }
+        } catch (err) {
+        }
+      };
+      const selPair = React.useState(false);
+      const sel = selPair[0];
+      const logKey = "map." + (String(p3.mapNo || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24) || "x");
+      const cls = "cd-card wide" + (p3.open ? "" : " old closed") + (blocked && !lit ? " dim" : "") + (lit ? " lit" : "") + (sel ? " on" : "");
+      const setLitNow = function(e3, v3) {
+        try {
+          const el = e3 && e3.currentTarget ? e3.currentTarget : null;
+          if (el && el.classList) {
+            if (v3) el.classList.add("lit");
+            else el.classList.remove("lit");
+          }
+        } catch (err) {
+        }
+      };
+      const kids = [];
+      kids.push(h4(PixelCardPin, { key: "pin", kind: "sealtop" }));
+      const noEl = h4("span", { key: "no", className: "cd-nonum", style: { background: "#8b5cf6", color: "#fff" } }, "#" + (p3.mapNo || ""));
+      kids.push(h4("div", { key: "hd", className: "cd-hd" }, [noEl, p3.sign ? h4(PixelInlineSign, { key: "s", kind: p3.sign }) : null, p3.open ? null : h4(PixelClosedSeal, { key: "c" })]));
+      const suffix = p3.claimedBy ? h4("span", { className: "cd-take" }, tr("card.claimedBy", { n: p3.claimedBy })) : null;
+      kids.push(h4(PixelCardTitle, { key: "tt", text: p3.title, tall: true, suffix }));
+      if (blocked && p3.blockedBy) kids.push(h4(PixelBlockedSeal, { key: "bs", no: p3.blockedBy.no }));
+      kids.push(h4(PixelMapDots, { key: "dots", cells: p3.dots || [] }));
+      kids.push(h4(PixelMapStats, { key: "st", kids: p3.kids || 0, ready: p3.ready || 0, blocked: p3.blocked || 0 }));
+      kids.push(h4(PixelCardBtns, { key: "ab", logKey, mainLabel: tr("card.execute"), icon: "play", mainColor: "8b5cf6" }));
+      kids.push(h4(PixelCardFoot, { key: "ft", left: tr("card.updated", { n: p3.updatedText || "" }), right: "" }));
+      kids.push(h4(PixelMapCorner, { key: "mc" }));
+      if (p3.blocksChip) kids.push(h4(PixelBlockerChip, { key: "chip", no: p3.blocksChip.no, title: p3.blocksChip.title }));
+      if (blocked) kids.push(h4(PixelDimVeil, { key: "veil" }));
+      const attrs = { className: cls, style: { "--cd-act": "#8b5cf6" }, "data-press": "row", "data-log": "card.map." + logKey + ".row" };
+      if (p3.cardId) attrs.id = p3.cardId;
+      if (blocked) {
+        attrs.tabIndex = 0;
+        attrs.onClick = function(e3) {
+          setLitNow(e3, true);
+          flip(true);
+        };
+        attrs.onFocus = function(e3) {
+          if (e3 && e3.target === e3.currentTarget) {
+            setLitNow(e3, true);
+            flip(true);
+          }
+        };
+        attrs.onBlur = function(e3) {
+          setLitNow(e3, false);
+          try {
+            if (e3 && e3.currentTarget && e3.relatedTarget && e3.currentTarget.contains(e3.relatedTarget)) return;
+          } catch (err) {
+          }
+          flip(false);
+        };
+      } else {
+        attrs.onClick = function() {
+          selPair[1](!sel);
+        };
+      }
+      return h4("div", attrs, kids);
+    };
+    const DOT_RANK = { c: 0, f: 1, w: 2, b: 3 };
+    const PixelMapCard = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const ds = (p3.dots || []).slice().sort(function(x4, y3) {
+        return (DOT_RANK[x4.cls || "c"] || 0) - (DOT_RANK[y3.cls || "c"] || 0);
+      });
+      const hovPair = React.useState(null);
+      const hov = p3.hoverNo !== void 0 ? p3.hoverNo : hovPair[0];
+      const setHov = function(v3) {
+        if (p3.hoverNo === void 0) hovPair[1](v3);
+        if (p3.onHover) p3.onHover(v3);
+      };
+      const cur = ds.filter(function(x4) {
+        return x4.no === hov;
+      })[0] || null;
+      const wall = ds.map(function(x4, i3) {
+        return h4("i", {
+          key: x4.no + "-" + i3,
+          className: x4.cls + (x4.no === hov ? " lit" : ""),
+          onMouseOver: function() {
+            setHov(x4.no || null);
+          }
+        });
+      });
+      const lg = function(k4, c3, label) {
+        return h4("span", { key: k4 }, [h4("i", { key: "i", className: c3 }), label]);
+      };
+      const ro = cur ? h4("div", { key: "ro", className: "cd-readout " + cur.cls }, [
+        h4("span", { key: "k", className: "ro-k" }, "#" + cur.no),
+        h4("span", { key: "s", className: "ro-s" }, cur.stateText),
+        h4("span", { key: "t", className: "ro-t" }, cur.title)
+      ]) : h4("div", { key: "ro", className: "cd-readout idle" }, tr("card.readoutIdle"));
+      return h4("div", { className: "cd-card mapcard" }, [
+        h4(PixelCardPin, { key: "pin", kind: "big" }),
+        h4("div", { key: "hd", className: "cd-hd" }, [
+          h4("b", { key: "n" }, "#" + (p3.mapNo || "")),
+          h4("span", { key: "m" }, tr("card.mapSign")),
+          h4("span", { key: "s", className: "cd-st" + (p3.open ? " open" : "") }, p3.open ? tr("card.openState") : tr("card.closedState"))
+        ]),
+        h4("h3", { key: "tt" }, p3.title),
+        h4("div", { key: "wall", className: "cd-wall" }, wall),
+        h4("div", { key: "lg", className: "cd-legend" }, [
+          lg("f", "f", tr("card.legendReady")),
+          lg("b", "b", tr("card.legendBlocked")),
+          lg("w", "w", tr("card.legendClaimed")),
+          lg("c", "c", tr("card.legendClosed"))
+        ]),
+        ro,
+        h4("div", { key: "ft", className: "cd-ft" }, h4("span", null, tr("card.lastUpdate", { n: p3.updatedText || "", d: p3.dateText || "" })))
+      ]);
+    };
+    styles.insert(PIXEL_CARDS_STYLE_TEXT);
     const emit = function(st) {
     };
     const fetchIssuesPage = function(st, args) {
@@ -9662,6 +11334,70 @@ ${formatProgressEntry(entry)}
       return function(props) {
         return h3(DswsCtx.Provider, { value: cx }, h3(Comp, props));
       };
+    };
+    const DEMO_LABEL_ACTION = { bug: "fix", "needs-triage": "diagnose", "needs-info": "supplement", "ready-for-human": "claim", "ready-for-agent": "execute" };
+    const demoActionOf = function(row) {
+      for (const l3 of row.labels || []) if (DEMO_LABEL_ACTION[l3 && l3.name]) return DEMO_LABEL_ACTION[l3.name];
+      return "execute";
+    };
+    const demoDayOf = function(row) {
+      return String(row && (row.updatedAt || row.createdAt) || "").slice(0, 10);
+    };
+    const demoBlockedBy = function(row, sib) {
+      const first = Array.isArray(row.blockedBy) ? row.blockedBy[0] : null;
+      if (first == null) return null;
+      const no = typeof first === "object" && first.key != null ? String(first.key) : String(first);
+      const hit = (sib || []).filter(function(t3) {
+        return String(t3.key) === no;
+      })[0];
+      return { no, title: hit && hit.title || "" };
+    };
+    const demoDotOf = function(t3) {
+      const closed = String(t3.state || "").toUpperCase() === "CLOSED";
+      const blocked = Array.isArray(t3.blockedBy) && t3.blockedBy.length > 0;
+      const claimed = !!(t3.claimedBy && t3.claimedBy !== "");
+      const cls = closed ? "c" : blocked ? "b" : claimed ? "w" : "f";
+      const stateText = closed ? tr("card.closedState") : blocked ? tr("card.blockedCount") : claimed ? tr("card.doing") : tr("card.pickReady");
+      return { no: String(t3.key), cls, stateText, title: t3.title || "" };
+    };
+    const demoCardsNodes = function(st) {
+      if (!st || !st.snapshot) {
+        return ["U03:等待工具数据(deck_issue_list / deck_issue_counts)…"];
+      }
+      const maps = st.snapshot.maps || [];
+      const container = maps.filter(function(m3) {
+        return (m3.tickets || []).length > 0;
+      })[0];
+      if (!container) return ["快照里没有带子票的容器,卡面待机"];
+      const tickets = container.tickets || [];
+      const colorOf = buildColorOf(st);
+      const t3 = tickets[0];
+      return [
+        h3(PixelIssueCard, {
+          noText: String(t3.key),
+          title: t3.title,
+          action: demoActionOf(t3),
+          closed: String(t3.state || "").toUpperCase() === "CLOSED",
+          bugCorner: (t3.labels || []).some(function(l3) {
+            return l3 && l3.name === "bug";
+          }),
+          tags: (t3.labels || []).map(function(l3) {
+            return { text: l3.name, color: colorOf[l3.name] || "" };
+          }),
+          claimedBy: t3.claimedBy || "",
+          blockedBy: demoBlockedBy(t3, tickets),
+          updatedText: demoDayOf(t3),
+          colorOf
+        }),
+        h3(PixelMapCard, {
+          mapNo: String(container.key),
+          title: container.title,
+          open: String(container.state || "").toUpperCase() !== "CLOSED",
+          updatedText: demoDayOf(container),
+          dateText: "",
+          dots: tickets.map(demoDotOf)
+        })
+      ];
     };
     const kpiSpan = function(num, label, color) {
       return h3("span", { style: { fontSize: 11, color: color || "var(--dsw-alias-label-secondary,#a1a1aa)" } }, [
@@ -9690,7 +11426,7 @@ ${formatProgressEntry(entry)}
         h3("div", { className: "dsws-tabs" }),
         h3("div", { className: "dsws-body" }, [
           h3("div", { className: "dsws-cgroup" }, [countsRow]),
-          h3("div", { className: "dsws-cgroup" }, ["列表与地图由后续工单搬入"])
+          h3("div", { className: "dsws-cgroup" }, demoCardsNodes(st))
         ])
       ]);
     };
@@ -9708,7 +11444,7 @@ ${formatProgressEntry(entry)}
     };
     showDeckDataRef = function(data) {
       const st = ingestSnapshot(
-        { rows: data.rows, counts: data.counts, workspaceRoot: data.workspaceRoot },
+        { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: data.workspaceRoot },
         { planDeckCounts, rowCountsOf }
       );
       deckPanelState.st = st;
@@ -9785,6 +11521,66 @@ ${formatProgressEntry(entry)}
       promptText,
       promptLanguages
     };
+    window.MattSkillsUpstream.cards = {
+      PixelIssueCard,
+      PixelIssueMapCard,
+      PixelMapCard,
+      atoms: {
+        PixelCardHead,
+        PixelCardPin,
+        PixelCardTitle,
+        PixelCardNo,
+        PixelCardTags,
+        PixelCardNote,
+        PixelCardFoot,
+        PixelCornerMark,
+        PixelInlineSign,
+        PixelClosedSeal,
+        PixelBlockedSeal,
+        PixelBlockerChip,
+        PixelDimVeil,
+        PixelCardIcon,
+        PixelCardBtns,
+        PixelMapDots,
+        PixelMapStats,
+        PixelMapCorner
+      },
+      theme: {
+        CARD_ACTION_COLORS,
+        CARD_ACTION_STYLE,
+        cardColorOf,
+        cardLum,
+        cardInkOn,
+        cardBoostOn
+      },
+      widgets: {
+        PixelBtn,
+        PixelDot,
+        PixelNum,
+        PixelStateIcon,
+        PixelSeal,
+        PixelSkeleton,
+        PixelBanner,
+        PixelStatusLine,
+        Dot,
+        TypeChip,
+        chipProps,
+        chipKeyDown,
+        HoverTip,
+        Tip,
+        ticketBadgeOf,
+        LIQUID_INK_CLASS,
+        liquidInkPlace,
+        useLiquidInk,
+        Ic,
+        Icon,
+        TYPE_ICON,
+        computeTipPlace
+      },
+      renderInto: function(Component, container, props) {
+        R(h3(withCx(Component), props || {}), container);
+      }
+    };
   }
   var WORKSPACE_URI = "ui://zcode-mattpocock-skills-deck/workspace.json";
   async function fetchWorkspace(client) {
@@ -9806,7 +11602,20 @@ ${formatProgressEntry(entry)}
       ]);
       const rows = listRes && listRes.structuredContent && listRes.structuredContent.rows || [];
       const counts = countsRes && countsRes.structuredContent && countsRes.structuredContent.counts || null;
-      return { rows, counts };
+      let labels = null;
+      try {
+        const lr = await client.callTool("deck_issue_list_labels", {});
+        const sc = lr && lr.structuredContent;
+        if (sc && sc.colors && typeof sc.colors === "object") {
+          labels = Object.keys(sc.colors).map(function(n2) {
+            return { name: String(n2), color: String(sc.colors[n2] || "").replace(/^#/, "") };
+          }).filter(function(l3) {
+            return l3.color !== "";
+          });
+        }
+      } catch (e22) {
+      }
+      return { rows, counts, labels };
     } catch (e3) {
       if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 工具数据拉取失败:", e3);
       return null;
@@ -9828,7 +11637,7 @@ ${formatProgressEntry(entry)}
     const data = d3.deckData || (d3.fetchData === true ? await fetchDeckData(client) : null);
     if (data && showDeckDataRef) {
       try {
-        showDeckDataRef({ rows: data.rows, counts: data.counts, workspaceRoot: workspace && workspace.root || "" });
+        showDeckDataRef({ rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: workspace && workspace.root || "" });
       } catch (e3) {
         if (typeof console !== "undefined" && console.warn) console.warn("[upstream] ingest 接驳失败:", e3);
       }

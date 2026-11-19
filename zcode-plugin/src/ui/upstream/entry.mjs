@@ -1,4 +1,5 @@
-// entry.mjs —— 上游 src/client/index.ts 的骨架裁剪段(U01 立;U02 扩 kernel 域与数据接驳)。
+// entry.mjs —— 上游 src/client/index.ts 的骨架裁剪段(U01 立;U02 扩 kernel 域与数据接驳;
+// U03 扩视觉层:timeConfig/portal/icons + 视觉小件 + cards 家族,卡面临时挂点见下)。
 //
 // 本文件由 build-upstream.mjs 拼接后进 bundle:
 //   - `// ==== <kind>:<name> (spliced by build) ====` 标记处换上游叶子真源
@@ -7,8 +8,9 @@
 //   - 「@splice-anchor: trackerDeck」行是本仓自有锚点(上游无此标记):tracker 侧真源
 //     (progress/deck-counts/tabsfold/deck-derive)经它注入同一闭包 —— 上游客户端闭包不含
 //     这几份(宿主在服务侧消费),本仓把数据面接进闭包,不冒充上游标记名;
-//   - 标记之间的装配段:上游 index.ts 已有装配段(locale/tr 回退)按原文搬;其余是本仓自有段
-//     (后续工单继续换 leaf:panelAssembly 等上游叶子)。
+//   - 标记之间的装配段:上游 index.ts 已有装配段(locale/tr 回退、TYPE_ICON、
+//     styles.insert(PIXEL_CARDS_STYLE_TEXT))按原文搬;其余是本仓自有段(后续工单继续换
+//     leaf:panelAssembly 等上游叶子)。
 //
 // 方言(上游动态版方言同款):apply 闭包里的 React/styles/timer/h 等自由变量解析到
 // 模块作用域 —— 上游由 DSH 宿主提供;本 bundle 用 preact/compat 充当 React(ADR-0002
@@ -19,6 +21,9 @@ import { createSeamCtx, SEAM_SERVICE_IDS } from "./seam.mjs";
 import { ingestSnapshot, trackerDeckOf } from "./ingest.mjs";
 
 const React = PreactCompat;
+// ReactDOM 名字给 kernel:portal 的挂顶底座(上游由宿主注入 react-dom;preact/compat 的
+// createPortal 与本 bundle 的 Preact 同源,取不到时 portal 自己退化原地渲染,不抛)。
+const ReactDOM = PreactCompat;
 const styles = {
   // 上游 B2 style 接缝(pkg 方言 shim 同款):插 <style> 进 head,返回撤销器
   insert(css) {
@@ -45,6 +50,8 @@ function apply(ctx) {
   const slots = ctx.get("slots");
   if (slots === undefined) return;
   // ==== leaf:hostShim (spliced by build) ====
+  // ==== shared:timeConfig (spliced by build) ====
+  // ==== kernel:portal (spliced by build) ====
   // ==== kernel:containerView (spliced by build) ====
   // ==== kernel:ticketLabel (spliced by build) ====
   // ==== kernel:motion (spliced by build) ====
@@ -73,12 +80,51 @@ function apply(ctx) {
 
   // ---- 词表五份(票身份算法:effortOf/idOf/idOfParts/refKeyOf + 常量) ----
   // ==== shared:trackerConstants (spliced by build) ====
+  // ---- TYPE_ICON 装配行(上游 index.ts §1 段原文照搬:chips 的 TypeChip 读它) ----
+  // 图标按类型分发。issue(普通票:没有 wayfinder 类型标签的票)故意没有图标 —— 徽章只出文字、灰底,
+  // 前面挂一个圆点像多出来的项目符号,去掉后文字才左右对称;齿轮必须留给任务票,不让普通票兜底落进去(#626)
+  const TYPE_ICON = { research: 'search', prototype: 'hammer', grilling: 'chat', task: 'gear', map: 'map' }
+  // ==== kernel:icons (spliced by build) ====
   // ==== kernel:promptData (spliced by build) ====
   // ==== kernel:prompts (spliced by build) ====
   // ==== kernel:deckState (spliced by build) ====
   // ==== kernel:storeDerived (spliced by build) ====
   // ==== kernel:issuePages (spliced by build) ====
   /* @splice-anchor: trackerDeck */
+
+  // ---- 视觉小件 + cards 家族(工单 U03;上游 index.ts 标记序原位) ----
+  // ==== leaf:chips (spliced by build) ====
+  // ==== leaf:tipPlace (spliced by build) ====
+  // ==== leaf:hoverTip (spliced by build) ====
+  // ==== leaf:tip (spliced by build) ====
+  // ==== leaf:ticketBadge (spliced by build) ====
+  // ==== leaf:openFolder (spliced by build) ====
+  // ==== leaf:liquidInk (spliced by build) ====
+  // ==== leaf:pixelBtn (spliced by build) ====
+  // ==== leaf:pixelDot (spliced by build) ====
+  // ==== leaf:pixelNum (spliced by build) ====
+  // ==== leaf:pixelStateIcon (spliced by build) ====
+  // ==== leaf:pixelSeal (spliced by build) ====
+  // ==== leaf:pixelSkeleton (spliced by build) ====
+  // ==== leaf:pixelBanner (spliced by build) ====
+  // ==== leaf:pixelStatusLine (spliced by build) ====
+  // ==== leaf:cardsTheme (spliced by build) ====
+  // ==== leaf:cardsStyles (spliced by build) ====
+  // ==== leaf:cardPin (spliced by build) ====
+  // ==== leaf:cardTitle (spliced by build) ====
+  // ==== leaf:cardNo (spliced by build) ====
+  // ==== leaf:cardTags (spliced by build) ====
+  // ==== leaf:cardNote (spliced by build) ====
+  // ==== leaf:cardFoot (spliced by build) ====
+  // ==== leaf:cardStamp (spliced by build) ====
+  // ==== leaf:blockedChrome (spliced by build) ====
+  // ==== leaf:cardBtns (spliced by build) ====
+  // ==== leaf:mapDots (spliced by build) ====
+  // ==== leaf:cardHead (spliced by build) ====
+  // ==== leaf:issueCard (spliced by build) ====
+  // ==== leaf:issueMapCard (spliced by build) ====
+  // ==== leaf:mapCard (spliced by build) ====
+  styles.insert(PIXEL_CARDS_STYLE_TEXT);
 
   // ---- U02 装配段(本仓自有) ----
   // 宿主专属名字的最小桩(上游由 DSH 宿主在闭包外提供;此处记录缺口,不删上游代码):
@@ -116,6 +162,67 @@ function apply(ctx) {
   // 面板壳:上游 dsws-panel 浮卡(460px、深色 --dsw-* 令牌回退值),结构对应上游 Dock 的
   // 头/页签/正文三段;U02 起正文头部显示上游 kernel 算出的 counts(checksumsOf/ListTab 的
   // 面板口径:可接 = 后端 open - 占用;占用/故障/诊断读 issues 域,见 ingest 头注与对拍测试)。
+  // ---- U03 卡面临时挂点(本仓自有段;U04 由列表/地图视图层接手后撤) ----
+  // 投影口径是上游 mapDetailV2/model/tickets/ticketCardFacts.ts 的同构裁剪:动作映射取
+  // 标签→样张键的小表,墙格四态色点(c 已关/f 可接/w 已认领/b 被挡)。挑第一个带子票的
+  // 容器画一张 PixelMapCard,其第一张子票画一张 PixelIssueCard。
+  const DEMO_LABEL_ACTION = { bug: "fix", "needs-triage": "diagnose", "needs-info": "supplement", "ready-for-human": "claim", "ready-for-agent": "execute" };
+  const demoActionOf = function (row) {
+    for (const l of row.labels || []) if (DEMO_LABEL_ACTION[l && l.name]) return DEMO_LABEL_ACTION[l.name];
+    return "execute";
+  };
+  const demoDayOf = function (row) {
+    return String((row && (row.updatedAt || row.createdAt)) || "").slice(0, 10);
+  };
+  const demoBlockedBy = function (row, sib) {
+    const first = Array.isArray(row.blockedBy) ? row.blockedBy[0] : null;
+    if (first == null) return null;
+    const no = typeof first === "object" && first.key != null ? String(first.key) : String(first);
+    const hit = (sib || []).filter(function (t) { return String(t.key) === no; })[0];
+    return { no: no, title: (hit && hit.title) || "" };
+  };
+  const demoDotOf = function (t) {
+    const closed = String(t.state || "").toUpperCase() === "CLOSED";
+    const blocked = Array.isArray(t.blockedBy) && t.blockedBy.length > 0;
+    const claimed = !!(t.claimedBy && t.claimedBy !== "");
+    const cls = closed ? "c" : blocked ? "b" : claimed ? "w" : "f";
+    const stateText = closed ? tr("card.closedState") : blocked ? tr("card.blockedCount") : claimed ? tr("card.doing") : tr("card.pickReady");
+    return { no: String(t.key), cls: cls, stateText: stateText, title: t.title || "" };
+  };
+  const demoCardsNodes = function (st) {
+    if (!st || !st.snapshot) {
+      return ["U03:等待工具数据(deck_issue_list / deck_issue_counts)…"];
+    }
+    const maps = st.snapshot.maps || [];
+    const container = maps.filter(function (m) { return (m.tickets || []).length > 0; })[0];
+    if (!container) return ["快照里没有带子票的容器,卡面待机"];
+    const tickets = container.tickets || [];
+    const colorOf = buildColorOf(st);
+    const t = tickets[0];
+    return [
+      h(PixelIssueCard, {
+        noText: String(t.key),
+        title: t.title,
+        action: demoActionOf(t),
+        closed: String(t.state || "").toUpperCase() === "CLOSED",
+        bugCorner: (t.labels || []).some(function (l) { return l && l.name === "bug"; }),
+        tags: (t.labels || []).map(function (l) { return { text: l.name, color: colorOf[l.name] || "" }; }),
+        claimedBy: t.claimedBy || "",
+        blockedBy: demoBlockedBy(t, tickets),
+        updatedText: demoDayOf(t),
+        colorOf: colorOf,
+      }),
+      h(PixelMapCard, {
+        mapNo: String(container.key),
+        title: container.title,
+        open: String(container.state || "").toUpperCase() !== "CLOSED",
+        updatedText: demoDayOf(container),
+        dateText: "",
+        dots: tickets.map(demoDotOf),
+      }),
+    ];
+  };
+
   const kpiSpan = function (num, label, color) {
     return h("span", { style: { fontSize: 11, color: color || "var(--dsw-alias-label-secondary,#a1a1aa)" } }, [
       h("b", { style: { fontWeight: 700 } }, [String(num == null ? tr("list.countsUnknown") : num)]),
@@ -145,7 +252,7 @@ function apply(ctx) {
       h("div", { className: "dsws-tabs" }),
       h("div", { className: "dsws-body" }, [
         h("div", { className: "dsws-cgroup" }, [countsRow]),
-        h("div", { className: "dsws-cgroup" }, ["列表与地图由后续工单搬入"]),
+        h("div", { className: "dsws-cgroup" }, demoCardsNodes(st)),
       ]),
     ]);
   };
@@ -166,7 +273,7 @@ function apply(ctx) {
   };
   showDeckDataRef = function (data) {
     const st = ingestSnapshot(
-      { rows: data.rows, counts: data.counts, workspaceRoot: data.workspaceRoot },
+      { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: data.workspaceRoot },
       { planDeckCounts: planDeckCounts, rowCountsOf: rowCountsOf }
     );
     deckPanelState.st = st;
@@ -211,6 +318,45 @@ function apply(ctx) {
     // locale / prompts 抽检口
     uiText: uiText, langChainOf: langChainOf, promptText: promptText, promptLanguages: promptLanguages,
   };
+
+  // 视觉层自检面(工单 U03;U04 视图层的接口约定):
+  //   cards.PixelIssueCard / PixelIssueMapCard / PixelMapCard —— 三张大卡组件(props 契约见
+  //     上游 views/cards/cardProps.d.ts,全字段可选);
+  //   cards.atoms —— 共享小件(Pin/Title/No/Tags/Note/Foot/角标与封条/按钮组/点墙/卡头);
+  //   cards.theme —— 主题纯函数(CARD_ACTION_COLORS/CARD_ACTION_STYLE/cardColorOf/cardLum/
+  //     cardInkOn/cardBoostOn);
+  //   cards.widgets —— 其余视觉小件(pixel* 八件、chips 的 Dot/TypeChip、HoverTip/Tip、
+  //     ticketBadgeOf、liquidInk 常量、kernel:icons 的 Ic/Icon);
+  //   cards.renderInto(Component, container, props) —— 挂载助手:闭包内 Preact 的 h/render
+  //     加 DswsCtx 接线一并带上,视图层拿卡往任意容器挂列表即可,不必再碰 Preact 实例。
+  window.MattSkillsUpstream.cards = {
+    PixelIssueCard: PixelIssueCard,
+    PixelIssueMapCard: PixelIssueMapCard,
+    PixelMapCard: PixelMapCard,
+    atoms: {
+      PixelCardHead: PixelCardHead, PixelCardPin: PixelCardPin, PixelCardTitle: PixelCardTitle,
+      PixelCardNo: PixelCardNo, PixelCardTags: PixelCardTags, PixelCardNote: PixelCardNote,
+      PixelCardFoot: PixelCardFoot, PixelCornerMark: PixelCornerMark, PixelInlineSign: PixelInlineSign,
+      PixelClosedSeal: PixelClosedSeal, PixelBlockedSeal: PixelBlockedSeal, PixelBlockerChip: PixelBlockerChip,
+      PixelDimVeil: PixelDimVeil, PixelCardIcon: PixelCardIcon, PixelCardBtns: PixelCardBtns,
+      PixelMapDots: PixelMapDots, PixelMapStats: PixelMapStats, PixelMapCorner: PixelMapCorner,
+    },
+    theme: {
+      CARD_ACTION_COLORS: CARD_ACTION_COLORS, CARD_ACTION_STYLE: CARD_ACTION_STYLE,
+      cardColorOf: cardColorOf, cardLum: cardLum, cardInkOn: cardInkOn, cardBoostOn: cardBoostOn,
+    },
+    widgets: {
+      PixelBtn: PixelBtn, PixelDot: PixelDot, PixelNum: PixelNum, PixelStateIcon: PixelStateIcon,
+      PixelSeal: PixelSeal, PixelSkeleton: PixelSkeleton, PixelBanner: PixelBanner, PixelStatusLine: PixelStatusLine,
+      Dot: Dot, TypeChip: TypeChip, chipProps: chipProps, chipKeyDown: chipKeyDown,
+      HoverTip: HoverTip, Tip: Tip, ticketBadgeOf: ticketBadgeOf,
+      LIQUID_INK_CLASS: LIQUID_INK_CLASS, liquidInkPlace: liquidInkPlace, useLiquidInk: useLiquidInk,
+      Ic: Ic, Icon: Icon, TYPE_ICON: TYPE_ICON, computeTipPlace: computeTipPlace,
+    },
+    renderInto: function (Component, container, props) {
+      render(h(withCx(Component), props || {}), container);
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -240,7 +386,22 @@ async function fetchDeckData(client) {
     ]);
     const rows = (listRes && listRes.structuredContent && listRes.structuredContent.rows) || [];
     const counts = (countsRes && countsRes.structuredContent && countsRes.structuredContent.counts) || null;
-    return { rows: rows, counts: counts };
+    // 标签色板(deck_issue_list_labels)单独容忍缺席:拿不到时 ingest 回落行面聚合,
+    // 卡面标签墨块退缺省紫,不算失败。
+    let labels = null;
+    try {
+      const lr = await client.callTool("deck_issue_list_labels", {});
+      const sc = lr && lr.structuredContent;
+      // 色板 = colors 表全体键(规范标签 + 内置 wayfinder/bug 色;bug 这类只进 colors 不进 labels 名单)
+      if (sc && sc.colors && typeof sc.colors === "object") {
+        labels = Object.keys(sc.colors)
+          .map(function (n) { return { name: String(n), color: String(sc.colors[n] || "").replace(/^#/, "") }; })
+          .filter(function (l) { return l.color !== ""; });
+      }
+    } catch (e2) {
+      void e2; // 色板缺席走聚合兜底
+    }
+    return { rows: rows, counts: counts, labels: labels };
   } catch (e) {
     if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 工具数据拉取失败:", e);
     return null;
@@ -266,7 +427,7 @@ async function boot(deps) {
   const data = d.deckData || (d.fetchData === true ? await fetchDeckData(client) : null);
   if (data && showDeckDataRef) {
     try {
-      showDeckDataRef({ rows: data.rows, counts: data.counts, workspaceRoot: (workspace && workspace.root) || "" });
+      showDeckDataRef({ rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: (workspace && workspace.root) || "" });
     } catch (e) {
       if (typeof console !== "undefined" && console.warn) console.warn("[upstream] ingest 接驳失败:", e);
     }
