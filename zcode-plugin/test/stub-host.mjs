@@ -162,14 +162,25 @@ export async function startServer(workspaceRoot) {
 // ---------------------------------------------------------------------------
 // stub 桥宿主:假 window/document + 假宿主窗口。页面发 postMessage → 这里应答:
 //   ui/initialize      → 宿主自己应答(空能力)
+//   ui/message         → 宿主自己应答(空 result,工单 07 动作发话;excalidraw 实跑同形状);
+//                        failUiMessage 回协议错;holdUiMessage 挂起驱动「发送中」态
 //   resources/read     → 转发给真 server(dist/ui 资产)
 //   tools/call         → 转发给真 server(fixtures 预录的工具响应);failTools 回协议错;
 //                        failNames 只让名单内的工具失败(驱动「列表成功、get 失败」)
 // holdTools 为 true 时挂起 tools/call 不应答(驱动「加载中」态断言);
 // holdToolsNow() 让挂起从某一刻才开始(先进列表、再挂住 get)。
 // ---------------------------------------------------------------------------
-export function makeStubHost({ server, failTools = false, holdTools = false, failNames = null } = {}) {
+export function makeStubHost({
+  server,
+  failTools = false,
+  holdTools = false,
+  failNames = null,
+  failUiMessage = false,
+  holdUiMessage = false,
+} = {}) {
   let holding = holdTools; // releaseTools() 放行后被挂起的 tools/call
+  let holdingUi = holdUiMessage; // releaseUiMessage() 放行后被挂起的 ui/message
+  const heldUi = [];
   const failSet = failNames instanceof Set ? failNames : null;
   const messageListeners = [];
   const winListeners = new Map(); // type → [fn];window 级通用事件(resize 等)
@@ -212,6 +223,18 @@ export function makeStubHost({ server, failTools = false, holdTools = false, fai
       dispatch({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: "2026-01-26", hostInfo: { name: "stub-host", version: "0" }, hostCapabilities: {}, hostContext: {} } });
       return;
     }
+    if (msg.method === "ui/message") {
+      if (failUiMessage) {
+        dispatch({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: "stub: 消息发送失败(ui/message)" } });
+        return;
+      }
+      if (holdingUi) {
+        heldUi.push(msg);
+        return;
+      }
+      dispatch({ jsonrpc: "2.0", id: msg.id, result: {} });
+      return;
+    }
     if (msg.method === "tools/call" && (failTools || (failSet && failSet.has(msg.params?.name)))) {
       dispatch({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: `stub: 工具调用失败(${msg.params?.name})` } });
       return;
@@ -247,6 +270,7 @@ export function makeStubHost({ server, failTools = false, holdTools = false, fai
     head,
     body,
     createElement: (tag) => new El(tag),
+    createElementNS: (ns, tag) => new El(tag), // SVG 等命名空间元素(工单 07 动作图标);桩无渲染,同 El
     createTextNode: (t) => {
       const n = new El("#text");
       n.textContent = t;
@@ -274,6 +298,11 @@ export function makeStubHost({ server, failTools = false, holdTools = false, fai
     /** 从此刻起挂起 tools/call(先进列表、再卡住详情取数)。 */
     holdToolsNow() {
       holding = true;
+    },
+    /** 放行被 holdUiMessage 挂起的 ui/message(驱动发送中→已发送的转折)。 */
+    async releaseUiMessage() {
+      holdingUi = false;
+      for (const msg of heldUi.splice(0)) await respond(msg);
     },
     /** 合成 window resize(驱动折叠重算等 resize 监听)。 */
     fireResize() {

@@ -1,8 +1,9 @@
-// MattSkills 详情视图(工单 05):列表行点击后的只读详情页。
+// MattSkills 详情视图(工单 05):列表行点击后的只读详情页;工单 07 起挂动作栏。
 // 纯脚本无 import,与 app.js 由 build.mjs 拼进同一 bundle;app.js 在行点击时经
 // window.MattSkillsDetail.open 调进来。结构对照上游 IssueDetail 的 M1 子集
 // (port-notes/detail-page.md):粘性顶栏(返回+编号+标题,长文按阶梯折叠) → 头部(编号+标题)
-// → 元行(状态/标签/认领/日期) → 正文(三态 + markdown 基础渲染) → 评论时间线 → 只读提示。
+// → 元行(状态/标签/认领/日期) → 动作栏(工单 07,档位按十级阶梯,经桥 ui/message 发话)
+// → 正文(三态 + markdown 基础渲染) → 评论时间线 → 只读提示。
 // 取数口径(#693):正文与评论一律以 deck_issue_get 那次取数为准;列表行只做轻量预览(元行)。
 "use strict";
 (function () {
@@ -21,6 +22,12 @@
     stateOpen: "在办",
     stateClosed: "已关闭",
     readOnlyHint: "只读视图:改动请直接编辑 .scratch 卡片文件",
+    // 动作栏(工单 07;悬停文案 = 上游 tip.detailClosedReadonly / tip.detailBlockedBy)
+    actSending: "发送中…",
+    actSent: "已发送",
+    actFail: "发送失败:",
+    actClosedTip: "这张票已关闭，只能查看。",
+    actBlockedTip: "被 {n} 阻塞，等它们关闭后才能执行。",
   };
 
   // 上游 IssueDetailComments 的显示切片页大小(detail-page.md §2):
@@ -72,6 +79,12 @@
     "wayfinder:grilling": "9d7cd8",
     "wayfinder:task": "10b981",
   };
+
+  // 像素卡/动作域(工单 04/07,bundle 里 cards.mjs 与 actions.mjs 在本段之前挂 globalThis)。
+  var Cards = globalThis.MattSkillsCards || {};
+  var Actions = globalThis.MattSkillsActions || {};
+  // 页面 colorOf 表(与 app.js 同源直拷):标签配置色 + implement 档塞规格身份色。
+  var COLOR_OF = Object.assign({}, LABEL_COLORS, { implement: "1D4ED8" });
 
   // ---- 描述抽取:整卡 markdown 里去掉标题/字段行/隐藏注释/Comments 段,剩下的才是「描述」 ----
   function descriptionOf(raw) {
@@ -293,6 +306,93 @@
     return meta;
   }
 
+  // ---- 动作栏(工单 07):十级阶梯档位 → 上游动作模板 → 经桥 ui/message 发进当前对话 ----
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  /** 像素卡图标(PixelCardBtns 的 ICB 结构化直拷,viewBox 0 0 24 24,12×12,currentColor 随字色)。 */
+  function iconSvg(doc, name) {
+    var svg = doc.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "12");
+    svg.setAttribute("height", "12");
+    svg.setAttribute("class", "ms-abtn-ic");
+    var parts = (Actions.ACTION_ICONS || {})[name] || [];
+    for (var p of parts) {
+      var n = doc.createElementNS(SVG_NS, p.tag);
+      for (var k in p.attrs) n.setAttribute(k, p.attrs[k]);
+      svg.append(n);
+    }
+    return svg;
+  }
+
+  /**
+   * 详情动作栏:一颗主动作按钮(档位 = rowActionKind,样式/图标按 CARD_ACTION_STYLE,
+   * 实心底=主色字=cardInkOn / 描线边=主色墨字)+ 状态位。容器行不画(容器三态动作条不在本票)。
+   * 门控 detailTopGateOf:关闭/被明确 open 的票阻塞 → 置灰不可发(未知状态不置灰)。
+   */
+  function renderActionBar(doc, row, seq) {
+    if (row.type === "map" || row.type === "spec") return null;
+    if (!Actions.buildActionPrompt || !Cards.rowActionKind) return null; // 动作域缺席(bundle 异常)不画,不拦详情
+    var kind = Cards.rowActionKind(row);
+    var style = (Cards.CARD_ACTION_STYLE || {})[kind] || {};
+    var hex = Cards.cardColorOf ? Cards.cardColorOf(style.colorKey, COLOR_OF, kind) : "8b5cf6";
+
+    var bar = el(doc, "div", "ms-actionbar");
+    var btn = el(doc, "button", "ms-abtn" + (style.hollow ? " hollow" : ""));
+    btn.setAttribute("type", "button");
+    btn.setAttribute("data-kind", kind);
+    btn.setAttribute("data-icon", style.icon || "play");
+    btn.append(iconSvg(doc, style.icon));
+    btn.append(el(doc, "span", "ms-abtn-lbl", (Actions.ACTION_LABELS || {})[kind] || kind));
+    if (style.hollow) {
+      btn.style.borderColor = "#" + hex; // 描线档:边=主色,透明底,墨字
+    } else {
+      btn.style.background = "#" + hex; // 实心档:底=主色,字=cardInkOn
+      btn.style.color = Cards.cardInkOn ? Cards.cardInkOn(hex) : "#1c1004";
+      if (Cards.cardBoostOn && Cards.cardBoostOn(hex)) btn.setAttribute("data-cd-boost", "1");
+    }
+    var status = el(doc, "span", "ms-act-status");
+    bar.append(btn, status);
+
+    var gate = Actions.detailTopGateOf ? Actions.detailTopGateOf(row)
+      : { clickable: true, reason: "none", blockedNumbers: [] };
+    if (!gate.clickable) {
+      // 上游 #1668/#1669:置灰 = aria-disabled + tabIndex -1 + 悬停说原因,点击无动作
+      btn.setAttribute("aria-disabled", "true");
+      btn.setAttribute("tabindex", "-1");
+      btn.setAttribute("title", gate.reason === "closed" ? COPY.actClosedTip
+        : COPY.actBlockedTip.replace("{n}", gate.blockedNumbers.map(function (n) { return "#" + n; }).join("、")));
+    }
+
+    var sending = false;
+    btn.addEventListener("click", function () {
+      if (!gate.clickable || sending) return;
+      sending = true;
+      btn.setAttribute("disabled", "1");
+      status.className = "ms-act-status";
+      status.textContent = COPY.actSending;
+      // {url} 的 M1 值:上游取票链接,本地卡是文件;一行带齐卡号/标题/路径(工单验收的上下文占位)
+      var ref = numberText(row) + " " + String(row.title || "");
+      if (row.url) ref += "（" + row.url + "）";
+      var prompt = Actions.buildActionPrompt(kind, { url: ref });
+      cur.client.sendMessage(prompt).then(
+        function () {
+          if (!cur || cur.seq !== seq) return; // 已返回列表/已换卡:迟到应答丢弃
+          sending = false;
+          btn.removeAttribute("disabled");
+          status.textContent = COPY.actSent;
+        },
+        function (err) {
+          if (!cur || cur.seq !== seq) return;
+          sending = false;
+          btn.removeAttribute("disabled");
+          status.className = "ms-act-status is-err";
+          status.textContent = COPY.actFail + ((err && err.message) || String(err));
+        }
+      );
+    });
+    return bar;
+  }
+
   function commentItem(doc, c) {
     var it = el(doc, "div", "ms-cmt-item");
     var head = el(doc, "div", "ms-cmt-head");
@@ -415,6 +515,9 @@
     head.append(hnum, htitle);
     app.append(head);
     app.append(renderMeta(doc, row));
+    // 动作栏(工单 07):元行之下、正文之上;容器行返回 null 不画
+    var actionbar = renderActionBar(doc, row, seq);
+    if (actionbar) app.append(actionbar);
     // 正文块(三态容器)
     var sec = el(doc, "div", "ms-body-sec");
     sec.append(el(doc, "div", "ms-sec-title", COPY.descTitle));
