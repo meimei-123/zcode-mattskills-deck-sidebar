@@ -200,16 +200,33 @@
     root.replaceChildren(app);
   }
 
-  // ---- 入口 ----
-  async function boot(opts) {
-    var client = opts.client;
-    var doc = opts.doc;
-    var root = opts.root;
-    renderLoading(doc, root);
+  // ---- 实时刷新(工单 08) ----
+  // 可见时按 probeIntervalMs(5s,上游活跃探测口径)轮询 counts 的 revision,变化才重拉列表;
+  // document 不可见即暂停(上游黄档 120s 依赖注意力信号,M1 无此信号,不引入)。
+  var POLL_MS = 5000;
+  var ctx = null; // 当前引导会话 {client, doc, root}
+  var pollTimer = null;
+  var lastRevision; // undefined = 未知(服务端没给 revision 就不自动刷新)
+  var everLoaded = false; // 初始加载失败时轮询负责静默重试,成功过就只认 revision 信号
+  var loading = false;
+  var queued = false; // 载入途中又触发:结束后补一轮
+  var visBound = false;
+
+  /** 拉全套数据并渲染;silent 为真时不铺加载态、失败保留已渲染内容(轮询路径)。 */
+  async function reload(opts) {
+    var silent = opts && opts.silent;
+    var c = ctx;
+    if (!c) return;
+    if (!silent) renderLoading(c.doc, c.root);
+    if (loading) {
+      queued = true;
+      return;
+    }
+    loading = true;
     try {
       var results = await Promise.all([
-        client.callTool("deck_issue_list", {}),
-        client.callTool("deck_issue_counts", {}),
+        c.client.callTool("deck_issue_list", {}),
+        c.client.callTool("deck_issue_counts", {}),
       ]);
       var list = results[0];
       var counts = results[1];
@@ -217,15 +234,73 @@
       if (counts && counts.isError) throw Error(textOf(counts) || "deck_issue_counts 失败");
       var listSc = (list && list.structuredContent) || {};
       var countsSc = (counts && counts.structuredContent) || {};
+      everLoaded = true;
+      if (countsSc.revision !== undefined) lastRevision = countsSc.revision;
       if (countsSc.empty || listSc.empty) {
-        renderGuide(doc, root);
+        renderGuide(c.doc, c.root);
         return;
       }
-      renderBoard(doc, root, Array.isArray(listSc.rows) ? listSc.rows : [], countsSc.counts || {});
+      renderBoard(c.doc, c.root, Array.isArray(listSc.rows) ? listSc.rows : [], countsSc.counts || {});
     } catch (e) {
-      renderError(doc, root, e);
+      if (!silent) renderError(c.doc, c.root, e);
+    } finally {
+      loading = false;
+      if (queued) {
+        queued = false;
+        reload({ silent: true });
+      }
     }
   }
 
-  window.MattSkillsPanel = { boot: boot };
+  /** 轮询一格:只打 counts,revision 变了才重拉列表。 */
+  function tick() {
+    var c = ctx;
+    if (!c || loading) return;
+    if (c.doc.hidden) return; // 不可见暂停,不空耗
+    c.client
+      .callTool("deck_issue_counts", {})
+      .then(function (r) {
+        if (!r || r.isError) return; // 失败静默,下轮再试
+        var sc = (r && r.structuredContent) || {};
+        if (lastRevision === undefined) {
+          if (!everLoaded) reload({ silent: true }); // 初始加载失败过:轮询里静默重试
+          return;
+        }
+        if (sc.revision !== undefined && sc.revision !== lastRevision) reload({ silent: true });
+      })
+      .catch(function () {});
+  }
+
+  // ---- 入口 ----
+  async function boot(opts) {
+    var client = opts.client;
+    var doc = opts.doc;
+    var root = opts.root;
+    var pollMs = opts.pollMs === undefined ? POLL_MS : opts.pollMs;
+    stopPolling(); // 重复引导(测试/宿主重挂)先撤旧节拍
+    ctx = { client: client, doc: doc, root: root };
+    lastRevision = undefined;
+    everLoaded = false;
+    if (!visBound && typeof doc.addEventListener === "function") {
+      visBound = true;
+      doc.addEventListener("visibilitychange", function () {
+        if (!doc.hidden) tick(); // 转回可见立即补一格,不等下一拍
+      });
+    }
+    if (pollMs > 0) pollTimer = setInterval(tick, pollMs);
+    await reload({});
+  }
+
+  /** 强刷钩子:写操作/动作后立即重拉(revision 未变也拉;T06/T07 调)。 */
+  function refresh() {
+    return reload({ silent: true });
+  }
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  window.MattSkillsPanel = { boot: boot, refresh: refresh, stopPolling: stopPolling };
 })();

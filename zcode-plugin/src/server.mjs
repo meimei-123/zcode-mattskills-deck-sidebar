@@ -3,9 +3,10 @@
 // 返回结构化结果 + 中文人话摘要)。零依赖;工作区根取宿主注入的 ZCODE_WORKSPACE_ROOT。
 import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scanWorkspace, computeCounts, findCardByScan, thinRow } from "./cards.mjs";
+import { createDeckWatch, refreshFromEnv } from "./watch.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_NAME = "zcode-mattpocock-skills-deck";
@@ -28,11 +29,14 @@ function workspaceRoot() {
   return String(process.env.ZCODE_WORKSPACE_ROOT || process.cwd());
 }
 
+// 工单 08:`.scratch/` 监听 + 数据修订号(发条见 watch.mjs;测试经 ZCODE_REFRESH_* 收短)。
+const deckWatch = createDeckWatch(workspaceRoot(), refreshFromEnv(process.env));
+
 const TOOLS = [
   {
     name: "deck_issue_list",
     description:
-      "列出当前工作区 .scratch/ 下的全部卡片(规格/地图容器行 + 工单行),返回薄行(不含正文与评论全文)。可用 state/labels/type/keys 过滤;labels 为 AND 精确匹配。",
+      "列出当前工作区 .scratch/ 下的全部卡片(规格/地图容器行 + 工单行),返回薄行(不含正文与评论全文)。可用 state/labels/type/keys 过滤;labels 为 AND 精确匹配。响应携带数据修订号 revision(与 deck_issue_counts 同值)。",
     inputSchema: {
       type: "object",
       properties: {
@@ -56,7 +60,7 @@ const TOOLS = [
   {
     name: "deck_issue_counts",
     description:
-      "当前工作区各口径计数:open/closed/total 与面板胶囊口径(可接=frontier、占用、认领、阻塞、故障=bug、诊断=needs-triage)。空工作区返回 0 与 empty 标志,不是错误。",
+      "当前工作区各口径计数:open/closed/total 与面板胶囊口径(可接=frontier、占用、认领、阻塞、故障=bug、诊断=needs-triage)。空工作区返回 0 与 empty 标志,不是错误。响应携带数据修订号 revision;.scratch 监听在线时,票文件读不动则整体拒绝(不给偏小的数),离线降级为静默跳过。",
     inputSchema: { type: "object", properties: {} },
   },
 ];
@@ -104,6 +108,7 @@ function handleCall(name, args) {
   const a = args && typeof args === "object" ? args : {};
   const root = workspaceRoot();
   const scan = scanWorkspace(root);
+  deckWatch.observe(scan); // 请求即探测:签名变了推进 revision(监听离线时的降级新鲜度)
 
   if (name === "deck_issue_list") {
     let rows = scan.rows;
@@ -125,6 +130,7 @@ function handleCall(name, args) {
     }
     const sc = {
       workspaceRoot: root,
+      revision: deckWatch.state().revision,
       empty: scan.empty,
       units: scan.units.map((u) => ({ effortId: u.effortId, kind: u.kind, legacy: u.legacy })),
       counts: computeCounts(scan.rows),
@@ -146,8 +152,19 @@ function handleCall(name, args) {
   }
 
   if (name === "deck_issue_counts") {
+    // 票文件读不动的分派(工单 02 遗留):监听在线按上游「整体拒绝」(不给偏小的数);
+    // 离线是降级态,回落静默跳过(list 永远静默跳过)。
+    if (deckWatch.state().online && Array.isArray(scan.unreadable) && scan.unreadable.length) {
+      const rel = scan.unreadable.map((p) => relative(root, p)).join("、");
+      return {
+        content: [
+          { type: "text", text: `有 ${scan.unreadable.length} 张票文件读不动(${rel}),counts 整体拒绝:不给偏小的数。可先 deck_issue_list 看可读部分,修复文件后会自动跟上。` },
+        ],
+        isError: true,
+      };
+    }
     const counts = computeCounts(scan.rows);
-    const sc = { workspaceRoot: root, empty: scan.empty, counts };
+    const sc = { workspaceRoot: root, revision: deckWatch.state().revision, empty: scan.empty, counts };
     return { content: [{ type: "text", text: summarizeCounts(sc) }], structuredContent: sc };
   }
 
@@ -209,4 +226,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     default:
       return fail(m.id, -32601, `method not found: ${m.method}`);
   }
-}).on("close", () => process.exit(0));
+}).on("close", () => {
+  deckWatch.stop();
+  process.exit(0);
+});
