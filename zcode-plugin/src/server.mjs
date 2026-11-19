@@ -1,11 +1,13 @@
-// MattSkills MCP 服务(工单 01 骨架 + 工单 02 只读工具):stdio JSON-RPC 握手 + panel.html 资源供给
-// + deck_issue_list / deck_issue_get / deck_issue_counts 三个工具(上游契约 list/get/counts 的直翻,
-// 返回结构化结果 + 中文人话摘要)。零依赖;工作区根取宿主注入的 ZCODE_WORKSPACE_ROOT。
+// MattSkills MCP 服务(工单 01 骨架 + 工单 02 只读工具 + 工单 06 写工具):stdio JSON-RPC 握手
+// + panel.html 资源供给 + deck_issue_list / deck_issue_get / deck_issue_counts 三个读工具
+// (上游契约 list/get/counts 的直翻)+ create/update/setLabels/comment/close/reopen 六件写工具,
+// 返回结构化结果 + 中文人话摘要。零依赖;工作区根取宿主注入的 ZCODE_WORKSPACE_ROOT。
 import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scanWorkspace, computeCounts, findCardByScan, thinRow } from "./cards.mjs";
+import { commentIssue, updateStatusIssue, closeIssue, reopenIssue, setLabelsIssue, createIssue } from "./write.mjs";
 import { createDeckWatch, refreshFromEnv } from "./watch.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -62,6 +64,92 @@ const TOOLS = [
     description:
       "当前工作区各口径计数:open/closed/total 与面板胶囊口径(可接=frontier、占用、认领、阻塞、故障=bug、诊断=needs-triage)。空工作区返回 0 与 empty 标志,不是错误。响应携带数据修订号 revision;.scratch 监听在线时,票文件读不动则整体拒绝(不给偏小的数),离线降级为静默跳过。",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "deck_issue_create",
+    description:
+      "建一张工单票:在 .scratch/<effort>/issues/ 下取下一个空闲编号,写 NN-slug.md(标题转 slug,中文保留)。文件头带 DSH-CREATED 与 DSH-ISSUE-KIND: ticket,正文为 impl 票形状(# NN: 标题 + **Status:** open + 可选 **Labels:**)。写回纪律:只产生新文件,不动任何既有卡。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        effort: { type: "string", description: "工作单元目录名(.scratch/ 下),如 m1-core-board;不存在会连目录一起建" },
+        title: { type: "string", description: "卡标题(必填,进 H1 与文件名 slug)" },
+        body: { type: "string", description: "正文(markdown,可空)" },
+        labels: { type: "array", items: { type: "string" }, description: "初始标签名单(可空)" },
+      },
+      required: ["effort", "title"],
+    },
+  },
+  {
+    name: "deck_issue_update",
+    description:
+      "改一张卡的状态行(只动那一行,正文永不重排)。值原样写进 Status 行(加粗/裸写法随原文件);resolved/completed/closed/done 读回计为 closed,其余为 open。已是同值时是幂等 noop,不写盘。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "卡编号或退化身份;同号多卡必须带目录前缀(如 m1-core-board/01)" },
+        status: { type: "string", description: "状态行的新值,如 ready-for-agent / claimed / in-progress" },
+        expectedUpdatedAt: { type: "string", description: "乐观并发:上次看到的卡 updatedAt(ISO);对不上拒绝写" },
+      },
+      required: ["key", "status"],
+    },
+  },
+  {
+    name: "deck_issue_set_labels",
+    description:
+      "整份替换一张卡的标签行(只动那一行/那条 DSH-LABELS 注释)。有可见 Labels 行改可见行;只有 DSH-LABELS 注释改注释(清空删行);两处都有则两处一起改。同值时幂等 noop,不写盘。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "卡编号或退化身份;同号多卡必须带目录前缀" },
+        labels: { type: "array", items: { type: "string" }, description: "新标签全名单(空数组 = 清空标签)" },
+        expectedUpdatedAt: { type: "string", description: "乐观并发:上次看到的卡 updatedAt(ISO);对不上拒绝写" },
+      },
+      required: ["key", "labels"],
+    },
+  },
+  {
+    name: "deck_issue_comment",
+    description:
+      "给一张卡追加评论:块格式 `### 谁 — ISO时间`,追加到 ## Comments 段尾;无该段则在文末新建。只追加,正文与既有评论一字不动。actor 缺省 local。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "卡编号或退化身份;同号多卡必须带目录前缀" },
+        body: { type: "string", description: "评论正文(markdown,可多行)" },
+        actor: { type: "string", description: "评论者名字,缺省 local" },
+        expectedUpdatedAt: { type: "string", description: "乐观并发:上次看到的卡 updatedAt(ISO);对不上拒绝写" },
+      },
+      required: ["key", "body"],
+    },
+  },
+  {
+    name: "deck_issue_close",
+    description:
+      "关一张卡:状态行改 closed(只动那一行);给了 reason 则把原因追加为一条评论(末条同文不重复)。已关的卡再关是幂等 noop。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "卡编号或退化身份;同号多卡必须带目录前缀" },
+        reason: { type: "string", description: "关闭原因(可空;给则记为一条评论)" },
+        actor: { type: "string", description: "原因评论的署名,缺省 local" },
+        expectedUpdatedAt: { type: "string", description: "乐观并发:上次看到的卡 updatedAt(ISO);对不上拒绝写" },
+      },
+      required: ["key"],
+    },
+  },
+  {
+    name: "deck_issue_reopen",
+    description:
+      "重开一张卡:状态行改 ready-for-agent(只动那一行)。已开的卡再开是幂等 noop。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "卡编号或退化身份;同号多卡必须带目录前缀" },
+        expectedUpdatedAt: { type: "string", description: "乐观并发:上次看到的卡 updatedAt(ISO);对不上拒绝写" },
+      },
+      required: ["key"],
+    },
   },
 ];
 
@@ -168,7 +256,44 @@ function handleCall(name, args) {
     return { content: [{ type: "text", text: summarizeCounts(sc) }], structuredContent: sc };
   }
 
+  // ---- 工单 06:写工具六件套(全部走 write.mjs 的单写者队列;返回 Promise) ----
+  if (name === "deck_issue_comment") {
+    return commentIssue(root, a.key, { body: a.body, actor: a.actor, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(root, res, name));
+  }
+  if (name === "deck_issue_update") {
+    return updateStatusIssue(root, a.key, { status: a.status, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(root, res, name));
+  }
+  if (name === "deck_issue_close") {
+    return closeIssue(root, a.key, { reason: a.reason, actor: a.actor, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(root, res, name));
+  }
+  if (name === "deck_issue_reopen") {
+    return reopenIssue(root, a.key, { expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(root, res, name));
+  }
+  if (name === "deck_issue_set_labels") {
+    return setLabelsIssue(root, a.key, { labels: a.labels, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(root, res, name));
+  }
+  if (name === "deck_issue_create") {
+    return createIssue(root, { effort: a.effort, title: a.title, body: a.body, labels: a.labels }).then((res) => finishWrite(root, res, name));
+  }
+
   return { content: [{ type: "text", text: `未知工具 ${name}` }], isError: true };
+}
+
+/** 写操作收尾:失败透人话;成功主动喂 watch 一次新扫描(revision 立即前进,不等 fs.watch 防抖/栅格)。 */
+function finishWrite(root, res, name) {
+  if (!res || res.ok === false) {
+    return { content: [{ type: "text", text: (res && res.message) || `写操作 ${name} 失败` }], isError: true };
+  }
+  try {
+    deckWatch.observe(scanWorkspace(root)); // 写后主动失效:面板下一拍 counts 就能看到新 revision
+  } catch {}
+  const card = res.card;
+  // 可寻址 key(与 get 同口径):正常票带目录前缀;退化身份的 key 自带前缀不重复拼。
+  const addrKey = card ? (String(card.key).includes("/") ? card.key : card.effortId ? `${card.effortId}/${card.key}` : card.key) : undefined;
+  return {
+    content: [{ type: "text", text: res.message || "已写入。" }],
+    structuredContent: { ok: true, changed: !!res.changed, revision: deckWatch.state().revision, key: addrKey, card },
+  };
 }
 
 createInterface({ input: process.stdin }).on("line", (line) => {
@@ -191,8 +316,12 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     case "tools/list":
       return reply(m.id, { tools: TOOLS });
     case "tools/call":
+      // 写工具(工单 06)返回 Promise(单写者队列),读工具仍是同步结果;统一 then 收口。
       try {
-        return reply(m.id, handleCall(m.params?.name, m.params?.arguments));
+        return Promise.resolve(handleCall(m.params?.name, m.params?.arguments)).then(
+          (r) => reply(m.id, r),
+          (e) => reply(m.id, { content: [{ type: "text", text: `处理 ${m.params?.name} 时出错:${e && e.message ? e.message : String(e)}` }], isError: true })
+        );
       } catch (e) {
         return reply(m.id, { content: [{ type: "text", text: `读工作区时出错:${e && e.message ? e.message : String(e)}` }], isError: true });
       }

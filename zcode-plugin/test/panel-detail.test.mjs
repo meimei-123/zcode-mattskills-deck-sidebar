@@ -2,9 +2,12 @@
 // 喂 fixtures 经真 dist/server.mjs 预录的 deck_issue_get 响应,断言可见 DOM:
 // 行点击进详情(粘性顶栏/元行/正文 markdown 基础渲染/评论时间线/只读提示)、
 // 正文三态(还没拿到 ≠ 无描述 ≠ 加载失败)、返回列表恢复、顶栏折叠阶梯、评论分页(页大小 50)。
+// 工单 06 追加写面切片(H/I/J):评论提交、关闭/重开、写失败人话——临时工作区真写盘。
 // fixtures 期望值独立于实现,来自卡片文件手工盘点。
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { makeStubHost, startServer, byClass, byAttr, findAll, sleep, until } from "./stub-host.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url))); // zcode-plugin/
@@ -109,9 +112,9 @@ async function sliceEnter() {
     check("enter: 评论正文", byClass(cmt, "ms-cmt-body")[0]?.textContent.includes("骨架已提交,面板进下一票。") === true,
       byClass(cmt, "ms-cmt-body")[0]?.textContent);
 
-    // 只读提示
-    const ro = byClass(host.root, "ms-readonly")[0];
-    check("enter: 底部只读提示", !!ro && ro.textContent.length > 0, ro?.textContent);
+    // 底部写回纪律提示(工单 06 起详情可写,原只读提示改为纪律说明)
+    const ro = byClass(host.root, "ms-writenote")[0];
+    check("enter: 底部写回纪律提示", !!ro && ro.textContent.length > 0, ro?.textContent);
 
     // 桥包络:get 带目录前缀寻址到点的那张卡
     const getCalls = host.sent.filter((m) => m.method === "tools/call" && m.params?.name === "deck_issue_get");
@@ -384,6 +387,131 @@ async function sliceRefreshGuard() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 工单 06 写面切片共用:临时工作区(拷 fixtures 后真写盘)+ 已渲染列表的宿主
+// ---------------------------------------------------------------------------
+function mkws(fixture) {
+  const dir = mkdtempSync(join(tmpdir(), `t06ui-${fixture}-`));
+  cpSync(join(FIXTURES, fixture), dir, { recursive: true });
+  return dir;
+}
+async function writableBoardHost(fixture = "mixed") {
+  const ws = mkws(fixture);
+  const server = await startServer(ws);
+  const host = makeStubHost({ server });
+  host.start();
+  await until(() => byClass(host.root, "ms-row").length > 0, "rows render");
+  return { ws, server, host };
+}
+const callsOf = (host, name) => host.sent.filter((m) => m.method === "tools/call" && m.params?.name === name);
+
+// ---------------------------------------------------------------------------
+// 切片 H(工单 06):评论提交——输入框 + 提交按钮 → 桥发 deck_issue_comment(带前缀 key);
+// 成功轻反馈;详情评论时间线自动跟上;列表经 refresh() 重拉;磁盘真落 `### local — ISO` 块。
+// ---------------------------------------------------------------------------
+async function sliceWriteComment() {
+  const { ws, server, host } = await writableBoardHost();
+  try {
+    await enterDetail(host, "#m1-core-board/01");
+    await until(() => byClass(host.root, "ms-md-p").length > 0, "detail body");
+    check("write: 评论输入框在详情里", byClass(host.root, "ms-cmt-input").length === 1);
+    check("write: 提交按钮在", byClass(host.root, "ms-cmt-send").length === 1);
+
+    // 空内容本地拦截,不发桥
+    byClass(host.root, "ms-cmt-send")[0].click();
+    check("write: 空评论不发桥", callsOf(host, "deck_issue_comment").length === 0);
+    check("write: 空评论给本地提示", /先写点/.test(byClass(host.root, "ms-write-hint")[0]?.textContent || ""),
+      byClass(host.root, "ms-write-hint")[0]?.textContent);
+
+    // 提交真评论
+    const listCallsBefore = callsOf(host, "deck_issue_list").length;
+    byClass(host.root, "ms-cmt-input")[0].value = "面板评论来了。";
+    byClass(host.root, "ms-cmt-send")[0].click();
+    const sent = await until(() => callsOf(host, "deck_issue_comment").length === 1, "comment sent");
+    check("write: 经桥发 deck_issue_comment", sent);
+    const args = callsOf(host, "deck_issue_comment")[0]?.params?.arguments || {};
+    check("write: 参数带前缀 key 与正文", args.key === "m1-core-board/01" && args.body === "面板评论来了。", JSON.stringify(args));
+
+    check("write: 成功轻反馈(is-ok)", await until(() => byClass(host.root, "is-ok").length === 1, "ok hint"));
+    check("write: 成功反馈文案", /已写入/.test(byClass(host.root, "ms-write-hint")[0]?.textContent || ""),
+      byClass(host.root, "ms-write-hint")[0]?.textContent);
+    check("write: 输入框已清空", byClass(host.root, "ms-cmt-input")[0]?.value === "");
+    check("write: 评论计数 1→2", await until(() => byClass(host.root, "ms-comments-title")[0]?.textContent === "评论 (2)", "count 2"));
+    const items = byClass(host.root, "ms-cmt-item");
+    check("write: 时间线尾出现 @local 新评论",
+      byClass(items[items.length - 1], "ms-cmt-login")[0]?.textContent === "@local" &&
+        (byClass(items[items.length - 1], "ms-cmt-body")[0]?.textContent || "").includes("面板评论来了。"),
+      items[items.length - 1]?.textContent.slice(0, 60));
+    check("write: 写后 refresh() 重拉列表", await until(() => callsOf(host, "deck_issue_list").length > listCallsBefore, "list reloaded"));
+    const disk = readFileSync(join(ws, ".scratch", "m1-core-board", "issues", "01-skeleton.md"), "utf8");
+    check("write: 磁盘落 `### local — ISO` 块", /### local — \d{4}-\d{2}-\d{2}T/.test(disk) && disk.includes("面板评论来了。"));
+  } finally {
+    if (host.win.MattSkillsPanel && typeof host.win.MattSkillsPanel.stopPolling === "function") host.win.MattSkillsPanel.stopPolling();
+    await server.stop();
+    rmSync(ws, { recursive: true, force: true });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 切片 I(工单 06):关闭/重开——按钮随状态翻转;写后元行状态胶囊即时跟上;
+// 桥发 deck_issue_close / deck_issue_reopen;磁盘状态行真换。
+// ---------------------------------------------------------------------------
+async function sliceWriteState() {
+  const { ws, server, host } = await writableBoardHost();
+  try {
+    await enterDetail(host, "#m1-core-board/02");
+    await until(() => byClass(host.root, "ms-md-p").length > 0, "detail body");
+    const btn = byAttr(host.root, "data-act", "close")[0];
+    check("state: open 卡给「关闭卡」按钮", btn?.textContent === "关闭卡", btn?.textContent);
+    check("state: 没有重开按钮", byAttr(host.root, "data-act", "reopen").length === 0);
+
+    btn.click();
+    check("state: 经桥发 deck_issue_close", await until(() => callsOf(host, "deck_issue_close").length === 1, "close sent"));
+    check("state: 参数带前缀 key", callsOf(host, "deck_issue_close")[0]?.params?.arguments?.key === "m1-core-board/02",
+      JSON.stringify(callsOf(host, "deck_issue_close")[0]?.params?.arguments));
+    check("state: 元行胶囊变「已关闭」", await until(() => byClass(host.root, "ms-state-chip")[0]?.textContent === "已关闭", "chip closed"));
+    check("state: 按钮翻转为「重开卡」", await until(() => byAttr(host.root, "data-act", "reopen")[0]?.textContent === "重开卡", "reopen btn"));
+    const disk1 = readFileSync(join(ws, ".scratch", "m1-core-board", "issues", "02-server-read.md"), "utf8");
+    check("state: 磁盘状态行换 closed", disk1.includes("**Status:** closed"), disk1.split("\n").slice(2, 5).join("\n"));
+
+    byAttr(host.root, "data-act", "reopen")[0].click();
+    check("state: 经桥发 deck_issue_reopen", await until(() => callsOf(host, "deck_issue_reopen").length === 1, "reopen sent"));
+    check("state: 胶囊回「在办」", await until(() => byClass(host.root, "ms-state-chip")[0]?.textContent === "在办", "chip open"));
+    check("state: 按钮回「关闭卡」", await until(() => byAttr(host.root, "data-act", "close")[0]?.textContent === "关闭卡", "close btn"));
+    const disk2 = readFileSync(join(ws, ".scratch", "m1-core-board", "issues", "02-server-read.md"), "utf8");
+    check("state: 磁盘状态行换回 ready-for-agent", disk2.includes("**Status:** ready-for-agent"));
+  } finally {
+    if (host.win.MattSkillsPanel && typeof host.win.MattSkillsPanel.stopPolling === "function") host.win.MattSkillsPanel.stopPolling();
+    await server.stop();
+    rmSync(ws, { recursive: true, force: true });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 切片 J(工单 06):写失败显示服务端人话——卡文件被外因挪走后提交,服务端「找不到卡」
+// 的中文错误原样上屏(is-err),输入不丢(可改可重试)。
+// ---------------------------------------------------------------------------
+async function sliceWriteFail() {
+  const { ws, server, host } = await writableBoardHost();
+  try {
+    await enterDetail(host, "#m1-core-board/01");
+    await until(() => byClass(host.root, "ms-md-p").length > 0, "detail body");
+    rmSync(join(ws, ".scratch", "m1-core-board", "issues", "01-skeleton.md"));
+    byClass(host.root, "ms-cmt-input")[0].value = "写给一张被挪走的卡。";
+    byClass(host.root, "ms-cmt-send")[0].click();
+    await until(() => callsOf(host, "deck_issue_comment").length === 1, "comment sent");
+    check("fail: 服务端人话错误上屏(is-err)", await until(() => byClass(host.root, "is-err").length === 1, "err hint"));
+    check("fail: 错误文案是服务端的「找不到卡」",
+      /找不到卡/.test(byClass(host.root, "ms-write-hint")[0]?.textContent || ""),
+      byClass(host.root, "ms-write-hint")[0]?.textContent);
+    check("fail: 输入不丢可重试", byClass(host.root, "ms-cmt-input")[0]?.value === "写给一张被挪走的卡。");
+  } finally {
+    if (host.win.MattSkillsPanel && typeof host.win.MattSkillsPanel.stopPolling === "function") host.win.MattSkillsPanel.stopPolling();
+    await server.stop();
+    rmSync(ws, { recursive: true, force: true });
+  }
+}
+
 await sliceEnter();
 await sliceStates();
 await sliceBack();
@@ -391,6 +519,9 @@ await sliceFold();
 await sliceCommentsPage();
 await sliceMarkdown();
 await sliceRefreshGuard();
+await sliceWriteComment();
+await sliceWriteState();
+await sliceWriteFail();
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);
 process.exit(failures === 0 ? 0 : 1);

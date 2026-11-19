@@ -569,10 +569,80 @@ body:not([data-ds-dark-theme]) [data-cd-boost="1"] {
   padding: 2px 10px;
   cursor: pointer;
 }
-/* 底部只读提示 */
-.ms-readonly {
+/* 底部写回纪律提示(工单 06:详情已可写,提示改为纪律说明) */
+.ms-writenote {
   margin-top: 2px;
   text-align: right;
   font-size: 10px;
   color: var(--ms-ink-faint);
+}
+/* 工单 06:详情写入口(状态按钮 + 评论输入) */
+.ms-writer {
+  margin-top: 10px;
+}
+.ms-writer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ms-cmd-row {
+  display: flex;
+  gap: 8px;
+}
+.ms-cmd-btn {
+  font: inherit;
+  font-size: 11px;
+  color: #d7dae0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.ms-cmd-btn.ms-cmd-close {
+  color: #f85149;
+  border-color: rgba(248, 81, 73, 0.45);
+  background: rgba(248, 81, 73, 0.08);
+}
+.ms-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ms-cmt-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12px;
+  color: #d7dae0;
+  background: #16191f;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+.ms-cmt-input:focus {
+  outline: 1px solid #58a6ff;
+}
+.ms-cmt-send {
+  align-self: flex-end;
+  font: inherit;
+  font-size: 11px;
+  color: #58a6ff;
+  background: rgba(88, 166, 255, 0.12);
+  border: 1px solid rgba(88, 166, 255, 0.45);
+  border-radius: 6px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.ms-write-hint {
+  min-height: 14px;
+  font-size: 11px;
+  color: var(--ms-ink-faint);
+}
+.ms-write-hint.is-ok {
+  color: #3fb950;
+}
+.ms-write-hint.is-err {
+  color: #f85149;
 }

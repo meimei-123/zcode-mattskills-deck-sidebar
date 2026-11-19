@@ -20,7 +20,7 @@
     claimed: "已认领",
     stateOpen: "在办",
     stateClosed: "已关闭",
-    readOnlyHint: "只读视图:改动请直接编辑 .scratch 卡片文件",
+    writeNote: "写回纪律:只动状态行/标签行/评论追加,正文永不重排",
   };
 
   // 上游 IssueDetailComments 的显示切片页大小(detail-page.md §2):
@@ -257,7 +257,7 @@
 
   // ---- 详情状态与取数 ----
   var SEQ = 0;
-  var cur = null; // {seq, client, doc, row, refs:{bodyBox,cmtTitle,cmtList}}
+  var cur = null; // {seq, client, doc, row, refs:{bodyBox,cmtTitle,cmtList,metaSlot}, lastCard, writerApi}
 
   function renderMeta(doc, row) {
     var meta = el(doc, "div", "ms-meta");
@@ -373,12 +373,24 @@
         var card = res && res.structuredContent && res.structuredContent.card;
         if (!card || typeof card.body !== "string") return renderFail(seq, COPY.getBadShape);
         renderCard(card);
+        cur.lastCard = card;
+        // 工单 06:写后重拉到这里,元行与写入口按钮跟着新卡翻新
+        if (cur.refs.metaSlot) cur.refs.metaSlot.replaceChildren(renderMeta(cur.doc, card));
+        if (cur.writerApi) cur.writerApi.render();
       },
       function (err) {
         if (!cur || cur.seq !== seq) return;
         renderFail(seq, (err && err.message) || String(err));
       }
     );
+  }
+
+  /** 写成功后的重拉(工单 06):作废在途应答,重走 fetchDetail。 */
+  function refetchDetail() {
+    if (!cur) return; // 已返回列表:迟到写应答不再动画面
+    var seq = ++SEQ;
+    cur.seq = seq;
+    fetchDetail(seq);
   }
 
   /** 入口:app.js 行点击调进来。shell 即刻渲染(元行用列表行轻量预览),正文/评论等 get 回来。 */
@@ -414,7 +426,10 @@
     htitle.setAttribute("title", title);
     head.append(hnum, htitle);
     app.append(head);
-    app.append(renderMeta(doc, row));
+    // 元行装进槽位:写后重拉新卡时可整块换新(工单 06)
+    var metaSlot = el(doc, "div", "ms-meta-slot");
+    metaSlot.append(renderMeta(doc, row));
+    app.append(metaSlot);
     // 正文块(三态容器)
     var sec = el(doc, "div", "ms-body-sec");
     sec.append(el(doc, "div", "ms-sec-title", COPY.descTitle));
@@ -428,10 +443,28 @@
     var cmtList = el(doc, "div", "ms-cmt-list");
     cmt.append(cmtTitle, cmtList);
     app.append(cmt);
-    // 底部只读提示
-    app.append(el(doc, "div", "ms-readonly", COPY.readOnlyHint));
+    // 工单 06:写入口(评论输入框 + 关闭/重开按钮),实现在 writer.mjs 独立段
+    var writerHost = el(doc, "div", "ms-writer");
+    app.append(writerHost);
+    // 底部写回纪律提示
+    app.append(el(doc, "div", "ms-writenote", COPY.writeNote));
     opts.root.replaceChildren(app);
-    cur.refs = { bodyBox: bodyBox, cmtTitle: cmtTitle, cmtList: cmtList };
+    cur.refs = { bodyBox: bodyBox, cmtTitle: cmtTitle, cmtList: cmtList, metaSlot: metaSlot };
+    cur.writerApi =
+      window.MattSkillsWriter && typeof window.MattSkillsWriter.mount === "function"
+        ? window.MattSkillsWriter.mount({
+            doc: doc,
+            host: writerHost,
+            client: client,
+            getKey: function () {
+              return getArgOf((cur && cur.row) || row);
+            },
+            getCard: function () {
+              return (cur && cur.lastCard) || row;
+            },
+            onWritten: refetchDetail,
+          })
+        : null;
 
     // 折叠:本顶栏挂进上下文,resize/fonts/RO 重算
     bindFoldOnce();
