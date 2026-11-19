@@ -1,0 +1,39 @@
+{
+  "name": "zcode-mattpocock-skills-deck",
+  "version": "0.1.0",
+  "description": "MattSkills 任务看板：侧栏页签读写 .scratch/ 工单，与 agent 共用同一份卡片数据。",
+  "author": {
+    "name": "mattskills-deck"
+  },
+  "license": "MIT",
+  "mcpServers": {
+    "mattskills": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${ZCODE_PLUGIN_ROOT}/dist/server.mjs"],
+      "cwd": "${ZCODE_PROJECT_DIR}",
+      "env": {
+        "ZCODE_WORKSPACE_ROOT": "${ZCODE_PROJECT_DIR}"
+      }
+    }
+  },
+  "ui": {
+    "surfaces": [
+      {
+        "id": "mattskills",
+        "title": {
+          "zh-CN": "MattSkills",
+          "en-US": "MattSkills"
+        },
+        "icon": "square-kanban",
+        "server": "mattskills",
+        "resourceUri": "ui://zcode-mattpocock-skills-deck/panel.html",
+        "availability": "session"
+      }
+    ]
+  },
+  "description_i18n": {
+    "en": "MattSkills task board: a sidebar surface reading and writing .scratch/ tickets, sharing the same card data with the agent.",
+    "zh-CN": "MattSkills 任务看板：侧栏页签读写 .scratch/ 工单，与 agent 共用同一份卡片数据。"
+  }
+}

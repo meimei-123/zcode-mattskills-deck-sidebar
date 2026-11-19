@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>MattSkills</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #101216;
+        color: #d7dae0;
+        font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .wrap {
+        box-sizing: border-box;
+        min-height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      .empty {
+        max-width: 420px;
+        border: 1px solid #262a33;
+        border-radius: 10px;
+        background: #161a21;
+        padding: 20px 22px;
+      }
+      .empty h1 {
+        margin: 0 0 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #e8eaee;
+      }
+      .empty p {
+        margin: 0 0 12px;
+        color: #9aa1ac;
+      }
+      .empty code {
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 12px;
+        color: #7ab7ff;
+        background: #1d232d;
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+      .hint {
+        margin: 0;
+        font-size: 12px;
+        color: #6b7280;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="empty">
+        <h1>还没有工单</h1>
+        <p>此工作区还没有 .scratch/ 工单目录。运行 <code>/setup-matt-pocock-skills</code> 初始化，或让 agent 用 <code>/to-tickets</code> 拆解规格。</p>
+        <p class="hint">生成工单后，本页签会展示任务看板。</p>
+      </div>
+    </div>
+  </body>
+</html>
