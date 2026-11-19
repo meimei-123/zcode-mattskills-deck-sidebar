@@ -491,6 +491,55 @@ body:not([data-ds-dark-theme]) [data-cd-boost="1"] {
   padding: 3px 12px;
   cursor: pointer;
 }
+/* ---- 动作栏(工单 07,上游票详情主动作;档位主色/字色由 JS 内联,这里只管形状) ---- */
+.ms-actionbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ms-abtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ms-ink);
+  cursor: pointer;
+}
+/* 描线档(CARD_ACTION_STYLE hollow):边=主色(JS 内联),透明底,墨字 */
+.ms-abtn.hollow {
+  background: transparent;
+}
+/* 门控置灰(detailTopGate):可看不可点,悬停说原因 */
+.ms-abtn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+/* 发送中:短暂禁用 */
+.ms-abtn[disabled] {
+  opacity: 0.7;
+  cursor: default;
+}
+.ms-abtn-ic {
+  display: block;
+  flex: none;
+}
+.ms-abtn-lbl {
+  line-height: 1.4;
+}
+.ms-act-status {
+  font-size: 11px;
+  color: var(--ms-ink-dim);
+}
+.ms-act-status.is-err {
+  color: var(--ms-bad);
+}
+
 /* markdown 基础渲染:标题/列表/代码块/粗斜体 */
 .ms-md-p {
   margin: 0 0 6px;

@@ -10,10 +10,11 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
 const SRC = join(ROOT, "src");
 const DIST = join(ROOT, "dist");
 // bundle 段序:cards.mjs(像素卡纯函数,挂 globalThis)在前——app.js 求值期就读
-// globalThis.MattSkillsCards;app.js(应用入口/列表)居中;detail.mjs(工单 05 详情视图)
-// 在后。app.js 与 detail.mjs 段间只有运行时调用(window.MattSkillsDetail),无加载期引用;
+// globalThis.MattSkillsCards;actions.mjs(工单 07 动作域纯函数,挂 globalThis)随后;
+// app.js(应用入口/列表)居中;detail.mjs(工单 05 详情视图,工单 07 起含动作栏)在后。
+// app.js 与 detail.mjs 段间只有运行时调用(window.MattSkillsDetail),无加载期引用;
 // writer.mjs(工单 06 写入口)最后,detail.open 运行时才经 window.MattSkillsWriter 调它。
-const BUNDLE_PARTS = ["cards.mjs", "app.js", "detail.mjs", "writer.mjs"];
+const BUNDLE_PARTS = ["cards.mjs", "actions.mjs", "app.js", "detail.mjs", "writer.mjs"];
 
 if (!existsSync(SRC)) {
   console.error("src/ 不存在,无事可构建");

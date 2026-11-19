@@ -23,7 +23,8 @@
         var ASSETS = "ui://zcode-mattpocock-skills-deck/assets/";
         // 极小 ext-apps 客户端:postMessage JSON-RPC 2.0 到宿主(window.parent)。
         // 包络与握手对照官方插件(excalidraw 0.3.4)内置客户端的实跑行为:先 ui/initialize,
-        // 再 tools/call {name, arguments} 与 resources/read {uri};回包只认 source === parent。
+        // 再 tools/call {name, arguments}、resources/read {uri} 与 ui/message(动作发话,
+        // 形状 {role:"user", content:[{type:"text",text}]},宿主回空 result);回包只认 source === parent。
         function createClient() {
           var nextId = 1;
           var pending = new Map();
@@ -62,6 +63,14 @@
             readResource: function (uri) {
               return ready().then(function () {
                 return request("resources/read", { uri: uri });
+              });
+            },
+            sendMessage: function (text) {
+              return ready().then(function () {
+                return request("ui/message", {
+                  role: "user",
+                  content: [{ type: "text", text: String(text) }],
+                });
               });
             },
           };
