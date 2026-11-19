@@ -1,4 +1,6 @@
 node_modules/
+package-lock.json
+.tmp/
 
 # fixtures 是缝 1/缝 2 测试的数据源(工作区形状就是 .scratch/ 本身),不是临时工作区:
 # 仓库根 .gitignore 的 `.scratch/` 规则会把它整个吃掉,这里夺回来,否则换检出就丢 fixtures。

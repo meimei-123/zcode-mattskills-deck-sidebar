@@ -28,3 +28,11 @@ const parts = BUNDLE_PARTS.map((f) => readFileSync(join(SRC, "ui", f), "utf8"));
 writeFileSync(join(DIST, "ui", "bundle-0.txt"), parts.join("\n"));
 for (const f of BUNDLE_PARTS) rmSync(join(DIST, "ui", f), { force: true }); // 段文件不散落 dist
 console.log(`built dist/ from src/ (${BUNDLE_PARTS.join("+")} -> dist/ui/bundle-0.txt)`);
+// 工单 U01:上游面板壳 bundle(splice 拼接上游叶子 + Preact,机制见 build-upstream.mjs;
+// esbuild/preact 是构建依赖,先 npm install)。构建依赖缺失时明确报因,不静默跳过。
+try {
+  await import("./build-upstream.mjs").then((m) => m.buildUpstreamBundle());
+} catch (e) {
+  console.error("[build] 上游 bundle 构建失败:" + ((e && e.message) || e) + "(先在 zcode-plugin/ 跑 npm install?)");
+  throw e;
+}

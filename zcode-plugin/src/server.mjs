@@ -21,6 +21,10 @@ const PANEL_MIME = "text/html;profile=mcp-app";
 const ASSET_PREFIX = `ui://${PLUGIN_NAME}/assets/`;
 const ASSET_RE = /^(panel\.css|bundle-\d+\.txt|assets\.json)$/;
 const ASSET_LIMIT = 8 * 1024 * 1024;
+// 工单 U01:上游面板壳的 uiWorkspace 垫片数据源 —— 服务端注入的静态工作区根
+// (env 同现有 server 的注入口径)。上游 client 在 DSH 有宿主工作区服务,这里用
+// 一条只读资源把同样的形状递给 bundle 的 seam(panel.html boot 经桥拉回)。
+const WORKSPACE_URI = `ui://${PLUGIN_NAME}/workspace.json`;
 
 // 规范标签(docs/agents/triage-labels.md,与上游 canonical-labels.ts 一字不差)与
 // 内置标签色表——与面板色表同源(src/ui/app.js 的 LABEL_COLORS,上游 defaultLabelPalette
@@ -360,10 +364,30 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       }
     case "resources/list":
       return reply(m.id, {
-        resources: [{ uri: PANEL_URI, name: "MattSkills panel", mimeType: PANEL_MIME }],
+        resources: [
+          { uri: PANEL_URI, name: "MattSkills panel", mimeType: PANEL_MIME },
+          { uri: WORKSPACE_URI, name: "MattSkills workspace", mimeType: "application/json" },
+        ],
       });
     case "resources/read": {
       const uri = String(m.params?.uri || "");
+      if (uri === WORKSPACE_URI) {
+        // 静态工作区根(运行时现算,不落盘):root 与 env 同 manifest 注入口径
+        return reply(m.id, {
+          contents: [
+            {
+              uri: WORKSPACE_URI,
+              mimeType: "application/json",
+              text: JSON.stringify({
+                root: workspaceRoot(),
+                plugin: PLUGIN_NAME,
+                version: VERSION,
+                env: { ZCODE_WORKSPACE_ROOT: process.env.ZCODE_WORKSPACE_ROOT || "" },
+              }),
+            },
+          ],
+        });
+      }
       if (uri === PANEL_URI) {
         return reply(m.id, {
           contents: [{ uri: PANEL_URI, mimeType: PANEL_MIME, text: readFileSync(join(HERE, "ui", "panel.html"), "utf8") }],

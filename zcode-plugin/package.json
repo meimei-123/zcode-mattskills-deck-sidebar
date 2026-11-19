@@ -1,0 +1,14 @@
+{
+  "name": "zcode-mattpocock-skills-deck",
+  "private": true,
+  "version": "0.1.0",
+  "description": "构建依赖与脚本(zcode-plugin 本体零运行时依赖;esbuild/preact 只进 bundle-1.txt 产物)",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test/scaffold.test.mjs && node test/server-read.test.mjs && node test/server-write.test.mjs && node test/actions.test.mjs && node test/live-refresh.test.mjs && node test/panel-list.test.mjs && node test/panel-detail.test.mjs && node test/panel-actions.test.mjs && node test/upstream-skeleton.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "preact": "^10.25.0"
+  }
+}

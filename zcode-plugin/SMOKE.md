@@ -14,6 +14,8 @@
 | 8 | agent 改卡片状态(或面板关闭卡) | 列表状态色/计数变;关闭后动作栏置灰;重开恢复 | 缝 1/2 + 切片 E 覆盖 |
 | 9 | 筛选 chips(状态/排序/标签) | 列表按选择过滤;记忆点击;无匹配出空态 | 缝 2 panel-list 覆盖 |
 | 10 | 删除 `.scratch/` 整个目录 | 面板回引导态不崩;重建后自动跟上 | 缝 1 reconnect 覆盖 |
+| 11 | 打开页签(共存期) | 旧 UI 之上浮出上游 dsws-panel 空壳:460px 宽、深色 #16181d 底、#2a2d35 边框、12px 圆角、原版阴影,头行标题 MattSkills | U01 upstream-skeleton 覆盖(壳 vnode+样式链);快照原型实测见下 |
+| 12 | 点排障区「切换上游面板壳」按钮 | localStorage `mattskills-upstream` 翻转并重载;off 后纯旧 UI | 待维护者(真机) |
 
 ## 未自动化、需真机确认
 
@@ -35,3 +37,19 @@
 | 8 关闭 | `deck_issue_close`(reason=冒烟关闭) | 已关闭 #m1-smoke/01「冒烟测试卡」(状态行 → closed,原因已记为一条评论(smoke))。(revision=5) |
 | 8 重开 | `deck_issue_reopen` | 已重开 #m1-smoke/01「冒烟测试卡」(状态行 → ready-for-agent)。(revision=6) |
 | (复核) | `deck_issue_list` | 共 1 张卡(容器 0 / 票 1,open 1 · closed 0)。#m1-smoke/01 冒烟测试卡(revision=6) |
+
+## 上游面板壳快照实测(U01,2026-11-20,本地浏览器)
+
+把 `dist/ui/bundle-1.txt` 内联进临时原型页(桩桥供 workspace.json),真实浏览器里 boot 后用计算样式实测,与上游 `kernel/styles.ts` 的 `.dsws-panel` 逐项对照:
+
+| 判据 | 实测 | 上游真源 |
+|---|---|---|
+| 宽度 | `width: 460px` | `.dsws-panel{…width:460px…}` |
+| 形态 | `position: fixed; left: 16px; top: 76px` | 同左 |
+| 底色 | `rgb(22,24,29)` = #16181d | `--dsw-alias-bg-layer-2` 回退值 #16181d(宿主无该变量,回退生效) |
+| 边框 | `rgb(42,45,53)` = #2a2d35 | `--dsw-alias-border-l1` 回退值 |
+| 圆角/阴影 | `12px` / `0 8px 40px rgba(0,0,0,.45)` | 原版 `border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.45)` |
+| 文字 | `rgb(230,237,243)` = #e6edf3 | `--dsw-alias-label-primary` 回退值 |
+| 结构 | head(标题 MattSkills)/tabs/body 三段齐;STYLE_TEXT 落入 styleSheets | 上游 Dock 三段 + `styles.insert(STYLE_TEXT)` |
+
+真机页签上的同款确认归清单步骤 11/12。

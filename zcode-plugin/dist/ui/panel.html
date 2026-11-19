@@ -152,6 +152,41 @@
           if (!app || typeof app.boot !== "function") throw Error("bundle 未定义 MattSkillsPanel");
           await app.boot({ client: client, doc: document, root: root });
           say("5 应用已启动", "ok");
+
+          // 工单 U01:上游面板壳(共存期,默认开)。bundle-1 已随清单注入,定义
+          // window.MattSkillsUpstream;这里复用同一条桥起壳,失败不影响旧 UI。
+          // 回退:localStorage mattskills-upstream=off(或下方切换按钮)后重载,即纯旧 UI。
+          try {
+            var off = false;
+            try {
+              off = typeof localStorage !== "undefined" && localStorage.getItem("mattskills-upstream") === "off";
+            } catch (eL) {} // 沙箱 iframe 里 localStorage 可能禁访:当默认开
+            if (!off) {
+              var upstream = window.MattSkillsUpstream;
+              if (upstream && typeof upstream.boot === "function") {
+                await upstream.boot({ client: client, doc: document });
+                say("6 上游面板壳已启动(dsws-panel 空壳)", "ok");
+              } else say("⚠ window.MattSkillsUpstream 缺失(bundle-1 未注入)", "bad");
+            } else say("6 上游面板壳按配置关闭(纯旧 UI)", "warn");
+          } catch (e2) {
+            say("✗ 上游面板壳启动失败(旧 UI 不受影响): " + (e2 && e2.message ? e2.message : String(e2)), "bad");
+          }
+          // 新旧切换按钮(排障金丝雀区):翻配置并重载
+          if (diag && diag.parentNode && document.createElement) {
+            var tgl = document.createElement("button");
+            tgl.textContent = "切换上游面板壳(开/关,重载生效)";
+            tgl.style.cssText =
+              "margin-top:6px;font:11px ui-monospace,Consolas,monospace;color:#9aa3af;background:#16181d;border:1px solid #2a2d35;border-radius:6px;padding:3px 8px;cursor:pointer";
+            tgl.onclick = function () {
+              try {
+                var s = typeof localStorage !== "undefined" ? localStorage : null;
+                if (!s) return;
+                s.setItem("mattskills-upstream", s.getItem("mattskills-upstream") === "off" ? "on" : "off");
+                if (typeof location !== "undefined" && location.reload) location.reload();
+              } catch (e3) {}
+            };
+            diag.parentNode.appendChild(tgl);
+          }
         })().catch(function (e) {
           say("✗ 失败: " + (e && e.message ? e.message : String(e)), "bad");
           var root = document.getElementById("root");
