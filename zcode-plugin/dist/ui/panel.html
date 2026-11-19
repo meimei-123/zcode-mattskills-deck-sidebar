@@ -84,10 +84,17 @@
             });
           }
           function ready() {
+            // 握手两拍(对照 ext-apps SDK App.connect 实跑):ui/initialize 请求收到回包后,
+            // 必须补发 ui/notifications/initialized 通知——宿主靠它进入 running 并取消 15s 处决定时器
+            //(oninitialized → m=true → phase running;漏发则实例在 15 秒后被 closeInstance,见真机日志)。
             initP ??= request("ui/initialize", {
               appInfo: { name: "zcode-mattpocock-skills-deck", version: "0.1.0" },
               appCapabilities: {},
               protocolVersion: "2026-01-26",
+            }).then(function (r) {
+              window.parent.postMessage({ jsonrpc: "2.0", method: "ui/notifications/initialized" }, "*");
+              say("   ← ui/initialize 回包已收,已补发 initialized 通知", "ok");
+              return r;
             });
             return initP;
           }

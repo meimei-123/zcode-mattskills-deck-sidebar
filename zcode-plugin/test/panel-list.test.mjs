@@ -40,7 +40,14 @@ async function sliceBootstrap() {
       JSON.stringify(host.sent.map((m) => m.params?.uri || m.method)));
     check("bootstrap: 经 readResource 拉 panel.css", host.sent.some((m) => m.method === "resources/read" && m.params?.uri === `${ASSETS_BASE}panel.css`));
     check("bootstrap: 经 readResource 拉 bundle(bundle-*.txt)", host.sent.some((m) => m.method === "resources/read" && /bundle-\d+\.txt$/.test(m.params?.uri || "")));
-    check("bootstrap: 包络是 JSON-RPC 2.0 且带递增 id", host.sent.every((m) => m.jsonrpc === "2.0" && Number.isInteger(m.id)));
+    check("bootstrap: 包络是 JSON-RPC 2.0(请求帧带递增整数 id,通知帧无 id)",
+      host.sent.every((m) => m.jsonrpc === "2.0" && (m.method === "ui/notifications/initialized" || Number.isInteger(m.id))));
+    // 真机事故锁(2026-11-19):宿主 oninitialized 靠本通知进入 running 并取消 15s 处决;
+    // 漏发时面板功能全通但 15 秒后被 closeInstance(日志:handshake timed out)。
+    const initIdx = host.sent.findIndex((m) => m.method === "ui/initialize");
+    const notifIdx = host.sent.findIndex((m) => m.method === "ui/notifications/initialized");
+    check("bootstrap: 握手后补发 ui/notifications/initialized(先于任何后续请求)",
+      initIdx !== -1 && notifIdx === initIdx + 1 && notifIdx < host.sent.findIndex((m, i) => i > initIdx && m.method === "resources/read"));
     check("bootstrap: 应用真实调用 deck_issue_counts", host.sent.some((m) => m.method === "tools/call" && m.params?.name === "deck_issue_counts"));
     check("bootstrap: 应用真实调用 deck_issue_list", host.sent.some((m) => m.method === "tools/call" && m.params?.name === "deck_issue_list"));
 
