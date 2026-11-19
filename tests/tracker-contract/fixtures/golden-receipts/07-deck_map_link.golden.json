@@ -1,0 +1,69 @@
+{
+  "backend": {
+    "id": "markdown",
+    "source": "explicit"
+  },
+  "cost": {
+    "actual": {
+      "backendId": "markdown",
+      "budgetKind": "off-network",
+      "offNetwork": true,
+      "points": 6,
+      "readKnown": true,
+      "requests": 3
+    },
+    "estimated": {
+      "perShard": 1,
+      "points": 6,
+      "requests": 3,
+      "shards": 1,
+      "text": "这次 deck_map_link 预计花 6 点、3 条出站请求，在硬顶之内。",
+      "withinCallCap": true
+    },
+    "note": "本后端不需要额度（离网口径）。"
+  },
+  "data": {
+    "done": 1,
+    "jobs": [
+      {
+        "blockedBy": [
+          "02"
+        ],
+        "key": "03"
+      }
+    ],
+    "requested": 1
+  },
+  "items": [
+    {
+      "evidence": "写后读回：票 #03 的 blockedBy 里有 #02，也就是 #03 被 #02 阻塞；正文里也写着指向 #02 的一行（这是把关系写进正文的那种落法）",
+      "key": "03",
+      "landing": "正文行",
+      "ok": true,
+      "op": "block",
+      "role": "edge",
+      "status": "ok",
+      "target": "02"
+    }
+  ],
+  "notes": [],
+  "ok": true,
+  "readBack": null,
+  "reason": "",
+  "repo": {
+    "backend": "markdown",
+    "name": "demo",
+    "refId": ".scratch/demo",
+    "url": ""
+  },
+  "status": "ok",
+  "text": "这次要补 1 条边，建成 1 条。",
+  "tool": "deck_map_link",
+  "touched": [
+    "03"
+  ],
+  "workspace": {
+    "key": "<WSKEY>",
+    "root": "<ROOT>"
+  }
+}

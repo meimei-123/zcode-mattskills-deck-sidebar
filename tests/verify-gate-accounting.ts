@@ -1,0 +1,165 @@
+// verify-gate-accounting.ts —— 门禁：闸的累计账 == 实际出站请求数（#706 T2 第二批 · I6）
+// 用法：在插件根目录执行 node --import ./scripts/ts-hook.mts tests/verify-gate-accounting.ts。
+//   （不能裸跑：它动态 import 的 .ts 真源靠装载钩子解析，裸跑会 ERR_MODULE_NOT_FOUND。）
+//
+// 断言文字（票面验收第三条 + 「加固补充」最后几条）：真跑一遍「账本 + 闸」，用假的传输层
+// （它每真发一条请求就报给闸，与生产里挂在起 gh 进程那一层同形），然后逐条查：
+//   ⓪ #1454 起闸不写账本：真实用量只由操作管线的 account 一处记；闸只把真发条数记进
+//      stats.accounted 对账，所以发完之后账本读数必须一分没动。
+//      #1439 起闸多了一格「把用量交给注入的记账口」（accountFor），面板与强制刷新靠它记账；
+//      这一扇不接那一格，验的是不接时的老行为，接上后真记账由 verify-1439-panel-accounting 验。
+//   ① 对账零差异：闸记下来的条数、点数，与传输层真发出去的完全相等；
+//   ② **GraphQL 点数桶单独一条断言**：那一桶按点数记、REST 桶按请求条数记，两桶互不折算；
+//   ③ 不排队、按步记账：一次 send 的多步、以及同时来的多次 send 都直接发，并发数可以大于 1；
+//      每一步的真实花费按这一步的计数器归属，并发算不进对方（对账零差异与报数一致照旧要过）；
+//   ④ 推迟 ≠ 失败：被推迟的请求一条都不发、进队列，同一工作区只留最后一次，5 分钟过期即丢，
+//      不算失败（连续失败次数保持 0）、不重试；
+//   ⑤ 二级限流（Retry-After）也算降档信号：主桶没用完也降档；
+//   ⑥ 反证：调用方报假数（发 3 条报 1 条）必须被当场对出来，账仍然按真发数记。
+const path = require('path')
+const { pathToFileURL } = require('url')
+const { DEFER_EXPIRY_MS } = require('../src/shared/time-config/values.js')
+
+const ROOT = path.resolve(__dirname, '..')
+let failed = false
+let total = 0
+const check = (ok, msg) => { total += 1; console.log((ok ? '  PASS ' : '  FAIL ') + msg); if (!ok) failed = true }
+
+async function main() {
+  console.log('闸记账门禁（#706 T2：闸的累计账 == 实际出站请求数，两桶各自独立）')
+  const budget = await import(pathToFileURL(path.join(ROOT, 'src', 'refresh', 'kernel', 'host-budget.js')).href)
+  const ledgerMod = await import(pathToFileURL(path.join(ROOT, 'src', 'refresh', 'rooms', 'host', 'quota-ledger.ts')).href)
+  const gateMod = await import(pathToFileURL(path.join(ROOT, 'src', 'refresh', 'rooms', 'host', 'refresh-gate.ts')).href)
+
+  let clock = 1700000000000
+  const ledger = ledgerMod.createLedger({ now: () => clock })
+  // #1446 起账本按「后端 + 桶」记账：这一扇只验一个两桶后端，先按口径建桶，再统一在入口补后端标识。
+  const BACKEND = 'github'
+  ledger.ensureBackend(BACKEND, { kind: 'two-buckets' })
+  // 口径声明自 #1448 起由装配处注入（旧静态表已退役）；这一扇验的是 GitHub 两桶记账。
+  const gate = gateMod.createGate({ ledger: ledger, now: () => clock, budgetModelOf: () => ({ kind: 'two-buckets' }) })
+  const send = (req, fn) => gate.send(Object.assign({ backendId: BACKEND }, req), fn)
+  // 假的传输层：真发出去的那几条请求由它数着，每一条都报给闸（生产里这一层就是起 gh 进程那一层）。
+  const transport = { requests: 0, points: 0 }
+  function fire(requests, points) {
+    transport.requests += (requests || 0)
+    transport.points += (points || 0)
+    gate.noteOutbound({ requests: requests || 0, points: points || 0 })
+  }
+  let inFlight = 0
+  let maxInFlight = 0
+  async function step(requests, points) {
+    inFlight += 1
+    maxInFlight = Math.max(maxInFlight, inFlight)
+    await new Promise((res) => setTimeout(res, 1))
+    fire(requests, points)
+    inFlight -= 1
+    return { requests: requests, points: points || 0 }
+  }
+
+  // 起步：服务端读数落账（每分钟一次的那条路），两桶各自算档位。
+  ledger.syncServer(BACKEND, { rest: { limit: 5000, remaining: 5000, reset: clock + budget.HOUR_MS }, graphql: { limit: 5000, remaining: 5000, reset: clock + budget.HOUR_MS } }, clock)
+  check(ledger.view(BACKEND, 'rest').tier === 'green' && ledger.view(BACKEND, 'graphql').tier === 'green', '起步两桶各自是绿档（' + ledger.view(BACKEND, 'rest').tier + ' / ' + ledger.view(BACKEND, 'graphql').tier + '）')
+  check(ledger.view(BACKEND, 'rest').allowance === budget.hourlyAllowance(5000), '额度按 budget.js 的算式算出来（' + ledger.view(BACKEND, 'rest').allowance + '）')
+
+  // ①一笔探测：闸记 1 条、传输层真发 1 条。
+  gate.setWorkspace('ws-1', { active: true })
+  const r1 = await send({ source: 'probe.tick', kind: 'probe', workspaceKey: 'ws-1' }, () => step(1, 0))
+  check(r1.sent === true && r1.requests === 1 && transport.requests === 1, '一笔探测：闸记 1 条、传输层真发 ' + transport.requests + ' 条')
+  check(ledger.snapshot().total.requests === 0 && ledger.snapshot().total.points === 0,
+    '闸不写账本（#1454）：探测发完之后账本总量仍是零（实得 ' + JSON.stringify(ledger.snapshot().total) + '）')
+
+  // ③不排队：一次 send 三步，每步按 budget.js 的补行单价花（1 条请求、2 点）；再加两次并发 send
+  //   （同一工作区），以及两个不同工作区的并发 send，并发数可以大于 1。
+  const stepPrice = { requests: budget.PATCH_COST_REQUESTS, points: budget.PATCH_COST_POINTS_MAX }
+  const fan = await send({ source: 'patch.apply', kind: 'patch', workspaceKey: 'ws-1', plan: [{ page: 1 }, { page: 2 }, { page: 3 }] },
+    () => step(stepPrice.requests, stepPrice.points))
+  check(fan.requests === 3 * stepPrice.requests, '扇出三步各 ' + stepPrice.requests + ' 条：总共 ' + fan.requests + ' 条（按 budget.js 的补行单价算）')
+  await Promise.all([
+    send({ source: 'probe.tick', kind: 'probe', workspaceKey: 'ws-1' }, () => step(1, 0)),
+    send({ source: 'probe.tick', kind: 'probe', workspaceKey: 'ws-1' }, () => step(1, 0)),
+  ])
+  check(maxInFlight >= 2, '同一工作区的并发直接发：同时最多有 2 笔在飞（实得 ' + maxInFlight + '）')
+  gate.setWorkspace('ws-A', { active: true })
+  gate.setWorkspace('ws-B', { active: true })
+  const crossBefore = transport.requests
+  await Promise.all([
+    send({ source: 'probe.tick', kind: 'probe', workspaceKey: 'ws-A' }, () => step(1, 0)),
+    send({ source: 'probe.tick', kind: 'probe', workspaceKey: 'ws-B' }, () => step(1, 0)),
+  ])
+  check(transport.requests === crossBefore + 2, '不同工作区各发各的：两笔都发出去了（传输层 +2，实得 +' + (transport.requests - crossBefore) + '）')
+  check(gate.stats().mismatch === 0, '并发下报数仍然对得上（对不上 0 次，实得 ' + gate.stats().mismatch + '）')
+
+  // ② GraphQL 点数桶单独一条断言：那一桶按点数记，REST 桶一点都没被带着走。
+  //    重建的价钱由 budget.js 的每页单价算出来：工单池 5 页 × 2 点 + 拉取请求 1 页 × 2 点 + 计数 1 点 = 13 点、
+  //    7 条请求（见 verify 里那两条算式核对）。假传输层按同一组常量计价，不自己写死一套价。
+  check(budget.REBUILD_COST_POINTS === budget.REBUILD_PAGE_COUNT * budget.PAGE_COST_POINTS + budget.REBUILD_PR_PAGE_COUNT * budget.PR_PAGE_COST_POINTS + budget.COUNT_COST_POINTS,
+    '一次重建的点数是从每页单价推出来的：5 × ' + budget.PAGE_COST_POINTS + ' + 1 × ' + budget.PR_PAGE_COST_POINTS + ' + ' + budget.COUNT_COST_POINTS + ' = ' + budget.REBUILD_COST_POINTS + ' 点')
+  const beforeRebuild = { restUsed: ledger.view(BACKEND, 'rest').used, gqlUsed: ledger.view(BACKEND, 'graphql').used, accountedPoints: gate.stats().accounted.points, ledgerTotal: ledger.snapshot().total }
+  const rebuild = await send({ source: 'reconcile.tick', kind: 'rebuild', workspaceKey: 'ws-1' },
+    () => step(budget.REBUILD_COST_REQUESTS, budget.REBUILD_COST_POINTS))
+  const gqlPointsAdded = ledger.view(BACKEND, 'graphql').used - beforeRebuild.gqlUsed
+  const accountedPointsAdded = gate.stats().accounted.points - beforeRebuild.accountedPoints
+  check(gqlPointsAdded === 0, 'GraphQL 桶的账没被闸改动：一次重建之后仍增 0 点（实得 ' + gqlPointsAdded + '）——写账只在操作管线那一条入口')
+  check(ledger.view(BACKEND, 'rest').used === beforeRebuild.restUsed,
+    '同一笔重建一点都没算进 REST 桶（那一桶仍是 ' + ledger.view(BACKEND, 'rest').used + ' 条）—— 两桶互不折算，且闸不写账')
+  const ledgerTotalNow = ledger.snapshot().total
+  check(ledgerTotalNow.requests === beforeRebuild.ledgerTotal.requests && ledgerTotalNow.points === beforeRebuild.ledgerTotal.points,
+    '重建这一笔之后账本总量一分没动（' + JSON.stringify(beforeRebuild.ledgerTotal) + ' → ' + JSON.stringify(ledgerTotalNow) + '）')
+  check(accountedPointsAdded === budget.REBUILD_COST_POINTS && rebuild.points === budget.REBUILD_COST_POINTS,
+    '闸的对账账（stats.accounted）这一次增了 ' + accountedPointsAdded + ' 点、这一笔自己报的也是 ' + rebuild.points + ' 点（传输层累计真发 ' + transport.points + ' 点）')
+
+  // ④ 推迟 ≠ 失败：非活跃工作区的后台探测一条都不发。
+  gate.setWorkspace('ws-idle', { active: false })
+  const transportBefore = transport.requests
+  const d1 = await send({ source: 'probe.tick', kind: 'probe', workspaceKey: 'ws-idle' }, () => step(1, 0))
+  const d2 = await send({ source: 'probe.tick', kind: 'probe', workspaceKey: 'ws-idle' }, () => step(1, 0))
+  check(d1.sent === false && d1.verdict === 'defer' && d1.reason === 'background-inactive', '非活跃工作区的后台探测被推迟（原因 ' + d1.reason + '）')
+  check(transport.requests === transportBefore, '被推迟的那两笔一条都没发出去（传输层条数没动：' + transport.requests + '）')
+  check(gate.stats().pending === 1 && gate.stats().coalesced === 1, '同一工作区只留最后一次（队列 1 条、合并掉 ' + gate.stats().coalesced + ' 次）')
+  check(gate.workspaceView('ws-idle').failuresSinceSuccess === 0, '推迟不算失败：连续失败次数仍是 0（实得 ' + gate.workspaceView('ws-idle').failuresSinceSuccess + '）')
+
+  // ④b 5 分钟过期即丢：4 分钟时还在，6 分钟时丢掉，而且丢不是失败。
+  const drain1 = gate.drain(clock + DEFER_EXPIRY_MS - 60000)
+  check(drain1.ready.length === 1 && drain1.dropped === 0, '推迟队列 4 分钟时还留着（' + drain1.ready.length + ' 条可重发）')
+  await send({ source: 'probe.tick', kind: 'probe', workspaceKey: 'ws-idle' }, () => step(1, 0))
+  const drain2 = gate.drain(clock + DEFER_EXPIRY_MS + 60000)
+  check(drain2.ready.length === 0 && drain2.dropped === 1, '推迟队列 6 分钟时过期丢掉（丢掉 ' + drain2.dropped + ' 条）')
+  check(gate.workspaceView('ws-idle').failuresSinceSuccess === 0 && transport.requests === transportBefore, '过期丢弃也不计失败、也不重发（失败数 ' + gate.workspaceView('ws-idle').failuresSinceSuccess + '，传输层 ' + transport.requests + '）')
+
+  // ⑤ 二级限流也算降档信号：主桶没用完也降档。
+  const usedPct = Math.round((ledger.view(BACKEND, 'rest').used / ledger.view(BACKEND, 'rest').allowance) * 100)
+  const sig = gate.noteRetryAfter({ seconds: 60, bucket: 'rest', workspaceKey: 'ws-1', backendId: BACKEND })
+  check(sig.tier === 'red' && usedPct < 60, '主桶才用了 ' + usedPct + '%（远没到八成五），撞上限流之后照样降到红档（实得 ' + sig.tier + '）')
+  const d3 = await send({ source: 'probe.tick', kind: 'probe', workspaceKey: 'ws-1' }, () => step(1, 0))
+  check(d3.sent === false && d3.reason === 'rate-limited', '撞限流期间该工作区的后台探测被推迟（原因 ' + d3.reason + '）')
+  clock += 61000
+  check(ledger.view(BACKEND, 'rest').tier === 'green', 'Retry-After 的 60 秒过去之后档位自己回来（实得 ' + ledger.view(BACKEND, 'rest').tier + '）')
+  check(ledger.view(BACKEND, 'graphql').tier === 'green', '另一个桶没被牵连（GraphQL 仍是 ' + ledger.view(BACKEND, 'graphql').tier + '）')
+
+  // ① 总账：对账零差异。
+  const st = gate.stats()
+  check(st.accounted.requests === transport.requests && st.accounted.points === transport.points,
+    '对账零差异：闸的累计账 ' + JSON.stringify(st.accounted) + ' == 实际出站 ' + JSON.stringify(transport))
+  check(st.claimed.requests === transport.requests && st.mismatch === 0, '调用方报的数与真发数一致（报 ' + st.claimed.requests + ' 条，对不上 ' + st.mismatch + ' 次）')
+  check(st.escaped.requests === 0 && st.escaped.points === 0, '全过程漏网数为 0（实得 ' + JSON.stringify(st.escaped) + '）')
+
+  // ⑥ 反证：调用方报假数（发 3 条报 1 条）必须被对出来，账仍按真发数记。
+  const mismatchBefore = gate.stats().mismatch
+  const accountedBefore = gate.stats().accounted.requests
+  const lie = await send({ source: 'probe.tick', kind: 'probe', workspaceKey: 'ws-1' }, async () => { fire(3, 0); return { requests: 1, points: 0 } })
+  check(gate.stats().mismatch === mismatchBefore + 1, '反证：调用方发 3 条报 1 条，被当场对出来（对不上次数 +1）')
+  check(lie.requests === 3 && gate.stats().accounted.requests === accountedBefore + 3, '反证：账按真发出去的 3 条记，不按它报的 1 条（闸记 +' + (gate.stats().accounted.requests - accountedBefore) + '）')
+  check(gate.stats().accounted.requests === transport.requests, '反证之后对账仍是零差异（闸 ' + gate.stats().accounted.requests + ' == 传输层 ' + transport.requests + '）')
+  const finalLedger = ledger.snapshot()
+  check(finalLedger.total.requests === 0 && finalLedger.total.points === 0,
+    '全部门禁断言跑完，账本总量仍是零：闸从头到尾没写账（实得 ' + JSON.stringify(finalLedger.total) + '）')
+
+  console.log(failed ? '\n存在失败 — verify-gate-accounting 未通过' : '\n全部通过 — 闸记账门禁生效（' + total + ' 项断言）')
+  process.exit(failed ? 1 : 0)
+}
+
+main().catch((e) => {
+  console.error('门禁执行异常：' + ((e && e.stack) || e))
+  process.exit(1)
+})

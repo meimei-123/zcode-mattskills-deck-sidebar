@@ -1,0 +1,167 @@
+# Tracker 后端接入门槛（每后端必交五件）— #173，#1439 起加第五件
+
+本文件是“新增一个 tracker 后端”在契约测试侧的 **checklist**。契约内容已定稿（#124-#128），门槛只约束“**如何证明你满足契约**”，不改契约。2026-10-23（规格 #1439）起多交一件：**预算模型与额度读数**——每个后端的额度口径由后端自己声明，闸与账本只读声明算账。
+
+## 结论先行
+
+> 一个后端只有在 **同时**满足以下五件时，才算“接入完成”：
+> 1. 适配器代码  2. 真实采样固件  3. 生成脚本  4. 门禁集成且不回归  5. 预算模型与额度读数
+
+下游三张后端图（#114/#115/#116）的“落地”验收即“**本后端真实适配器过 harness**”，以本文件为判据。
+
+## 五件清单
+
+### ① 适配器代码 — `src/tracker/rooms/<backendId>/`
+
+- 目录即后端：`<backendId>` 为开放 string（推荐 `publisher.name`），`'other'` 禁用（→ `selection.backendId: null`）。
+- 入口 `index.ts` 必须导出 `BackendModule`：
+
+  ```js
+  export const myModule = {
+    id: 'my-backend',           // 唯一非空 string
+    label: 'My Backend',        // UI 微标/显示名
+    create: createMyBackend,    // (ctx: BackendContext) => Partial<Tracker>
+    matches: myMatches,         // (handle: RepoHandle, ctx: OpContext) => boolean
+    budget: myBudget,           // 花额度的口径声明（规格 1439 起必填，缺了注册表拒绝；形状真源见 `src/tracker/contract/budget-model.ts`）
+  }
+  ```
+
+- `create(ctx)` 的 `ctx` 是 **BackendContext**（含 **已解析的 `platform` 实例**，见 `src/tracker/contract/index.ts`），不是工厂。
+  - `platform`: 已按 #129 三底座实现的 OS 抽象（`getHome/path/resolveExecutable/fs/env`），**不可**在后端内自拼 `C:\` 或直接 `import('node:fs')`。
+  - `fs`/`exec`/`timers`/`log` 由宿主经此 `ctx` 注入；后端只用它们。
+  - 实现**只写你真会的**：`create` 返回对象里只放你实现的 op；**缺的方法不手写，由 `src/tracker/registry/shape.ts` 的 Proxy 自动补 `unsupported` 桩**（能力零声明，G5）。
+- 24 条操作（`OpName`，名录 `OPERATIONS` 的真源在 `src/tracker/contract/operations-catalog.ts`）按需实现：
+
+  ```
+  preflight, list, get, getDependencies, create, close, reopen, comment, update, setLabels, setAssignees, setParent, setBlockedBy,
+  getCurrentUser, initProject, listLabels, setLabelColors, counts, listPage, getRepoPermissions, listSubIssues, ensureLabelColorsFile, listMaps, readBudget
+  ```
+
+  - 未实现 → 返回 `{ ok:false, error:{ kind:'unsupported' } }`（由 Proxy 兜底，你也可显式返回）。
+  - 写后语义：`create/update` 多字段原子；`set*` 整集替换；增量后端用 `read→diff→N写` 且接受 Last-write-wins；`expectedUpdatedAt` 不匹配 → `conflict`。
+  - 环检：`setBlockedBy` 自环/成环 → `conflict` 不落盘。
+- 错误分类：失败**返回**而非抛；`kind` 仅八种（`env/auth/rate-limit/conflict/unsupported/not-found/network/parse`），`classifyError` 顺序（`env>not-found`, `auth>rate-limit`, 兜底 `network`）已在 `src/tracker/kernel/preflight.ts` 固化，后端显式产 `conflict/unsupported`。
+
+- 按操作域拆文件（避免 God file）：`issues.ts`/`comments.ts`/`labels.ts`/`graph.ts`/`normalize.ts`/`client.ts`/`errors.ts`/`preflight.ts` 等，`index.ts` 仅装配。
+
+### ⑤ 预算模型与额度读数（#1439 新增）
+
+**⑤-a 预算模型必填**
+
+每个后端必须在模块里交一份预算声明，说清“我的额度长什么样”。四个字段缺一个，注册表直接拒绝：
+
+```ts
+// 每个后端自己说清额度口径；闸与账本只读这份声明，不读 backendId
+export const myBudget = {
+  kind: 'requests-only',   // two-buckets | requests-only | off-network | unknown 四选一
+  countsRequests: true,    // 请求数进不进账本，必须明说
+  countsPoints: false,     // 点数进不进账本，必须明说
+  independentBuckets: false // 只有“两个桶各自独立”的后端才写 true
+}
+```
+
+- 四个种类各自的意思：`two-buckets` 请求数与点数分两个独立桶（GitHub）；`requests-only` 只有一个按次数计的额度（GitLab）；`off-network` 不需要额度（本地 Markdown）；`unknown` 暂时说不清（账本只记发出去的请求数）。
+- 真源与形状：`src/tracker/contract/budget-model.ts`；校验在 `src/tracker/registry/shape.ts`。缺声明或形状不对，注册当场失败，报错点名缺哪一格，原文形如：`BackendModule 'my-backend' budget invalid: budget 必须是一个对象（后端模块缺预算声明）`。
+- 不要拿 `unknown` 掩盖一个已知口径，也不要按 backendId 写等值分支（静态门禁会判红）。
+- 三个内置后端今天的声明：GitHub 两个独立桶、GitLab 只计请求数、Markdown 离网，分别住在各自房间的 `index.ts`。
+
+**⑤-b 额度读数 readBudget 的三态**
+
+`readBudget` 是操作名录里的第 24 条（整套能力名录的第 27 条）。它只回答事实，不裁决、不记账、不抛；四种形状都必须诚实：
+
+```ts
+// 读到了：已知的额度口径与剩余（GitHub 是两个互相独立的桶）
+{ ok: true, data: { known: true, kind: 'two-buckets', buckets: { rest: { limit, remaining }, graphql: { limit, remaining } } } }
+// 读到了：只有一个按次数计的额度（GitLab）
+{ ok: true, data: { known: true, kind: 'requests-only', requests: { limit: 600, remaining: 590 } } }
+// 读不到：未知，必须带原因，不许拿 0 冒充
+{ ok: true, data: { known: false, reason: 'not-measured' | 'unavailable' | 'unsupported' } }
+// 离网后端：不需要额度
+{ ok: true, data: { known: true, kind: 'off-network' } }
+```
+
+- 三个 reason 的分工，判的是「等一等会不会自己好」：`not-measured` 是这台机器没准备好（例如命令不在本机、没登录、凭证坏了），要人去处理、短期不会自己好；`unavailable` 是这次取不到（网络错误、超时、读数解析失败），下一次可能就好；`unsupported` 是这个后端根本没有这项能力。额度同步按这组分法选退避档位：前一种等得久，后一种等得短（#1006）。能分辨的房源把鉴权失败归 `not-measured`（GitHub 拿得到鉴权错误档）；只能拿到退出码的房源（GitLab）分不出「没登录」与「网络错」，仍归 `unavailable`、等得短，不会把一次网络抖动误判成永久故障。
+- `unsupported` 由会话管线补出来：后端模块没实现 `readBudget` 时，注册表在装配时给它补一个「不支持」桩（`src/tracker/registry/shape.ts`），房间回的是失败信封；会话管线认出这一档后翻成 `{ ok: true, data: { known: false, reason: 'unsupported' } }`。对读数来说这不算失败——看不到额度是一个事实，调用方照常往下走。只有装配错（会话实例上连桩都没有）才回失败信封。
+- 参考实现：GitHub 在 `src/tracker/rooms/github/transport/budget.ts`（REST 与 GraphQL 两个桶）、GitLab 在 `src/tracker/rooms/gitlab/budget.ts`（读 `RateLimit-Limit`/`RateLimit-Remaining` 响应头）、Markdown 在 `src/tracker/rooms/markdown/budget.ts`（恒离网）。
+- 参考测试：`tests/verify-tracker-session.ts`（四种读数形状、后端没实现时回 `unsupported`，以及读预算不裁决不记账）、`tests/verify-1443-github-readbudget.ts`、`tests/verify-1446-gitlab-budget.ts`、`tests/verify-1447-gitlab-e2e.ts`。
+
+### ② 真实采样固件 — `tests/tracker-contract/fixtures/<backendId>-real/`
+
+- 每后端至少一份，来源 **真实 API 打一次**（`gh`/`glab`/本地文件），不是手写桩。
+- 目录约定：
+
+  ```
+  fixtures/<backendId>-real/
+  ├─ metadata.json              # 必含：source / sampledAt / repo / refId / desensitization / fields / notes
+  ├─ raw-*.json                 # 原始响应（已脱敏）
+  ├─ normalized-*.json          # 归一化期望（由本仓库 normalize 生成，供 harness 比对）
+  └─ raw-list.json / raw-comments-*.json 等
+  ```
+
+- `metadata.json` 模板（见 `fixtures/github-real/metadata.json`）：
+
+  ```json
+  {
+    "source": "gh api repos/<owner>/<repo>/issues/<n> ...",
+    "repo": "<owner>/<repo>",
+    "refId": "<owner>/<repo>",
+    "sampledAt": "ISO-8601",
+    "sampledBy": "scripts/generate-<id>-fixtures.js",
+    "desensitization": { "rules": ["..."], "applied": true },
+    "fields": { "raw": ["number","title", ...], "normalized": ["key","title", ...] }
+  }
+  ```
+
+- 归一化期望必须满足 harness 形状断言：单 `key` string、无 `number/subIssues/blocking`、核心字段齐、`state` 二态、`labels` 等能力字段 EMPTY/MISSING 正确、`diagnoseCapabilities` 可跑、frontier/indeterminate 分流正确。
+
+### ③ 生成脚本 — `scripts/generate-<backendId>-fixtures.js`
+
+- 可复现：`node scripts/generate-<id>-fixtures.js --repo <ref> --out fixtures/<id>-real` 一键重采。
+- 记录来源：脚本头注释与 `metadata.json.source` 双处记录端点/API。
+- 记录脱敏：脚本头注释与 `metadata.json.desensitization.rules` 双处记录规则（token/邮箱/内部 URL 等），并**实做**脱敏（正则替换）。
+- 归一化产物：脚本内 `import('../src/tracker/rooms/<id>/normalize.ts')` 生成 `normalized-*.json`，保证“采样→归一”链路与 harness 同款 normalize。
+
+参考实现：`scripts/generate-github-fixtures.js`（GitHub 已落地）。
+
+### ④ 门禁集成且不回归 — `tests/verify-tracker-contract.ts`
+
+- 在 `verify-tracker-contract.ts` 追加：
+
+  ```js
+  import { myFixture } from './tracker-contract/fixtures/<id>.js' // 或直接测 normalize
+  import { runPlayback } from './tracker-contract/runner/index.ts'
+  // 1) normalize 形状：runContractTests(myFixture) 必须全 PASS
+  results.push(...runContractTests(myFixture))
+  // 2) playback：采样固件形状（无网络亦可）
+  const pb = await runPlayback({ fixturesDir: 'tests/tracker-contract/fixtures/<id>-real', label: '<id>-playback' })
+  results.push(...pb.results)
+  ```
+
+- 回归红线（验收④）：
+
+  - 门禁红线的形状仍成立：`620 passed / 4 failed / CONTRACT SKELETON OK` 且退出码 0（那 4 条失败全为 `violating` 桩里刻意埋的错，门禁按名字点名要求它们必须出现；总数会随票据增长，别把数字当门槛）。
+  - `compliant` 全 PASS、`violating` 那 4 条预期失败都在、`github`/`gitlab` normalize 全 PASS、`sections/*` 全 PASS（含 ✗ probe 自证）。
+  - 新增后端的 `runContractTests` 与 `runPlayback` 全 PASS，`CONTRACT SKELETON OK` 仍 `exit 0`。
+
+## 最小可跑示例（GitHub）
+
+```bash
+# 生成采样
+node scripts/generate-github-fixtures.js --repo FeatherHunter/dsh-mattpocock-skills-deck --issue 173
+
+# 纯形状门禁（无网络亦可）
+node tests/verify-tracker-contract.ts
+# 期望：620 passed, 4 failed, CONTRACT SKELETON OK
+# 新增段：github-playback · metadata exists 等全 PASS
+```
+
+## 常见坑
+
+- 在后端内 `import { fs } from 'node:fs'` 直读文件 → 破坏 #129 次缝；必须经 `ctx.platform.fs`。
+- 自拼 `C:\\Users\\` 路径 → 破坏零手拼；必须用 `platform.path.join` / `joinHome`。
+- 手写 `capabilities` 表 → 破坏 capability-by-fill；能力由 `diagnoseCapabilities` 事后推导。
+- 采样手写而非打 API → 破坏“真实性”；必须脚本可复现且记录来源/脱敏。
+
+## 参考
+
+- 契约：#124/#125/#126/#127/#128；目录架构：#132；平台可测：#131；Runner：`tests/tracker-contract/runner/index.ts`
