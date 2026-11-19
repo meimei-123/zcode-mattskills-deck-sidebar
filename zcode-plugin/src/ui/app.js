@@ -339,6 +339,9 @@
     if (isBlocked(row)) marks.append(el(doc, "span", "ms-mark ms-mark-blocked", COPY.markBlocked));
     foot.append(marks);
     r.append(foot);
+    r.addEventListener("click", function () {
+      openDetail(row);
+    });
     return r;
   }
   // ---- 看板视图状态(工单 04):筛选/排序/标签点击记忆/关闭票折叠,内存态 ----
@@ -492,6 +495,26 @@
     root.replaceChildren(app);
   }
 
+  // ---- 视图状态(工单 05):进详情后列表数据留在缓存,返回时按工单 04 的 view 状态机
+  // 原样重渲染(筛选/排序/折叠状态都保留)。详情态期间轮询照跑,新数据只进缓存
+  // 不打扰画面;返回列表即用上新的一批。
+  var st = { client: null, doc: null, root: null, rows: [], counts: {} };
+  var inDetail = false;
+  function openDetail(row) {
+    if (!window.MattSkillsDetail) return;
+    inDetail = true;
+    window.MattSkillsDetail.open({
+      client: st.client,
+      doc: st.doc,
+      root: st.root,
+      row: row,
+      onBack: function () {
+        inDetail = false;
+        renderBoard(st.doc, st.root, st.rows, st.counts, view);
+      },
+    });
+  }
+
   // ---- 实时刷新(工单 08) ----
   // 可见时按 probeIntervalMs(5s,上游活跃探测口径)轮询 counts 的 revision,变化才重拉列表;
   // document 不可见即暂停(上游黄档 120s 依赖注意力信号,M1 无此信号,不引入)。
@@ -532,11 +555,15 @@
         renderGuide(c.doc, c.root);
         return;
       }
-      boardData = {
-        rows: Array.isArray(listSc.rows) ? listSc.rows : [],
-        counts: countsSc.counts || {},
-      };
-      renderBoard(c.doc, c.root, boardData.rows, boardData.counts, view);
+      // 缓存最新一批(空态不清缓存:详情里的返回还靠它,空态由列表视图的下一拍纠正)
+      st.client = c.client;
+      st.doc = c.doc;
+      st.root = c.root;
+      st.rows = Array.isArray(listSc.rows) ? listSc.rows : [];
+      st.counts = countsSc.counts || {};
+      boardData = { rows: st.rows, counts: st.counts }; // 工单 04:筛选态原地重渲染与详情返回共用这一批
+      if (inDetail) return; // 详情态:数据只进缓存,不动画面(筛选/视图状态也原样保留)
+      renderBoard(c.doc, c.root, st.rows, st.counts, view);
     } catch (e) {
       if (!silent) renderError(c.doc, c.root, e);
     } finally {
