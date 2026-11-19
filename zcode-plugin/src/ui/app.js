@@ -186,6 +186,9 @@
     if (isBlocked(row)) marks.append(el(doc, "span", "ms-mark ms-mark-blocked", COPY.markBlocked));
     foot.append(marks);
     r.append(foot);
+    r.addEventListener("click", function () {
+      openDetail(row);
+    });
     return r;
   }
   function renderBoard(doc, root, rows, counts) {
@@ -198,6 +201,21 @@
     for (var row of sortRows(rows)) list.append(renderRow(doc, row));
     app.append(list);
     root.replaceChildren(app);
+  }
+
+  // ---- 视图状态:进详情后列表数据留在缓存,返回时原样重渲染(筛选状态落位在此) ----
+  var st = { client: null, doc: null, root: null, rows: [], counts: {} };
+  function openDetail(row) {
+    if (!window.MattSkillsDetail) return;
+    window.MattSkillsDetail.open({
+      client: st.client,
+      doc: st.doc,
+      root: st.root,
+      row: row,
+      onBack: function () {
+        renderBoard(st.doc, st.root, st.rows, st.counts);
+      },
+    });
   }
 
   // ---- 入口 ----
@@ -221,7 +239,12 @@
         renderGuide(doc, root);
         return;
       }
-      renderBoard(doc, root, Array.isArray(listSc.rows) ? listSc.rows : [], countsSc.counts || {});
+      st.client = client;
+      st.doc = doc;
+      st.root = root;
+      st.rows = Array.isArray(listSc.rows) ? listSc.rows : [];
+      st.counts = countsSc.counts || {};
+      renderBoard(doc, root, st.rows, st.counts);
     } catch (e) {
       renderError(doc, root, e);
     }

@@ -108,6 +108,9 @@ async function sliceList() {
     check("list: 地图子票裸 Type 行进自定义字段",
       b01 && Array.isArray(b01.customFields) && b01.customFields[0]?.name === "Type" && b01.customFields[0]?.value === "research",
       JSON.stringify(b01?.customFields));
+    check("list: 认领人剥掉加粗装饰(login 不带 **)",
+      Array.isArray(b01?.assignees) && b01.assignees[0]?.login === "dev",
+      JSON.stringify(b01?.assignees));
 
     check("list: 摘要是中文人话", typeof r.result?.content?.[0]?.text === "string" && r.result.content[0].text.includes("8"), r.result?.content?.[0]?.text);
   } finally {

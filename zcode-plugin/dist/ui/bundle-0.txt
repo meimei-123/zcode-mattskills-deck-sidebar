@@ -186,6 +186,9 @@
     if (isBlocked(row)) marks.append(el(doc, "span", "ms-mark ms-mark-blocked", COPY.markBlocked));
     foot.append(marks);
     r.append(foot);
+    r.addEventListener("click", function () {
+      openDetail(row);
+    });
     return r;
   }
   function renderBoard(doc, root, rows, counts) {
@@ -198,6 +201,21 @@
     for (var row of sortRows(rows)) list.append(renderRow(doc, row));
     app.append(list);
     root.replaceChildren(app);
+  }
+
+  // ---- 视图状态:进详情后列表数据留在缓存,返回时原样重渲染(筛选状态落位在此) ----
+  var st = { client: null, doc: null, root: null, rows: [], counts: {} };
+  function openDetail(row) {
+    if (!window.MattSkillsDetail) return;
+    window.MattSkillsDetail.open({
+      client: st.client,
+      doc: st.doc,
+      root: st.root,
+      row: row,
+      onBack: function () {
+        renderBoard(st.doc, st.root, st.rows, st.counts);
+      },
+    });
   }
 
   // ---- 入口 ----
@@ -221,11 +239,485 @@
         renderGuide(doc, root);
         return;
       }
-      renderBoard(doc, root, Array.isArray(listSc.rows) ? listSc.rows : [], countsSc.counts || {});
+      st.client = client;
+      st.doc = doc;
+      st.root = root;
+      st.rows = Array.isArray(listSc.rows) ? listSc.rows : [];
+      st.counts = countsSc.counts || {};
+      renderBoard(doc, root, st.rows, st.counts);
     } catch (e) {
       renderError(doc, root, e);
     }
   }
 
   window.MattSkillsPanel = { boot: boot };
+})();
+
+// MattSkills 详情视图(工单 05):列表行点击后的只读详情页。
+// 纯脚本无 import,与 app.js 由 build.mjs 拼进同一 bundle;app.js 在行点击时经
+// window.MattSkillsDetail.open 调进来。结构对照上游 IssueDetail 的 M1 子集
+// (port-notes/detail-page.md):粘性顶栏(返回+编号+标题,长文按阶梯折叠) → 头部(编号+标题)
+// → 元行(状态/标签/认领/日期) → 正文(三态 + markdown 基础渲染) → 评论时间线 → 只读提示。
+// 取数口径(#693):正文与评论一律以 deck_issue_get 那次取数为准;列表行只做轻量预览(元行)。
+"use strict";
+(function () {
+  // ---- 文案(M1 中文内联,键名按上游 copy 词表组织) ----
+  var COPY = {
+    back: "返回列表",
+    descTitle: "描述",
+    bodyLoading: "加载中…",
+    noBody: "无描述",
+    bodyError: "详情加载失败",
+    retry: "重试",
+    getBadShape: "deck_issue_get 应答缺卡数据",
+    commentsLoading: "评论 · 加载中",
+    commentsNotYet: "评论 · 还没拿到",
+    claimed: "已认领",
+    stateOpen: "在办",
+    stateClosed: "已关闭",
+    readOnlyHint: "只读视图:改动请直接编辑 .scratch 卡片文件",
+  };
+
+  // 上游 IssueDetailComments 的显示切片页大小(detail-page.md §2):
+  // 标题计数用全量,时间线一次只铺 50 条,超出给「显示其余」。
+  var COMMENTS_PAGE_SIZE = 50;
+
+  // 元数据字段行(可见写法,可加粗;围栏代码块内不算):这些进元行,不进描述。
+  var FIELD_LINE_RE = /^(?:\*\*)?(?:status|labels?|label|type|blocked\s+by|assignees|close\s+reason)(?:\*\*)?\s*[:\uFF1A]/i;
+
+  // ---- 小工具(与 app.js 各持一份:bundle 段落平级,不共享闭包) ----
+  function el(doc, tag, cls, text) {
+    var n = doc.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = String(text);
+    return n;
+  }
+  function textOf(res) {
+    if (res && Array.isArray(res.content)) {
+      for (var c of res.content) if (c && c.type === "text" && c.text) return c.text;
+    }
+    return "";
+  }
+  /** 卡的显示编号:#effort/编号;退化身份的 key 已带目录前缀,不重复拼。 */
+  function numberText(row) {
+    var key = String(row.key || "");
+    if (key.includes("/")) return "#" + key;
+    return "#" + (row.effortId ? row.effortId + "/" : "") + key;
+  }
+  /** get 寻址参数:退化身份原样;正常票补工作单元前缀,免得同号被目录序抢走。 */
+  function getArgOf(row) {
+    var key = String(row.key || "");
+    if (key.includes("/")) return key;
+    return row.effortId ? row.effortId + "/" + key : key;
+  }
+  function labelColorOf(name) {
+    return LABEL_COLORS[name] || "cccccc";
+  }
+  // 内置默认标签色表,与 app.js 同源直拷(上游 defaultLabelPalette)。
+  var LABEL_COLORS = {
+    "bug": "d73a4a",
+    "needs-triage": "fbca04",
+    "needs-info": "5319e7",
+    "ready-for-agent": "0e8a16",
+    "ready-for-human": "b60205",
+    "wontfix": "ffffff",
+    "wayfinder:map": "8b5cf6",
+    "wayfinder:research": "0ea5e9",
+    "wayfinder:prototype": "f59e0b",
+    "wayfinder:grilling": "9d7cd8",
+    "wayfinder:task": "10b981",
+  };
+
+  // ---- 描述抽取:整卡 markdown 里去掉标题/字段行/隐藏注释/Comments 段,剩下的才是「描述」 ----
+  function descriptionOf(raw) {
+    var s = String(raw || "");
+    // 去 ## Comments 段(切分口径与 cards.mjs 的评论解析一致:段到下一个 H2 为止)
+    var cm = /^\s*##\s*Comments\s*$/im.exec(s);
+    if (cm) {
+      var after = s.slice(cm.index + cm[0].length);
+      var nextH2 = /^\s*##\s+/m.exec(after);
+      s = s.slice(0, cm.index) + (nextH2 ? after.slice(nextH2.index) : "");
+    }
+    var out = [];
+    var fenced = false;
+    var h1Dropped = false;
+    for (var line of s.split("\n")) {
+      if (/^[ \t]*(```|~~~)/.test(line)) {
+        fenced = !fenced;
+        out.push(line);
+        continue;
+      }
+      if (fenced) {
+        out.push(line);
+        continue;
+      }
+      var t = line.trim();
+      if (/^<!--.*-->$/.test(t)) continue; // 文件头隐藏注释(DSH-*)整行去
+      if (!h1Dropped && /^#{1,6}\s+/.test(t)) {
+        h1Dropped = true; // 首个标题就是卡标题,头部已展示
+        continue;
+      }
+      if (FIELD_LINE_RE.test(t)) continue; // 元数据字段行进元行
+      out.push(line);
+    }
+    return out.join("\n").trim();
+  }
+
+  // ---- markdown 基础渲染(自写不引库):标题/列表/围栏代码块/粗斜体;全部走 DOM 构建,不吃 HTML ----
+  var INLINE_RE = /\*\*(.+?)\*\*|\*(.+?)\*/g;
+  function inlineNodes(doc, s) {
+    var out = [];
+    var last = 0;
+    var m;
+    INLINE_RE.lastIndex = 0;
+    while ((m = INLINE_RE.exec(s))) {
+      if (m.index > last) out.push(s.slice(last, m.index));
+      if (m[1] !== undefined) out.push(el(doc, "strong", null, m[1]));
+      else out.push(el(doc, "em", null, m[2]));
+      last = m.index + m[0].length;
+    }
+    if (last < s.length) out.push(s.slice(last));
+    return out;
+  }
+  function appendInline(doc, target, s) {
+    target.append.apply(target, inlineNodes(doc, String(s || "")));
+  }
+  /** 块级:围栏代码块 → pre>code;#/##/… → h1..h6;- / * 连续行 → ul;N. 连续行 → ol;其余 → 段落。 */
+  function mdNodes(doc, text) {
+    var out = [];
+    var lines = String(text || "").split("\n");
+    var i = 0;
+    while (i < lines.length) {
+      var t = lines[i].trim();
+      if (!t) {
+        i++;
+        continue;
+      }
+      if (/^(```|~~~)/.test(t)) {
+        var buf = [];
+        i++;
+        while (i < lines.length && !/^[ \t]*(```|~~~)/.test(lines[i])) {
+          buf.push(lines[i]);
+          i++;
+        }
+        i++; // 收尾围栏
+        var pre = el(doc, "pre", "ms-md-pre");
+        pre.append(el(doc, "code", null, buf.join("\n")));
+        out.push(pre);
+        continue;
+      }
+      var h = /^(#{1,6})\s+(.*)$/.exec(t);
+      if (h) {
+        var hn = el(doc, "h" + h[1].length, "ms-md-h");
+        appendInline(doc, hn, h[2]);
+        out.push(hn);
+        i++;
+        continue;
+      }
+      var li;
+      if (/^[-*]\s+/.test(t)) {
+        var ul = el(doc, "ul", "ms-md-list");
+        while (i < lines.length) {
+          var um = /^[-*]\s+(.*)$/.exec(lines[i].trim());
+          if (!um) break;
+          li = el(doc, "li");
+          appendInline(doc, li, um[1]);
+          ul.append(li);
+          i++;
+        }
+        out.push(ul);
+        continue;
+      }
+      if (/^\d+[.]\s+/.test(t)) {
+        var ol = el(doc, "ol", "ms-md-list");
+        while (i < lines.length) {
+          var om = /^\d+[.]\s+(.*)$/.exec(lines[i].trim());
+          if (!om) break;
+          li = el(doc, "li");
+          appendInline(doc, li, om[1]);
+          ol.append(li);
+          i++;
+        }
+        out.push(ol);
+        continue;
+      }
+      // 段落:连续普通行一段(soft-break 交给 CSS pre-wrap 保住)
+      var buf2 = [];
+      while (i < lines.length) {
+        var pt = lines[i].trim();
+        if (
+          !pt || /^(```|~~~)/.test(pt) || /^#{1,6}\s+/.test(pt) ||
+          /^[-*]\s+/.test(pt) || /^\d+[.]\s+/.test(pt)
+        ) break;
+        buf2.push(pt);
+        i++;
+      }
+      out.push(el(doc, "p", "ms-md-p", buf2.join("\n")));
+    }
+    return out;
+  }
+
+  // ---- 顶栏折叠(issueDetailFold 口径,detail-page.md §3) ----
+  // 阶梯:按元素顺序(上游五元素 back/crumb/snapshot/primary/newSession;M1 顶栏是
+  // back/编号/标题三元素,同算法),每个元素按其字数逐级 push({el, n:1..len})。
+  function foldLadderOf(elems) {
+    var steps = [];
+    for (var e of elems) {
+      for (var n = 1; n <= e.text.length; n++) steps.push({ el: e.el, n: n });
+    }
+    return steps;
+  }
+  /** fits 判定:scrollWidth ≤ clientWidth+1;测量环境缺失(桩/离屏)视作放得下,不折。 */
+  function foldFits(bar) {
+    var sw = bar.scrollWidth;
+    var cw = bar.clientWidth;
+    if (typeof sw !== "number" || typeof cw !== "number") return true;
+    return sw <= cw + 1;
+  }
+  /** 折叠机:先全量复位(data-full 兜底),不 fit 则 tier=1 逐档试;尾部逐字裁,不补省略号。 */
+  function applyDetailFold(bar, elems) {
+    if (!bar || !elems.length) return;
+    for (var e of elems) {
+      e.el.setAttribute("data-full", e.text);
+      e.el.textContent = e.text;
+    }
+    if (foldFits(bar)) return;
+    var steps = foldLadderOf(elems);
+    for (var tier = 1; tier <= steps.length; tier++) {
+      var drop = new Map();
+      for (var k = 0; k < tier && k < steps.length; k++) drop.set(steps[k].el, steps[k].n);
+      for (var e2 of elems) {
+        var d = drop.get(e2.el) || 0;
+        e2.el.textContent = e2.text.slice(0, e2.text.length - d);
+      }
+      void bar.offsetWidth; // 强制重排一次再量
+      if (foldFits(bar)) return;
+    }
+  }
+  var foldCtx = null; // 最近一次详情顶栏的折叠上下文
+  var foldObserver = null;
+  var foldBound = false;
+  function refold() {
+    if (foldCtx) applyDetailFold(foldCtx.bar, foldCtx.elems);
+  }
+  function bindFoldOnce() {
+    if (foldBound) return;
+    foldBound = true;
+    if (typeof window.addEventListener === "function") window.addEventListener("resize", refold);
+    if (typeof document !== "undefined" && document.fonts && document.fonts.ready && typeof document.fonts.ready.then === "function") {
+      document.fonts.ready.then(refold);
+    }
+    if (typeof window.ResizeObserver === "function") foldObserver = new window.ResizeObserver(refold);
+  }
+
+  // ---- 详情状态与取数 ----
+  var SEQ = 0;
+  var cur = null; // {seq, client, doc, row, refs:{bodyBox,cmtTitle,cmtList}}
+
+  function renderMeta(doc, row) {
+    var meta = el(doc, "div", "ms-meta");
+    meta.append(
+      el(
+        doc,
+        "span",
+        "ms-state-chip " + (row.state === "closed" ? "ms-chip-closed" : "ms-chip-open"),
+        row.state === "closed" ? COPY.stateClosed : COPY.stateOpen
+      )
+    );
+    var labels = Array.isArray(row.labels) ? row.labels : [];
+    for (var lab of labels) {
+      if (!lab || !lab.name) continue;
+      var hex = "#" + labelColorOf(lab.name);
+      var chip = el(doc, "span", "ms-label");
+      var dot = el(doc, "span", "ms-label-dot");
+      dot.setAttribute("data-color", hex);
+      dot.style.background = hex;
+      chip.append(dot);
+      chip.append(lab.name);
+      meta.append(chip);
+    }
+    var assignees = Array.isArray(row.assignees) ? row.assignees : [];
+    for (var a of assignees) {
+      if (a && a.login) meta.append(el(doc, "span", "ms-assignee", "@" + a.login));
+      else meta.append(el(doc, "span", "ms-assignee", COPY.claimed)); // claimed 但没记名字
+    }
+    var updated = String(row.updatedAt || "").slice(0, 10);
+    var created = String(row.createdAt || "").slice(0, 10);
+    if (updated) meta.append(el(doc, "span", "ms-meta-date", "· 更新 " + updated));
+    if (created) meta.append(el(doc, "span", "ms-meta-date", "· 创建 " + created));
+    return meta;
+  }
+
+  function commentItem(doc, c) {
+    var it = el(doc, "div", "ms-cmt-item");
+    var head = el(doc, "div", "ms-cmt-head");
+    head.append(el(doc, "span", "ms-cmt-login", "@" + ((c && c.author && c.author.login) || "ghost")));
+    var date = String((c && c.createdAt) || "").slice(0, 10);
+    if (date) head.append(el(doc, "span", "ms-cmt-date", date));
+    it.append(head);
+    var body = el(doc, "div", "ms-cmt-body");
+    var nodes = mdNodes(doc, (c && c.body) || "");
+    body.append.apply(body, nodes);
+    it.append(body);
+    return it;
+  }
+
+  function renderCard(card) {
+    var refs = cur.refs;
+    var doc = cur.doc;
+    // 正文三态之三:取到了才有资格说「无描述」
+    var desc = descriptionOf(card.body);
+    if (desc) {
+      var nodes = mdNodes(doc, desc);
+      refs.bodyBox.replaceChildren.apply(refs.bodyBox, nodes);
+    } else {
+      refs.bodyBox.replaceChildren(el(doc, "div", "ms-body-empty", COPY.noBody));
+    }
+    // 评论时间线:计数以详情为准;未取到前不许报「评论 (0)」
+    var comments = Array.isArray(card.comments) ? card.comments : [];
+    refs.cmtTitle.textContent = "评论 (" + comments.length + ")";
+    refs.cmtList.replaceChildren();
+    var shown = Math.min(comments.length, COMMENTS_PAGE_SIZE);
+    for (var i = 0; i < shown; i++) refs.cmtList.append(commentItem(doc, comments[i]));
+    if (comments.length > shown) {
+      var more = el(doc, "button", "ms-cmt-more");
+      more.setAttribute("type", "button");
+      var update = function () {
+        more.textContent = "显示其余 " + (comments.length - shown) + " 条";
+      };
+      update();
+      more.addEventListener("click", function () {
+        var next = Math.min(comments.length, shown + COMMENTS_PAGE_SIZE);
+        for (var j = shown; j < next; j++) refs.cmtList.append(commentItem(doc, comments[j]));
+        shown = next;
+        if (shown >= comments.length) more.remove();
+        else update();
+      });
+      refs.cmtList.append(more);
+    }
+  }
+
+  function renderFail(seq, msg) {
+    var refs = cur.refs;
+    var doc = cur.doc;
+    var box = el(doc, "div", "ms-body-error");
+    box.append(el(doc, "div", "ms-body-error-title", COPY.bodyError));
+    box.append(el(doc, "div", "ms-error-detail", msg || ""));
+    var retry = el(doc, "button", "ms-retry", COPY.retry);
+    retry.setAttribute("type", "button");
+    retry.addEventListener("click", function () {
+      if (!cur || cur.seq !== seq) return;
+      var s2 = ++SEQ;
+      cur.seq = s2;
+      refs.bodyBox.replaceChildren(el(doc, "div", "ms-body-loading", COPY.bodyLoading));
+      refs.cmtTitle.textContent = COPY.commentsLoading;
+      refs.cmtList.replaceChildren();
+      fetchDetail(s2);
+    });
+    box.append(retry);
+    refs.bodyBox.replaceChildren(box);
+    refs.cmtTitle.textContent = COPY.commentsNotYet;
+    refs.cmtList.replaceChildren();
+  }
+
+  function fetchDetail(seq) {
+    cur.client.callTool("deck_issue_get", { key: getArgOf(cur.row) }).then(
+      function (res) {
+        if (!cur || cur.seq !== seq) return; // 已返回列表/已重试:迟到应答丢弃
+        if (res && res.isError) return renderFail(seq, textOf(res));
+        var card = res && res.structuredContent && res.structuredContent.card;
+        if (!card || typeof card.body !== "string") return renderFail(seq, COPY.getBadShape);
+        renderCard(card);
+      },
+      function (err) {
+        if (!cur || cur.seq !== seq) return;
+        renderFail(seq, (err && err.message) || String(err));
+      }
+    );
+  }
+
+  /** 入口:app.js 行点击调进来。shell 即刻渲染(元行用列表行轻量预览),正文/评论等 get 回来。 */
+  function open(opts) {
+    var client = opts.client;
+    var doc = opts.doc;
+    var row = opts.row;
+    var seq = ++SEQ;
+    cur = { seq: seq, client: client, doc: doc, row: row, refs: null };
+    var num = numberText(row);
+    var title = String(row.title || "");
+
+    var app = el(doc, "div", "ms-app ms-detail");
+    // 粘性顶栏:返回 + 编号 + 标题(折叠阶梯的三元素,各自留 data-full 底稿)
+    var bar = el(doc, "div", "ms-topbar");
+    bar.setAttribute("data-detail-topbar", "1");
+    var back = el(doc, "button", "ms-back", COPY.back);
+    back.setAttribute("type", "button");
+    back.setAttribute("data-full", COPY.back);
+    var bnum = el(doc, "span", "ms-topbar-num", num);
+    bnum.setAttribute("data-full", num);
+    bnum.setAttribute("title", num);
+    var btitle = el(doc, "span", "ms-topbar-title", title);
+    btitle.setAttribute("data-full", title);
+    btitle.setAttribute("title", title);
+    bar.append(back, bnum, btitle);
+    app.append(bar);
+    // 头部:编号徽标 + 标题(全文)
+    var head = el(doc, "div", "ms-detail-head");
+    var hnum = el(doc, "span", "ms-num", num);
+    hnum.setAttribute("title", num);
+    var htitle = el(doc, "span", "ms-detail-title", title);
+    htitle.setAttribute("title", title);
+    head.append(hnum, htitle);
+    app.append(head);
+    app.append(renderMeta(doc, row));
+    // 正文块(三态容器)
+    var sec = el(doc, "div", "ms-body-sec");
+    sec.append(el(doc, "div", "ms-sec-title", COPY.descTitle));
+    var bodyBox = el(doc, "div", "ms-body");
+    bodyBox.append(el(doc, "div", "ms-body-loading", COPY.bodyLoading));
+    sec.append(bodyBox);
+    app.append(sec);
+    // 评论时间线
+    var cmt = el(doc, "div", "ms-comments");
+    var cmtTitle = el(doc, "div", "ms-comments-title", COPY.commentsLoading);
+    var cmtList = el(doc, "div", "ms-cmt-list");
+    cmt.append(cmtTitle, cmtList);
+    app.append(cmt);
+    // 底部只读提示
+    app.append(el(doc, "div", "ms-readonly", COPY.readOnlyHint));
+    opts.root.replaceChildren(app);
+    cur.refs = { bodyBox: bodyBox, cmtTitle: cmtTitle, cmtList: cmtList };
+
+    // 折叠:本顶栏挂进上下文,resize/fonts/RO 重算
+    bindFoldOnce();
+    if (foldObserver) {
+      foldObserver.disconnect();
+      foldObserver.observe(bar);
+    }
+    foldCtx = {
+      bar: bar,
+      elems: [
+        { el: back, text: COPY.back },
+        { el: bnum, text: num },
+        { el: btitle, text: title },
+      ],
+    };
+    applyDetailFold(bar, foldCtx.elems);
+
+    back.addEventListener("click", function () {
+      close();
+      if (typeof opts.onBack === "function") opts.onBack();
+    });
+
+    fetchDetail(seq);
+  }
+
+  function close() {
+    SEQ++; // 迟到应答作废
+    cur = null;
+    foldCtx = null;
+    if (foldObserver) foldObserver.disconnect();
+  }
+
+  window.MattSkillsDetail = { open: open };
 })();
