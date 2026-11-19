@@ -13,18 +13,44 @@
         color: #d7dae0;
         font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
       }
+      #diag {
+        font: 11px ui-monospace, Consolas, monospace;
+        color: #9aa3af;
+        white-space: pre-wrap;
+      }
+      #diag .ok { color: #4ade80; }
+      #diag .bad { color: #f87171; }
+      #diag .warn { color: #f0883e; }
     </style>
   </head>
   <body>
     <div id="root" style="font-family: system-ui; padding: 12px">正在加载看板…</div>
+    <pre id="diag"></pre>
     <script>
       "use strict";
       (function () {
         var ASSETS = "ui://zcode-mattpocock-skills-deck/assets/";
+        // 诊断金丝雀(真机排障):逐步点亮 boot 状态并记录前 3 个原始回包。
+        // 排障完成后可删 #diag 段,不影响正式流程。
+        var diag = document.getElementById("diag");
+        function say(msg, cls) {
+          if (!diag) return;
+          var line = document.createElement("div");
+          if (cls) line.className = cls;
+          var ts = typeof performance !== "undefined" && performance.now ? (performance.now() / 1000).toFixed(2) : "??";
+          line.textContent = "[" + ts + "s] " + msg;
+          diag.appendChild(line);
+        }
+        say("1 页面内联脚本已执行", "ok");
+        say("   window.parent === window: " + (window.parent === window) + " | top===window: " + (window === window.top));
+        say("   alias 注入: " + (document.querySelector ? (document.querySelector('script[src*="alias"]') ? "有" : "无") : "?"));
+        say("   __pluginClient 预存在: " + (window.__pluginClient ? "有(将复用)" : "无(自建)"));
+
         // 极小 ext-apps 客户端:postMessage JSON-RPC 2.0 到宿主(window.parent)。
-        // 包络与握手对照官方插件(excalidraw 0.3.4)内置客户端的实跑行为:先 ui/initialize,
-        // 再 tools/call {name, arguments}、resources/read {uri} 与 ui/message(动作发话,
-        // 形状 {role:"user", content:[{type:"text",text}]},宿主回空 result);回包只认 source === parent。
+        // 包络与握手对照官方插件(pdf 0.2.10 / excalidraw 0.3.4)内置客户端的实跑行为:
+        // 先 ui/initialize(protocolVersion 2026-01-26),再 tools/call / resources/read /
+        // ui/message;回包只认 source === parent。
+        var rawSeen = 0;
         function createClient() {
           var nextId = 1;
           var pending = new Map();
@@ -32,6 +58,10 @@
           window.addEventListener("message", function (ev) {
             if (ev.source !== window.parent) return;
             var msg = ev.data;
+            if (rawSeen < 3) {
+              rawSeen++;
+              say("   ← 原始消息 #" + rawSeen + ": " + JSON.stringify(msg).slice(0, 160), "ok");
+            }
             if (!msg || msg.jsonrpc !== "2.0" || msg.id === undefined) return;
             var p = pending.get(msg.id);
             if (!p) return;
@@ -43,7 +73,14 @@
             return new Promise(function (resolve, reject) {
               var id = nextId++;
               pending.set(id, { resolve: resolve, reject: reject });
-              window.parent.postMessage({ jsonrpc: "2.0", id: id, method: method, params: params }, "*");
+              var payload = { jsonrpc: "2.0", id: id, method: method, params: params };
+              say("   → 发出 " + method + " (id=" + id + ")", "warn");
+              window.parent.postMessage(payload, "*");
+              if (method === "ui/initialize") {
+                setTimeout(function () {
+                  if (pending.has(id)) say("   ⚠ ui/initialize 8s 无回包(桥不通或宿主未接)", "bad");
+                }, 8000);
+              }
             });
           }
           function ready() {
@@ -87,7 +124,9 @@
             if (!c || !("text" in c) || !c.text) throw Error("Empty asset " + name);
             return c.text;
           }
+          say("2 拉 assets.json …", "warn");
           var manifest = JSON.parse(await load("assets.json"));
+          say("3 资产清单 OK: " + JSON.stringify(manifest.scripts), "ok");
           var fetched = await Promise.all([load("panel.css")].concat(manifest.scripts.map(load)));
           var css = fetched[0];
           var parts = fetched.slice(1);
@@ -96,6 +135,7 @@
           document.head.append(style);
           var root = document.getElementById("root");
           if (root) root.removeAttribute("style");
+          say("4 注入 CSS+JS,起应用 …", "warn");
           for (var text of parts) {
             var s = document.createElement("script");
             s.textContent = text;
@@ -104,7 +144,9 @@
           var app = window.MattSkillsPanel;
           if (!app || typeof app.boot !== "function") throw Error("bundle 未定义 MattSkillsPanel");
           await app.boot({ client: client, doc: document, root: root });
+          say("5 应用已启动", "ok");
         })().catch(function (e) {
+          say("✗ 失败: " + (e && e.message ? e.message : String(e)), "bad");
           var root = document.getElementById("root");
           if (root) root.textContent = "看板加载失败 / Failed to load: " + (e && e.message ? e.message : String(e));
         });
