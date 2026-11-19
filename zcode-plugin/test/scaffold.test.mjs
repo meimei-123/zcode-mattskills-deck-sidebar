@@ -129,8 +129,11 @@ async function smoke() {
     send({ jsonrpc: "2.0", method: "notifications/initialized" }); // 通知不应答,不挂
 
     const tools = await rpc("tools/list", {});
-    check("tools/list 应答空列表", Array.isArray(tools.result?.tools) && tools.result.tools.length === 0,
-      JSON.stringify(tools.result));
+    // 工单 02 起工具面不再为空:三个只读工具(骨架期这条断言过"空列表",随工具面落地演进)。
+    const toolNames = (tools.result?.tools || []).map((t) => t.name);
+    check("tools/list 声明只读工具面(工单 02)",
+      ["deck_issue_list", "deck_issue_get", "deck_issue_counts"].every((n) => toolNames.includes(n)),
+      JSON.stringify(toolNames));
 
     const rl = await rpc("resources/list", {});
     const res = rl.result?.resources?.find((r) => r.uri === PANEL_URI);

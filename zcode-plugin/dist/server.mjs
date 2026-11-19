@@ -1,9 +1,11 @@
-// MattSkills MCP 服务骨架(工单 01):stdio JSON-RPC 握手 + 空 tools/list + panel.html 资源供给。
-// 零依赖,按 kicad fallback server 的最小协议形状手写;panel 经 ui:// 资源交宿主加载(同 excalidraw)。
+// MattSkills MCP 服务(工单 01 骨架 + 工单 02 只读工具):stdio JSON-RPC 握手 + panel.html 资源供给
+// + deck_issue_list / deck_issue_get / deck_issue_counts 三个工具(上游契约 list/get/counts 的直翻,
+// 返回结构化结果 + 中文人话摘要)。零依赖;工作区根取宿主注入的 ZCODE_WORKSPACE_ROOT。
 import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { scanWorkspace, computeCounts, findCardByScan, thinRow } from "./cards.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_NAME = "zcode-mattpocock-skills-deck";
@@ -15,6 +17,135 @@ const reply = (id, result) =>
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
 const fail = (id, code, message) =>
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } })}\n`);
+
+/** 宿主注入的工作区根(manifest env 的 ${ZCODE_PROJECT_DIR});没给回落进程当前目录。 */
+function workspaceRoot() {
+  return String(process.env.ZCODE_WORKSPACE_ROOT || process.cwd());
+}
+
+const TOOLS = [
+  {
+    name: "deck_issue_list",
+    description:
+      "列出当前工作区 .scratch/ 下的全部卡片(规格/地图容器行 + 工单行),返回薄行(不含正文与评论全文)。可用 state/labels/type/keys 过滤;labels 为 AND 精确匹配。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        state: { type: "string", enum: ["open", "closed", "all"], description: "只列哪种状态,缺省 all" },
+        labels: { type: "array", items: { type: "string" }, description: "必须同时带上的标签(AND),缺省不过滤" },
+        type: { type: "string", enum: ["issue", "map", "spec"], description: "只要哪一类,缺省全部" },
+        keys: { type: "array", items: { type: "string" }, description: "批量按编号取" },
+      },
+    },
+  },
+  {
+    name: "deck_issue_get",
+    description:
+      "读一张卡的全文(含正文与评论时间线)。key 用两位编号(01/1 都认,补零),退化卡身份带目录前缀(目录/文件名);同号多卡时取目录序第一张。",
+    inputSchema: {
+      type: "object",
+      properties: { key: { type: "string", description: "卡编号或退化身份,如 01 或 demo/03-撞号卡" } },
+      required: ["key"],
+    },
+  },
+  {
+    name: "deck_issue_counts",
+    description:
+      "当前工作区各口径计数:open/closed/total 与面板胶囊口径(可接=frontier、占用、认领、阻塞、故障=bug、诊断=needs-triage)。空工作区返回 0 与 empty 标志,不是错误。",
+    inputSchema: { type: "object", properties: {} },
+  },
+];
+
+/** 卡的显示标签:#effort/编号(根级无目录前缀)。 */
+function displayKey(card) {
+  return `#${card.effortId ? `${card.effortId}/` : ""}${card.key}`;
+}
+
+function labelNames(card) {
+  return Array.isArray(card.labels) ? card.labels.map((l) => String(l.name || "")) : [];
+}
+
+function summarizeList(sc) {
+  if (sc.empty) return "此工作区还没有 .scratch/ 工单目录,先跑 /setup-matt-pocock-skills 或 /to-tickets 建卡。";
+  const c = sc.counts;
+  const openTitles = sc.rows
+    .filter((r) => r.state === "open")
+    .slice(0, 5)
+    .map((r) => `${displayKey(r)} ${r.title}`);
+  const more = sc.rows.filter((r) => r.state === "open").length - openTitles.length;
+  const lines = [
+    `共 ${sc.rows.length} 张卡(容器 ${c.maps + c.specs} / 票 ${c.total},open ${c.open} · closed ${c.closed})。`,
+  ];
+  if (openTitles.length) lines.push(openTitles.join("、") + (more > 0 ? ` …(另有 ${more} 张 open)` : ""));
+  return lines.join("\n");
+}
+
+function summarizeGet(card) {
+  const labels = labelNames(card);
+  const bits = [displayKey(card), card.title, `(${card.state}${labels.length ? `,标签:${labels.join("/")}` : ""},${card.comments.length} 条评论)`];
+  return bits.join(" ");
+}
+
+function summarizeCounts(sc) {
+  if (sc.empty) return "此工作区还没有 .scratch/ 工单目录,先跑 /setup-matt-pocock-skills 或 /to-tickets 建卡。";
+  const c = sc.counts;
+  return `共 ${c.total} 张票:可接 ${c.frontier} · 占用 ${c.occupied} · 阻塞 ${c.blocked} · 故障 ${c.bug} · 诊断 ${c.triage} · 已关闭 ${c.closed}(另有地图 ${c.maps}、规格 ${c.specs} 个容器)`;
+}
+
+/** 工具实现:全部走同一次扫描,返回 {content, structuredContent} 或 {content, isError}。 */
+function handleCall(name, args) {
+  const a = args && typeof args === "object" ? args : {};
+  const root = workspaceRoot();
+  const scan = scanWorkspace(root);
+
+  if (name === "deck_issue_list") {
+    let rows = scan.rows;
+    const state = String(a.state === undefined || a.state === null ? "all" : a.state).trim().toLowerCase();
+    if (state === "open" || state === "closed") rows = rows.filter((r) => r.state === state);
+    if (a.type) rows = rows.filter((r) => r.type === a.type);
+    const wanted = Array.isArray(a.labels)
+      ? a.labels.map((s) => String(s).trim()).filter(Boolean)
+      : [];
+    if (wanted.length) {
+      rows = rows.filter((r) => {
+        const names = labelNames(r);
+        return wanted.every((w) => names.includes(w));
+      });
+    }
+    if (Array.isArray(a.keys) && a.keys.length) {
+      const keys = a.keys.map(String);
+      rows = rows.filter((r) => keys.includes(r.key));
+    }
+    const sc = {
+      workspaceRoot: root,
+      empty: scan.empty,
+      units: scan.units.map((u) => ({ effortId: u.effortId, kind: u.kind, legacy: u.legacy })),
+      counts: computeCounts(scan.rows),
+      total: rows.length,
+      rows: rows.map(thinRow),
+    };
+    return { content: [{ type: "text", text: summarizeList({ ...sc, rows: sc.rows }) }], structuredContent: sc };
+  }
+
+  if (name === "deck_issue_get") {
+    const key = String(a.key === undefined || a.key === null ? "" : a.key).trim();
+    if (!key) return { content: [{ type: "text", text: "缺少 key:请给卡编号(如 01)或退化身份(如 demo/03-撞号卡)。" }], isError: true };
+    const card = findCardByScan(scan, key);
+    if (!card) {
+      return { content: [{ type: "text", text: `找不到卡 ${key}:这个工作区没有这张卡(现有 ${scan.rows.length} 张,可先 deck_issue_list 看全量)。` }], isError: true };
+    }
+    const sc = { workspaceRoot: root, card };
+    return { content: [{ type: "text", text: summarizeGet(card) }], structuredContent: sc };
+  }
+
+  if (name === "deck_issue_counts") {
+    const counts = computeCounts(scan.rows);
+    const sc = { workspaceRoot: root, empty: scan.empty, counts };
+    return { content: [{ type: "text", text: summarizeCounts(sc) }], structuredContent: sc };
+  }
+
+  return { content: [{ type: "text", text: `未知工具 ${name}` }], isError: true };
+}
 
 createInterface({ input: process.stdin }).on("line", (line) => {
   let m;
@@ -34,7 +165,13 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     case "ping":
       return reply(m.id, {});
     case "tools/list":
-      return reply(m.id, { tools: [] });
+      return reply(m.id, { tools: TOOLS });
+    case "tools/call":
+      try {
+        return reply(m.id, handleCall(m.params?.name, m.params?.arguments));
+      } catch (e) {
+        return reply(m.id, { content: [{ type: "text", text: `读工作区时出错:${e && e.message ? e.message : String(e)}` }], isError: true });
+      }
     case "resources/list":
       return reply(m.id, {
         resources: [{ uri: PANEL_URI, name: "MattSkills panel", mimeType: PANEL_MIME }],
