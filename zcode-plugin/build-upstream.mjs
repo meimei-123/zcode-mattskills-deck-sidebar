@@ -1,4 +1,4 @@
-// build-upstream.mjs —— 上游 client 骨架 tracer 的拼接构建(工单 U01,ADR-0002 修订)。
+// build-upstream.mjs —— 上游 client 骨架 tracer 的拼接构建(工单 U01 立,U02 扩 kernel 域)。
 //
 // 机制照上游 scripts/build.mts 的 splice 约定(上游只读,不改):
 //   上游 src/client/index.ts 的 apply 骨架里留 `// ==== <kind>:<name> (spliced by build) ====`
@@ -14,7 +14,8 @@
 // 产物:dist/ui/bundle-1.txt(esbuild IIFE,Preact + preact/compat 一并打进 bundle;
 // 资源通道只搬文本,产物不得含模块级 import/export)。用法:node build-upstream.mjs
 // (node build.mjs 会在末尾自动调它)。
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, copyFileSync, symlinkSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
@@ -208,18 +209,173 @@ export function stripTsToSpliceable(tsCode, { source }) {
 // 拼接管线:叶子清单(后续工单往这里加)+ 骨架标记序校验 + 拼接
 // ---------------------------------------------------------------------------
 
-/** 本票叶子清单:骨架必需(hostShim + ctx 骨架 + 样式注入点及其求值序前置)。
- *  id 即上游 index.ts 的标记名;file 相对上游仓库根。kernel:ctx 不在此列 ——
- *  它与上游 wireCtx 同位:apply 头部注入,不走标记。 */
+/** 本票叶子清单(工单 U02 扩充):id 即上游 index.ts 的标记名;file 相对上游仓库根,
+ *  own:true 表示 file 相对本仓 ROOT(.tmp 生成物)。kernel:ctx 不在此列 —— 它与上游
+ *  wireCtx 同位:apply 头部注入,不走标记。标记序一律对着上游 index.ts 校验(见
+ *  spliceSkeleton 三道对账),这里只登记名字与真源。 */
 export const LEAVES = [
   { id: "leaf:hostShim", file: "src/client/hostShim.ts" },
   { id: "kernel:containerView", file: "src/client/kernel/container-view.ts" },
+  { id: "kernel:ticketLabel", file: "src/client/kernel/ticket-label.ts" },
   { id: "kernel:motion", file: "src/client/kernel/motion.ts" },
   { id: "kernel:styles", file: "src/client/kernel/styles.ts" },
+  // localeData/promptData 是上游构建现场生成、不入库的生成物(config/ YAML → 生成器)。
+  // 上游树只读,生成器写死输出在上游树内 —— 这里把生成器与其 config 镜像进本仓 .tmp
+  // 再跑,产物落 .tmp(见 generateUpstreamLeaves);词表五份合段同上游 buildVocabularySpliceInput。
+  { id: "kernel:localeData", file: ".tmp/upstream-leaves/locale-data.ts", own: true },
+  { id: "kernel:locale", file: "src/client/kernel/locale.ts" },
+  { id: "shared:trackerConstants", file: ".tmp/upstream-leaves/vocabulary.client.js", own: true },
+  { id: "kernel:promptData", file: ".tmp/upstream-leaves/prompt-data.ts", own: true },
+  { id: "kernel:prompts", file: "src/client/kernel/prompts.ts" },
+  { id: "kernel:deckState", file: "src/client/kernel/deck-state.ts" },
+  { id: "kernel:storeDerived", file: "src/client/kernel/store-derived.ts" },
+  { id: "kernel:issuePages", file: "src/client/kernel/issue-pages.ts" },
 ];
 const CTX_BLOCK_FILE = "src/client/kernel/ctx.ts";
 
+// 上游没有标记、但工单点名搬入的 tracker 侧真源(上游客户端闭包不含它们 —— 上游由宿主
+// 在服务侧消费;本仓把数据面接进同一闭包,经骨架自有锚点注入,不冒充上游标记名):
+//   progress.ts(deck-derive 的进度真源)+ deck-counts.ts + deck-derive.ts + tabsfold.ts
+// (tabsfold 上游 index.ts 内联同款逻辑、无标记;这里搬独立叶子文件,逻辑一字不改)。
+const TRACKER_ANCHOR = "trackerDeck";
+const TRACKER_PARTS = [
+  {
+    file: "src/shared/issue-file/src/progress.ts",
+    strip: [],
+    why: "进度解析唯一真源,deck-derive 复出它",
+  },
+  {
+    file: "src/tracker/deck-counts.ts",
+    strip: [
+      "import { effortOf } from './kernel/identity-keys.js'",
+      "export default { DECK_COUNT_SOURCES, planDeckCounts, rowCountsOf }",
+    ],
+    why: "effortOf 与词表五份同闭包已有;default 导出拼接吃不了",
+  },
+  {
+    file: "src/client/kernel/tabsfold.ts",
+    strip: [],
+    why: "页签折叠机纯函数(上游 index.ts 内联同款,无标记)",
+  },
+  {
+    file: "src/tracker/deck-derive.ts",
+    strip: [
+      "import { STATE } from './contract/vocabulary.js'",
+      "import { effortOf, idOfParts } from './kernel/identity-keys.js'",
+      "import { parseProgress } from '../shared/issue-file/src/progress.js'",
+      "export { parseProgress }",
+    ],
+    why: "STATE/effortOf/idOfParts 与词表五份同闭包已有;parseProgress 由本段 progress.ts 提供,重导出行去掉",
+  },
+];
+
+// 词表五份(上游 shared:trackerConstants 的拼接输入,buildVocabularySpliceInput 同款):
+// 次序即依赖次序(名单派生读数组常量,数组常量在前;其余互相零依赖)。
+const VOCABULARY_PARTS = [
+  { file: "src/tracker/contract/canonical-labels.ts", strip: [] },
+  { file: "src/tracker/contract/vocabulary.ts", strip: [] },
+  { file: "src/tracker/kernel/identity-keys.ts", strip: [] },
+  {
+    file: "src/tracker/label-names.ts",
+    strip: ["import { CANONICAL_LABELS } from './contract/canonical-labels.js'"],
+    why: "CANONICAL_LABELS 与本段同作用域,引用句去掉(上游同款处理)",
+  },
+  { file: "src/tracker/fix-contract.ts", strip: [] },
+];
+
 const readUpstream = (rel) => readFileSync(join(UPSTREAM_ROOT, ...rel.split("/")), "utf8");
+
+/**
+ * 把若干上游 .ts 真源合成一段可拼进闭包的 JavaScript(上游 buildVocabularySpliceInput 的
+ * 一般化):逐份读原文 → 逐字匹配剥掉 strip 里的引用句(找不到当场抛,不许静默拼错)→
+//  拼段头注释 → 按全仓唯一口径转译 → 末尾导出块改回行首 export。产物已转译为 JS。
+ */
+export function buildCombinedFragment(parts, { source }) {
+  const combined = parts
+    .map((p) => {
+      let text = readUpstream(p.file);
+      for (const stripLine of p.strip || []) {
+        if (!text.includes(stripLine)) {
+          throw new Error(`${source}: ${p.file} 里找不到预期的引用句,拼接输入拒绝生成:${stripLine}`);
+        }
+        text = text.replace(stripLine, `// （拼接输入:${p.why || "与本段同作用域,引用句已去掉"}）`);
+      }
+      return `// ---- splice part: ${p.file} ----\n` + text;
+    })
+    .join("\n");
+  const transformed = esbuild.transformSync(combined, TRANSPILE_OPTIONS).code;
+  const normalized = transformed.replace(/\r\n/g, "\n").replace(/\s+$/, "") + "\n";
+  return inlineExportDeclarations(normalized, source);
+}
+
+// 上游生成器镜像:config/ + 三个生成器 + 它们的 lib 复制进本仓 .tmp/upstream-gen,再以镜像
+// 为 cwd 跑(生成器 ROOT 由 __dirname 推出 → 产物全部落在镜像内,上游树一字不动)。
+// node_modules 用 junction 指回本仓(esbuild/yaml 都在本仓 devDependencies 里)。
+const GEN_MIRROR = join(ROOT, ".tmp", "upstream-gen");
+const GEN_SCRIPTS = [
+  "scripts/generate-time-config.mts",
+  "scripts/generate-locale-config.mts",
+  "scripts/generate-prompt-config.mts",
+];
+const GEN_LIBS = [
+  "scripts/lib/copy-config.mts",
+  "scripts/lib/prompt-config.mts",
+  "scripts/lib/time-config-expr.mts",
+];
+
+function runInMirror(scriptRel, label) {
+  const r = spawnSync(process.execPath, [join(GEN_MIRROR, ...scriptRel.split("/"))], {
+    encoding: "utf8",
+    cwd: GEN_MIRROR,
+  });
+  if (r.status !== 0) {
+    throw new Error(
+      `[build-upstream] 上游生成器镜像执行失败(${label}):` + String((r.stdout || "") + (r.stderr || "")).trim().split("\n").slice(0, 5).join(" ／ ")
+    );
+  }
+}
+
+/** 生成三类拼接输入到 .tmp/upstream-leaves:locale-data / prompt-data(生成器直出)+
+ *  vocabulary.client.js(词表五份合段)。幂等:每次构建重算。 */
+export function generateUpstreamLeaves() {
+  const outDir = join(ROOT, ".tmp", "upstream-leaves");
+  mkdirSync(outDir, { recursive: true });
+  rmSync(GEN_MIRROR, { recursive: true, force: true });
+  mkdirSync(join(GEN_MIRROR, "scripts", "lib"), { recursive: true });
+  // config/ 整树 + 生成器 + lib(生成器之间按相对路径互调、lib 按相对路径被引)
+  cpSync(join(UPSTREAM_ROOT, "config"), join(GEN_MIRROR, "config"), { recursive: true });
+  for (const rel of GEN_SCRIPTS.concat(GEN_LIBS)) {
+    const from = join(UPSTREAM_ROOT, ...rel.split("/"));
+    const to = join(GEN_MIRROR, ...rel.split("/"));
+    mkdirSync(dirname(to), { recursive: true });
+    copyFileSync(from, to);
+  }
+  // node_modules junction(Windows 目录联接不需要管理员权限);已存在先清
+  const nmLink = join(GEN_MIRROR, "node_modules");
+  try {
+    rmSync(nmLink, { recursive: true, force: true });
+  } catch (e) { /* junction 删除失败不影响:覆盖前先生成会抛,再补一次 */ }
+  symlinkSync(join(ROOT, "node_modules"), nmLink, "junction");
+  // 词表里的 {{时间参数}} 由 locale 生成器自己先跑时间参数生成器(上游同链路)
+  runInMirror("scripts/generate-locale-config.mts", "locale-data");
+  runInMirror("scripts/generate-prompt-config.mts", "prompt-data");
+  for (const name of ["locale-data.ts", "prompt-data.ts"]) {
+    copyFileSync(join(GEN_MIRROR, "src", "client", "kernel", name), join(outDir, name));
+  }
+  writeFileSync(
+    join(outDir, "vocabulary.client.js"),
+    "// AUTO-GENERATED(词表五份合段,上游 buildVocabularySpliceInput 同款)。\n" +
+      buildCombinedFragment(VOCABULARY_PARTS, { source: "vocabulary.client.js" }),
+    "utf8"
+  );
+  writeFileSync(
+    join(outDir, "tracker-deck.client.js"),
+    "// AUTO-GENERATED(tracker 侧真源合段:progress + deck-counts + tabsfold + deck-derive)。\n" +
+      buildCombinedFragment(TRACKER_PARTS, { source: "tracker-deck.client.js" }),
+    "utf8"
+  );
+  return outDir;
+}
 
 /** 上游 index.ts 的标记序(缓存;解析失败即构建错)。 */
 let upstreamOrderCache = null;
@@ -265,8 +421,18 @@ export function spliceSkeleton(skeletonText) {
   for (const leaf of LEAVES) {
     const marker = `// ==== ${leaf.id} (spliced by build) ====`;
     if (out.indexOf(marker) < 0) throw new Error(`[build-upstream] 缺 marker ${marker} 对应 ${leaf.file}`);
-    out = out.replace(marker, () => stripTsToSpliceable(readUpstream(leaf.file), { source: leaf.file }));
+    const content = leaf.own ? readFileSync(join(ROOT, ...leaf.file.split("/")), "utf8") : readUpstream(leaf.file);
+    out = out.replace(marker, () => stripTsToSpliceable(content, { source: leaf.file }));
   }
+  // tracker 锚点注入(上游无此标记:tracker 侧真源,骨架自有段注入;次序在词表五份之后,
+  // 锚点片段里的 STATE/effortOf/idOfParts 由 shared:trackerConstants 提供)。
+  // 只认独占一行的锚点(注释里举例写的锚点名不算),防把片段拼进注释。
+  const anchorRe = new RegExp(`^[ \\t]*\\/\\* @splice-anchor: ${TRACKER_ANCHOR} \\*\\/[ \\t]*$`, "m");
+  if (!anchorRe.test(out)) {
+    throw new Error(`[build-upstream] 骨架缺独占一行的锚点 /* @splice-anchor: ${TRACKER_ANCHOR} */ — tracker 侧真源(deck-counts/deck-derive/progress/tabsfold)经它注入`);
+  }
+  const trackerFrag = readFileSync(join(ROOT, ".tmp", "upstream-leaves", "tracker-deck.client.js"), "utf8");
+  out = out.replace(anchorRe, () => stripTsToSpliceable(trackerFrag, { source: "tracker-deck.client.js" }));
   // kernel:ctx 注入(上游 wireCtx 同位同法):apply(ctx…) { 之后
   const m = out.match(/apply\(ctx(?::[^)]*)?\) \{/);
   if (!m || m.index === undefined) {
@@ -294,6 +460,7 @@ const SKELETON = join(ROOT, "src", "ui", "upstream", "entry.mjs");
 const OUT_BUNDLE = join(ROOT, "dist", "ui", "bundle-1.txt");
 
 export async function buildUpstreamBundle() {
+  generateUpstreamLeaves(); // 生成物叶子(localeData/promptData/词表五份/tracker 合段)先就位
   const spliced = spliceSkeleton(readFileSync(SKELETON, "utf8"));
   mkdirSync(join(ROOT, ".tmp"), { recursive: true });
   const tmpEntry = join(ROOT, ".tmp", "upstream-entry.spliced.mjs");

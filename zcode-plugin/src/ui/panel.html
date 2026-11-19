@@ -156,16 +156,19 @@
           // 工单 U01:上游面板壳(共存期,默认开)。bundle-1 已随清单注入,定义
           // window.MattSkillsUpstream;这里复用同一条桥起壳,失败不影响旧 UI。
           // 回退:localStorage mattskills-upstream=off(或下方切换按钮)后重载,即纯旧 UI。
+          // 工单 U02:壳默认只起形、不拉数据 —— 共存期不偷跑桥流量(旧 UI 的 deck_issue_list
+          //   调用次数是它的测试契约);配置翻到 'on' 才带 fetchData 起,壳里显示上游 kernel
+          //   算出来的 counts。
           try {
-            var off = false;
+            var mode = "";
             try {
-              off = typeof localStorage !== "undefined" && localStorage.getItem("mattskills-upstream") === "off";
+              mode = typeof localStorage !== "undefined" && localStorage.getItem("mattskills-upstream") || "";
             } catch (eL) {} // 沙箱 iframe 里 localStorage 可能禁访:当默认开
-            if (!off) {
+            if (mode !== "off") {
               var upstream = window.MattSkillsUpstream;
               if (upstream && typeof upstream.boot === "function") {
-                await upstream.boot({ client: client, doc: document });
-                say("6 上游面板壳已启动(dsws-panel 空壳)", "ok");
+                await upstream.boot({ client: client, doc: document, fetchData: mode === "on" });
+                say(mode === "on" ? "6 上游面板壳已启动(接数据:kernel counts)" : "6 上游面板壳已启动(空壳;配置翻 on 接数据)", "ok");
               } else say("⚠ window.MattSkillsUpstream 缺失(bundle-1 未注入)", "bad");
             } else say("6 上游面板壳按配置关闭(纯旧 UI)", "warn");
           } catch (e2) {

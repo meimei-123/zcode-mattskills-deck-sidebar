@@ -17,13 +17,22 @@ export const SEAM_SERVICE_IDS = [
   "uiWorkspace",
 ];
 
-// locale 词表:上游经 config/copy/*.yaml 生成物注入全量词条;垫片先给面板壳要用的
-// panel.title(取自 config/copy/panel.yaml 的 zh 值),其余键原样返回(上游退化语义同款)。
-const ZH = { "panel.title": "MattSkills" };
-function zhTr(key, params) {
-  let s = Object.prototype.hasOwnProperty.call(ZH, key) ? ZH[key] : key;
+// locale 词表(U02 升级):kernel:locale 的 localeAdopt 会把生成物词表逐门语言 register
+// ('dsws', lang, dict) 进来 —— 垫片收下存表,bind('dsws') 返回的 tr 按 zh → en → 键名
+// 解析(上游回退语义的垫片版);没注册前退回静态 panel.title(取自 config/copy/panel.yaml)。
+const LEGACY_ZH = { "panel.title": "MattSkills" };
+const localeNamespaces = {}; // ns → { lang → dict }
+function lookup(ns, key, params) {
+  const dict = localeNamespaces[ns] || {};
+  let s =
+    (dict.zh && Object.prototype.hasOwnProperty.call(dict.zh, key) && dict.zh[key]) ||
+    (dict.en && Object.prototype.hasOwnProperty.call(dict.en, key) && dict.en[key]) ||
+    (Object.prototype.hasOwnProperty.call(LEGACY_ZH, key) ? LEGACY_ZH[key] : key);
   if (params) s = s.replace(/\{(\w+)\}/g, (m, n) => (n in params ? String(params[n]) : m));
   return s;
+}
+function zhTr(key, params) {
+  return lookup("dsws", key, params);
 }
 
 /**
@@ -97,9 +106,24 @@ export function createSeamCtx({ client = null, doc = null, root = null, workspac
       },
     },
     locale: {
-      // 上游 localeAdopt 会注册 dsws 命名空间;垫片静态 zh,bind 返回稳定 tr
-      register() {
-        return true;
+      // 上游 localeAdopt 按 LANG_CONFIG 清单逐门 addLanguage + register('dsws', lang, dict):
+      // 垫片收下词表存表,bind 返回稳定 tr(调用时按 zh→en→键名解析)。
+      getSnapshot() {
+        return { active: "zh-CN", locales: [{ id: "zh", fallback: "" }, { id: "en", fallback: "zh" }] };
+      },
+      register(ns, locale, dict) {
+        if (!localeNamespaces[ns]) localeNamespaces[ns] = {};
+        localeNamespaces[ns][locale] = dict || {};
+        return function () {
+          try {
+            delete localeNamespaces[ns][locale];
+          } catch (e) {
+            /* 忽略 */
+          }
+        };
+      },
+      addLanguage() {
+        return function () {}; // 垫片:语言都在表内,收到登记即回卸载器
       },
       bind() {
         return zhTr;

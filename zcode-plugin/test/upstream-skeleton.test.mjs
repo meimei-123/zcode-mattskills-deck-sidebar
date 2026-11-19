@@ -95,17 +95,18 @@ const buildUpstream = await import(pathToFileURL(join(ROOT, "build-upstream.mjs"
 
 // ---------------------------------------------------------------------------
 // 切片 2:拼接管线(骨架标记 ← 上游叶子;标记序对上游 index.ts 校验)
+// U02 起 LEAVES 扩到 kernel 域:fixture 骨架从 LEAVES 清单现生成(双向对账要求
+// 骨架含全部登记标记),生成物叶子先落 .tmp(generateUpstreamLeaves 幂等)。
 // ---------------------------------------------------------------------------
 {
-  // fixture 骨架:标记序 hostShim → containerView → motion → styles 与上游一致
+  await buildUpstream.generateUpstreamLeaves();
+  // fixture 骨架:标记序 = LEAVES 登记序(应与上游一致,由 spliceSkeleton 校验)
   const fxSkeleton = [
     "function apply(ctx) {",
     "  const slots = ctx.get('slots')",
     "  if (slots === undefined) return",
-    "// ==== leaf:hostShim (spliced by build) ====",
-    "// ==== kernel:containerView (spliced by build) ====",
-    "// ==== kernel:motion (spliced by build) ====",
-    "// ==== kernel:styles (spliced by build) ====",
+    ...buildUpstream.LEAVES.map((l) => `// ==== ${l.id} (spliced by build) ====`),
+    "  /* @splice-anchor: trackerDeck */",
     "  styles.insert(STYLE_TEXT)",
     "}",
   ].join("\n");
@@ -125,10 +126,11 @@ const buildUpstream = await import(pathToFileURL(join(ROOT, "build-upstream.mjs"
   check("spliceSkeleton 标记无残留", !/\(spliced by build\)/.test(plan));
   check("spliceSkeleton 求值序:containerView 先于 styles(TDZ)", plan.indexOf("CONTAINER_ACCENT") < plan.indexOf("const STYLE_TEXT"));
 
-  // 乱序骨架必须被上游标记序校验拦下
+  // 乱序骨架必须被上游标记序校验拦下(U02 起 LEAVES 里 containerView 与 ticketLabel 相邻,
+  // 换这对与换 containerView/motion 等价:上游序里 containerView 在前)
   const badSkeleton = fxSkeleton.replace(
-    "// ==== kernel:containerView (spliced by build) ====\n// ==== kernel:motion (spliced by build) ====",
-    "// ==== kernel:motion (spliced by build) ====\n// ==== kernel:containerView (spliced by build) ===="
+    "// ==== kernel:containerView (spliced by build) ====\n// ==== kernel:ticketLabel (spliced by build) ====",
+    "// ==== kernel:ticketLabel (spliced by build) ====\n// ==== kernel:containerView (spliced by build) ===="
   );
   let threw = "";
   try {

@@ -1,0 +1,181 @@
+// ingest.mjs —— 数据接驳适配器(工单 U02):我们的工具响应 → 上游 kernel 的 DeckState。
+//
+// 上游客户端不自己扫盘:它消费宿主拼好的面板快照(store 的 st.snapshot),形状与装配规则
+// 真源在上游 src/host/tracker/snapshotAssemble.ts(assembleSnapshot)+ src/host/mapTickets.ts
+// (prepareRow);计数的"从哪来、能不能信"真源在 src/tracker/deck-counts.ts(planDeckCounts /
+// rowCountsOf)。本模块把 M1 的 scanWorkspace 行(deck_issue_list 的薄行同形)按同一套规则
+// 组装成上游形状,让搬入的上游 kernel 函数(store-derived / deck-counts / deck-derive)直接
+// 在我们的数据上运算。
+//
+// ── 字段映射表(我们的行 → 上游行)──────────────────────────────────────────
+// 我们的行(src/cards.mjs parseCard / thinRow)     上游行(面板快照行,prepareRow 同款归一)
+//   key: "01" | "demo/01-x"(退化身份)        →     key: String(key) 原样(退化身份自带目录)
+//   effortId: ".scratch/ 目录名" | ""          →     effortId 原样(单工作单元后端为 '')
+//   type: 'map' | 'spec' | 'issue'            →     type 原样(上游 ISSUE_TYPE 同词汇)
+//   title / labels[{name,color}] / url        →     原样直通
+//   createdAt / updatedAt / closedAt          →     原样直通
+//   customFields                              →     原样直通
+//   state: 'open' | 'closed'(小写,本地契约)   →     state: 大写 'OPEN'/'CLOSED'(面板快照口径,
+//                                                   宿主 mapTickets.prepareRow 同款 toUpperCase)
+//   (无 number 字段)                          →     number: parseInt(key,10)||0(宿主同款补号)
+//   assignees: [{login,kind}] | 缺席          →     claimedBy: 首个认领人 login | ''(MISSING 同 '')
+//   blockedBy: [{key,title,state?}]           →     blockedBy: [String(ref.key)](宿主把引用压成键串)
+//   parentKey: '00' | null                    →     parentKey 原样(挂图子票 / 孤儿语义同上游)
+//   body / comments                           →     不进面板行(上游 prepareRow 剥正文;正文只有
+//                                                   tracker 投影(trackerDeckOf)保留给 deriveDeck)
+//   commentCount                              →     不映射(上游面板行无此格,详情页另走 get)
+//   isPullRequest: 我们不产生                 →     缺席 = 上游 MISSING(裸键身份,非拉取请求)
+//
+// ── 两个投影 ──────────────────────────────────────────────────────────────
+//   panelRowOf / ingestSnapshot → 面板快照(大写态、claimedBy、deck.counts):
+//     上游 assembleSnapshot 语义:容器(type map|spec)收同 effort 内 parentKey===容器 key 的
+//     子票;开容器 tickets=子票 copies;关容器 tickets=[],其 open 子票回落 issues、closed 子票
+//     隐藏(#691/#907/#1291 首屏口径);issues = 未挂任何开容器的非容器行。
+//   trackerDeckOf → tracker 形状({maps, issues},小写态、保留 body):
+//     上游 deck-derive.ts 的输入口径(宿主/工具共用的整池投影),deriveDeck/rowCountsOf 吃它。
+//
+// ── 如实缺口(不造假数据)─────────────────────────────────────────────────
+//   · 上游 assembleSnapshot 会解析容器正文(map 五区块 destination/notes/decisions/fog/
+//     outOfScope、spec 七段 sections);列表/详情视图搬入前用不到,本适配器不解析,U03 需要时
+//     按上游 body-parse.ts 补。
+//   · 上游快照还带 thinTickets(关容器里已关子票的瘦身行,工作路线查标题用)与 labels 色板
+//     (deck_issue_list_labels 工具的数据);本票面板壳只消费 maps/issues/deck,labels 可由
+//     调用方选择性传入,thinTickets 留空数组。
+//   · assignees 缺席(票面无 Status 行)在上游 deriveDeck 里是 indeterminate(不进 frontier);
+//     M1 computeCounts 按"未认领"计入可接 —— 两条口径都在,对拍测试里如实分列。
+
+/** 我们的行 → 上游面板行(宿主 mapTickets.prepareRow 同款归一:大写态/补号/claimedBy/压阻塞键)。 */
+export function panelRowOf(row) {
+  const t = Object.assign({}, row);
+  if (t.key != null && t.number == null) {
+    const nn = parseInt(t.key, 10);
+    t.number = isNaN(nn) ? 0 : nn;
+  }
+  if (t.key != null) t.key = String(t.key);
+  t.state = String(t.state || "").toUpperCase();
+  if (t.claimedBy == null) {
+    const owners = t.assignees;
+    t.claimedBy = Array.isArray(owners) && owners.length ? (owners[0] && owners[0].login) || "" : "";
+  }
+  if (Array.isArray(t.blockedBy)) {
+    t.blockedBy = t.blockedBy.map((ref) => {
+      if (typeof ref === "number" || typeof ref === "string") return ref;
+      if (ref && typeof ref === "object" && ref.key != null) return String(ref.key);
+      return ref;
+    });
+  } else t.blockedBy = [];
+  // 面板行不带正文与评论计数(上游 prepareRow 剥正文;详情页另走 get)
+  delete t.body;
+  delete t.commentCount;
+  return t;
+}
+
+/** 同池分组(上游 assembleSnapshot 的父子规则,不转大小写、不剥正文):容器嵌子票、issues 收孤儿。 */
+function groupDeck(rows, wrapRow) {
+  const list = Array.isArray(rows) ? rows : [];
+  const containers = list.filter((r) => r && (r.type === "map" || r.type === "spec"));
+  const nonContainers = list.filter((r) => r && r.type !== "map" && r.type !== "spec");
+  // 父子只在同一 effort 内成立(上游 byParent 按 idOfParts(effort, parentKey) 键入)
+  const childrenByEffortParent = new Map(); // `${effortId}\u0000${parentKey}` → rows
+  for (const r of nonContainers) {
+    if (r.parentKey == null) continue;
+    const k = `${String(r.effortId || "")}\u0000${String(r.parentKey)}`;
+    const arr = childrenByEffortParent.get(k) || [];
+    arr.push(r);
+    childrenByEffortParent.set(k, arr);
+  }
+  const isClosed = (x) => String((x && x.state) || "").toUpperCase() === "CLOSED";
+  const attached = new Set();
+  const hidden = new Set(); // 关容器里自己已关闭的子票(#1291:只藏已关的)
+  const maps = containers.map((m) => {
+    const key = `${String(m.effortId || "")}\u0000${String(m.key)}`;
+    const own = childrenByEffortParent.get(key) || [];
+    const tickets = isClosed(m) ? [] : own.map((t) => Object.assign({}, wrapRow(t)));
+    for (const t of tickets) attached.add(`${String(t.effortId || "")}\u0000${String(t.key)}`);
+    if (isClosed(m)) {
+      for (const t of own) {
+        if (!isClosed(t)) continue;
+        hidden.add(`${String(t.effortId || "")}\u0000${String(t.key)}`);
+      }
+    }
+    return Object.assign({}, wrapRow(m), { tickets });
+  });
+  const issues = nonContainers
+    .filter((r) => !attached.has(`${String(r.effortId || "")}\u0000${String(r.key)}`) && !hidden.has(`${String(r.effortId || "")}\u0000${String(r.key)}`))
+    .map((r) => Object.assign({}, wrapRow(r)));
+  return { maps, issues };
+}
+
+/** tracker 投影:deck-derive.ts 的输入口径(小写态原样、保留 body、容器不解析正文区块)。 */
+export function trackerDeckOf(rows) {
+  return groupDeck(rows, (r) => r);
+}
+
+/**
+ * 组装上游面板快照(store 的 st)。deps:
+ *   rows          我们的行(scanWorkspace().rows,或 deck_issue_list 的薄行 —— 计数只读映射表里的格子)
+ *   counts        {open,closed,total}(deck_issue_counts 三数;上游本地后端 counts 契约的等价物)
+ *   workspaceRoot 工作区根(workspace.json 资源给的那个)
+ *   labels        可选,标签色板([{name,color}],deck_issue_list_labels 的数据;不给则从行面聚合名)
+ *   atMs          可选,计数时刻(缺省 Date.now())
+ * k = { planDeckCounts, rowCountsOf }:上游计数函数注入(闭包真源;与上游宿主 snapshot.ts
+ * 同一套判定:后端可信走 backend 口径,行并集重算,拿不到不猜)。
+ */
+export function ingestSnapshot({ rows, counts, workspaceRoot, labels, atMs }, k) {
+  const { maps, issues } = groupDeck(rows, panelRowOf);
+  const snapshot = {
+    repository: {
+      backend: "markdown",
+      name: String(workspaceRoot || "").split(/[\\/]/).filter(Boolean).pop() || "",
+      refId: "",
+      path: workspaceRoot || "",
+    },
+    maps,
+    issues,
+    thinTickets: [], // 关容器里已关子票的瘦身行:面板壳不消费,U03 视图需要时补
+    labels: Array.isArray(labels) && labels.length
+      ? labels.map((l) => ({ name: String(l.name || ""), color: String(l.color || "").replace(/^#/, "") }))
+      : aggregateRowLabels(rows),
+    deck: null,
+  };
+  const tripleOf = (v) =>
+    v && typeof v === "object" && Number.isFinite(v.open) && Number.isFinite(v.closed) && Number.isFinite(v.total)
+      ? { open: v.open, closed: v.closed, total: v.total }
+      : null;
+  const deck = {};
+  const plan = k.planDeckCounts({
+    backendCounts: tripleOf(counts),
+    rows: k.rowCountsOf(snapshot),
+    rowsComplete: true, // 本地枚举:scanWorkspace 全量清点,无分页截断
+    previousCounts: null,
+    previousAtMs: 0,
+    nowMs: typeof atMs === "number" && atMs > 0 ? atMs : Date.now(),
+  });
+  if (plan.counts) deck.counts = plan.counts;
+  deck.countsPending = plan.pending;
+  deck.partial = plan.partial;
+  snapshot.deck = deck;
+  const root = String(workspaceRoot || "");
+  return {
+    cwd: root,
+    workspaceRoot: root,
+    selection: { backendId: "markdown" },
+    backendModules: [{ id: "markdown", capabilities: { pullRequests: false } }],
+    snapshot,
+  };
+}
+
+/** 行面标签聚合(上游 buildColorOf 的输入口径:快照 labels + 各行 labels 并集,色不带 #)。 */
+function aggregateRowLabels(rows) {
+  const out = [];
+  const seen = new Set();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    for (const l of (r && Array.isArray(r.labels) ? r.labels : [])) {
+      const name = l && l.name ? String(l.name) : "";
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      out.push({ name, color: String((l && l.color) || "").replace(/^#/, "") });
+    }
+  }
+  return out;
+}
