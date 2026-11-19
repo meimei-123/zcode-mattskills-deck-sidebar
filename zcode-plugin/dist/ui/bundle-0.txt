@@ -1,3 +1,110 @@
+// MattSkills 面板文案表(工单 09):全部界面中文单处集中,键名按上游 copy 词表
+// (config/copy/*.yaml)组织,为 M3 i18n 配置化留缝——届时把本表换成上游同键名的
+// 多语言词表即可,渲染点不动。纯脚本无 import,build 时拼进 bundle-0.txt(段序第一),
+// Node 测试直接 import 执行同一 IIFE。
+// 键名出处约定:
+//   · 与上游同键名的键(card.* / list.* / nav.* / detail.* / tip.*):UI 角色与上游一致,
+//     M1 的中文值暂为本插件自己的文案,M3 对齐上游词条;
+//   · 其余(panel.* / writer.* / act.* 与 detail.* 里的 M1 增补)是本地键,同样按
+//     「家族前缀.位置」命名,上游没有对应物。
+// 占位符约定与上游一致:值里的 {n} 由渲染处 replace,中英两份必须一字不差
+// (M1 仅 zh,静态自检见 test/scaffold.test.mjs 文案段)。
+"use strict";
+(function (global) {
+  var COPY = {
+    // ---- 面板骨架 / 加载 / 空工作区引导(M1 本地,panel.* 家族) ----
+    "panel.loading": "正在加载看板…",
+    "panel.loadFail": "看板加载失败",
+    "panel.empty.title": "还没有工单",
+    "panel.empty.body0": "此工作区还没有 .scratch/ 工单目录。运行 ",
+    "panel.empty.setup": "/setup-matt-pocock-skills",
+    "panel.empty.mid": " 初始化,或让 agent 用 ",
+    "panel.empty.tickets": "/to-tickets",
+    "panel.empty.end": " 拆解规格。",
+    "panel.empty.hint": "生成工单后,本页签会展示任务看板。",
+    "panel.boardTitle": "任务看板",
+
+    // ---- 计数胶囊条(nav.takeable/occupied/bug/triage 键名同上游 panel.yaml,M1 补齐其余) ----
+    "nav.takeable": "可接",
+    "nav.open": "进行中",
+    "nav.occupied": "占用",
+    "nav.claimed": "已认领",
+    "nav.blocked": "被阻塞",
+    "nav.bug": "故障",
+    "nav.triage": "诊断",
+    "nav.closed": "已关闭",
+    "nav.total": "全部",
+
+    // ---- 卡面(card.* 键名同上游 cards.yaml:角标/结案章/阻塞脚注/状态) ----
+    "card.openState": "在办",
+    "card.legendClaimed": "已认领",
+    "card.closedSeal": "结案",
+    "card.blockedBy": "被 {n} 挡住",
+    "card.bug": "BUG",
+    "card.doing": "在办",
+    "card.pickReady": "可接",
+    // 动作档位文案(card.act.* 九档,同上游 cards.yaml;actions.mjs 的 ACTION_LABELS 从这里取值)
+    "card.act.diagnose": "诊断",
+    "card.act.fix": "修复",
+    "card.act.execute": "执行",
+    "card.act.claim": "接手",
+    "card.act.supplement": "补充",
+    "card.act.research": "研究",
+    "card.act.grill": "讨论",
+    "card.act.proto": "原型",
+    "card.act.implement": "实施",
+
+    // ---- 列表:筛选 / 排序 / 折叠(list.* 键名同上游 flow.yaml) ----
+    "list.state.all": "全部",
+    "list.state.open": "进行中",
+    "list.state.closed": "已关闭",
+    "list.state.blocked": "被阻塞",
+    "list.state.frontier": "可接",
+    "list.sort.updatedAt": "更新时间",
+    "list.sort.createdAt": "创建时间",
+    "list.sort.number": "编号",
+    "list.sort.title": "标题",
+    "list.all": "全部",
+    "list.blocked": "被阻塞",
+    "list.collapse": "收起",
+    "list.none": "没有匹配的工单",
+    "list.closedN": "已关闭 ({n})",
+    "list.loading": "加载中…",
+
+    // ---- 详情(detail.* / tip.* 键名同上游 flow.yaml,余 M1 本地) ----
+    "list.back": "返回列表",
+    "detail.descTitle": "描述",
+    "detail.noBody": "无描述",
+    "detail.loadFail": "详情加载失败",
+    "detail.retry": "重试",
+    "detail.badShape": "deck_issue_get 应答缺卡数据",
+    "detail.commentsLoading": "评论 · 加载中",
+    "detail.notYet": "评论 · 还没拿到",
+    "detail.commentsCount": "评论 ({n})",
+    "detail.commentsMore": "显示其余 {n} 条",
+    "detail.updated": "· 更新 {n}",
+    "detail.created": "· 创建 {n}",
+    "detail.writeNote": "写回纪律:只动状态行/标签行/评论追加,正文永不重排",
+    "tip.detailClosedReadonly": "这张票已关闭，只能查看。",
+    "tip.detailBlockedBy": "被 {n} 阻塞，等它们关闭后才能执行。",
+
+    // ---- 动作栏发送反馈(M1 本地,act.* 家族) ----
+    "act.sending": "发送中…",
+    "act.sent": "已发送",
+    "act.fail": "发送失败:",
+
+    // ---- 写入口(writer.* M1 本地;评论框占位/提交键名同上游 detail.cmtPlaceholder/tip.sendComment) ----
+    "writer.close": "关闭卡",
+    "writer.reopen": "重开卡",
+    "detail.cmtPlaceholder": "写评论…(提交即落盘到卡片文件)",
+    "tip.sendComment": "提交评论",
+    "writer.sending": "写入中…",
+    "writer.done": "已写入",
+    "writer.emptyBody": "先写点内容再提交。",
+  };
+  global.MattSkillsCopy = COPY;
+})(typeof globalThis !== "undefined" ? globalThis : undefined);
+
 // MattSkills 像素卡域(工单 04):PixelCards 色表/档位/对比度罩纱与容器三态的移植,纯函数。
 // 真源:port-notes/pixel-cards.md(上游 PixelCardTheme.ts / PixelCardBtns.ts)与
 // port-notes/kernel-domain.md(上游 container-view.ts)、action-prompts.md(上游 row-actions.ts)。
@@ -303,18 +410,13 @@
 // 执行同一 IIFE。无 DOM 依赖——渲染在 detail.mjs。
 "use strict";
 (function (global) {
-  // ---- 文案(cards.yaml card.act.* 九档中文) ----
-  var ACTION_LABELS = {
-    diagnose: "诊断",
-    fix: "修复",
-    execute: "执行",
-    claim: "接手",
-    supplement: "补充",
-    research: "研究",
-    grill: "讨论",
-    proto: "原型",
-    implement: "实施",
-  };
+  // ---- 档位文案(card.act.* 九档;工单 09 起值单处集中在 copy.mjs,bundle 段序在其后) ----
+  var ACTION_LABELS = {};
+  (function () {
+    var copy = globalThis.MattSkillsCopy || {};
+    var kinds = ["diagnose", "fix", "execute", "claim", "supplement", "research", "grill", "proto", "implement"];
+    for (var i = 0; i < kinds.length; i++) ACTION_LABELS[kinds[i]] = copy["card.act." + kinds[i]] || kinds[i];
+  })();
 
   // ---- 公共小节(shared-sections.yaml zh 全文;mapTicketAdvance = Opening + WrapUp 拼接) ----
   var SHARED_SECTIONS = {
@@ -589,56 +691,22 @@
 // 类名命名空间 ms-(M1 基础卡面;完整 PixelCards 色卡体系是工单 04,届时换 cd- 体系)。
 "use strict";
 (function () {
-  // ---- 文案(M1 中文内联,键名按上游 copy 词表组织,为 M3 配置化留缝) ----
-  var COPY = {
-    loading: "正在加载看板…",
-    loadFail: "看板加载失败",
-    emptyTitle: "还没有工单",
-    emptyBody0: "此工作区还没有 .scratch/ 工单目录。运行 ",
-    emptySetup: "/setup-matt-pocock-skills",
-    emptyMid: " 初始化,或让 agent 用 ",
-    emptyTickets: "/to-tickets",
-    emptyEnd: " 拆解规格。",
-    emptyHint: "生成工单后,本页签会展示任务看板。",
-    boardTitle: "任务看板",
-    stateOpen: "在办",
-    stateClosed: "已关闭",
-    markClaimed: "已认领",
-    markBlocked: "被阻塞",
-    // cards.yaml 中文键(card.*):结案章/认领后缀/阻塞脚注/角标与容器 chip
-    cardClosedSeal: "结案",
-    cardBlockedBy: "被 {n} 挡住",
-    cardBug: "BUG",
-    cardDoing: "在办",
-    cardPickReady: "可接",
-    // 筛选行与折叠(list 词表中文内联)
-    filterAll: "全部",
-    filterOpen: "进行中",
-    filterClosed: "已关闭",
-    filterBlocked: "被阻塞",
-    filterFrontier: "可接",
-    sortUpdatedAt: "更新时间",
-    sortCreatedAt: "创建时间",
-    sortNumber: "编号",
-    sortTitle: "标题",
-    filterLabelAll: "全部",
-    filterCollapse: "收起",
-    listNone: "没有匹配的工单",
-    listClosedN: "已关闭 ({n})",
-  };
+  // ---- 文案(工单 09 收拢):全部界面中文单处集中在 copy.mjs(bundle 段序第一),
+  // 键名按上游 copy 词表组织,为 M3 i18n 配置化留缝;本段只按键取值。 ----
+  var COPY = globalThis.MattSkillsCopy;
 
   // 九条计数口径:顺序即胶囊条从左到右;前三枚带 KPI 色值(list-page.md KPI 行:
-  // 可接 #4ade80 / 占用 #f0883e / 已关闭 #52525b)。
+  // 可接 #4ade80 / 占用 #f0883e / 已关闭 #52525b)。label 是 copy 键(nav.* 家族)。
   var PILLS = [
-    { key: "frontier", label: "可接", color: "#4ade80" },
-    { key: "open", label: "进行中" },
-    { key: "occupied", label: "占用", color: "#f0883e" },
-    { key: "claimed", label: "已认领" },
-    { key: "blocked", label: "被阻塞" },
-    { key: "bug", label: "故障" },
-    { key: "triage", label: "诊断" },
-    { key: "closed", label: "已关闭", color: "#52525b" },
-    { key: "total", label: "全部" },
+    { key: "frontier", label: "nav.takeable", color: "#4ade80" },
+    { key: "open", label: "nav.open" },
+    { key: "occupied", label: "nav.occupied", color: "#f0883e" },
+    { key: "claimed", label: "nav.claimed" },
+    { key: "blocked", label: "nav.blocked" },
+    { key: "bug", label: "nav.bug" },
+    { key: "triage", label: "nav.triage" },
+    { key: "closed", label: "nav.closed", color: "#52525b" },
+    { key: "total", label: "nav.total" },
   ];
 
   // 内置默认标签色表(上游 src/tracker/rooms/markdown/index.ts defaultLabelPalette 的直拷,
@@ -716,13 +784,13 @@
   // ---- 状态视图 ----
   function renderLoading(doc, root) {
     var app = el(doc, "div", "ms-app");
-    app.append(el(doc, "div", "ms-state ms-loading", COPY.loading));
+    app.append(el(doc, "div", "ms-state ms-loading", COPY["panel.loading"]));
     root.replaceChildren(app);
   }
   function renderError(doc, root, err) {
     var app = el(doc, "div", "ms-app");
     var box = el(doc, "div", "ms-state ms-error");
-    box.append(el(doc, "div", "ms-error-title", COPY.loadFail));
+    box.append(el(doc, "div", "ms-error-title", COPY["panel.loadFail"]));
     box.append(el(doc, "div", "ms-error-detail", (err && err.message) || String(err)));
     app.append(box);
     root.replaceChildren(app);
@@ -731,15 +799,15 @@
   function renderGuide(doc, root) {
     var app = el(doc, "div", "ms-app");
     var box = el(doc, "div", "ms-state ms-empty");
-    box.append(el(doc, "h1", "ms-empty-title", COPY.emptyTitle));
+    box.append(el(doc, "h1", "ms-empty-title", COPY["panel.empty.title"]));
     var p = el(doc, "p", "ms-empty-body");
-    p.append(COPY.emptyBody0);
-    p.append(el(doc, "code", null, COPY.emptySetup));
-    p.append(COPY.emptyMid);
-    p.append(el(doc, "code", null, COPY.emptyTickets));
-    p.append(COPY.emptyEnd);
+    p.append(COPY["panel.empty.body0"]);
+    p.append(el(doc, "code", null, COPY["panel.empty.setup"]));
+    p.append(COPY["panel.empty.mid"]);
+    p.append(el(doc, "code", null, COPY["panel.empty.tickets"]));
+    p.append(COPY["panel.empty.end"]);
     box.append(p);
-    box.append(el(doc, "p", "ms-empty-hint", COPY.emptyHint));
+    box.append(el(doc, "p", "ms-empty-hint", COPY["panel.empty.hint"]));
     app.append(box);
     root.replaceChildren(app);
   }
@@ -748,7 +816,7 @@
   function renderCountsBar(doc, counts) {
     var bar = el(doc, "div", "ms-counts");
     for (var p of PILLS) {
-      var pill = el(doc, "span", "ms-pill" + (p.color ? " ms-kpi" : ""), p.label + " " + (counts[p.key] ?? 0));
+      var pill = el(doc, "span", "ms-pill" + (p.color ? " ms-kpi" : ""), COPY[p.label] + " " + (counts[p.key] ?? 0));
       pill.setAttribute("data-key", p.key);
       if (p.color) {
         pill.setAttribute("data-color", p.color);
@@ -822,25 +890,25 @@
     if (row.state === "closed") {
       // closed 票无状态角标(bug 除外)
       if (hasBug) {
-        var bugC = el(doc, "span", "cd-corner", COPY.cardBug);
+        var bugC = el(doc, "span", "cd-corner", COPY["card.bug"]);
         bugC.style.color = "#d73a4a"; // --cd-mark-bug
         host.append(bugC);
       }
       return;
     }
     if (occupied) {
-      var doing = el(doc, "span", "cd-ckb", COPY.cardDoing);
+      var doing = el(doc, "span", "cd-ckb", COPY["card.doing"]);
       doing.style.color = "#2b62b0"; // --cd-mark-doing
       host.append(doing);
       return;
     }
     if (hasBug) {
-      var bug = el(doc, "span", "cd-corner", COPY.cardBug);
+      var bug = el(doc, "span", "cd-corner", COPY["card.bug"]);
       bug.style.color = "#d73a4a"; // --cd-mark-bug
       host.append(bug);
       return;
     }
-    var ready = el(doc, "span", "cd-ckj", COPY.cardPickReady);
+    var ready = el(doc, "span", "cd-ckj", COPY["card.pickReady"]);
     ready.style.color = "#10b981"; // --cd-mark-ready
     host.append(ready);
   }
@@ -882,7 +950,7 @@
     appendBadge(doc, head, row, hex);
     if (closed) {
       // 结案章(PixelClosedSeal):#a3231a 底 #fff9ec 字
-      var seal = el(doc, "span", "cd-sealcn", COPY.cardClosedSeal);
+      var seal = el(doc, "span", "cd-sealcn", COPY["card.closedSeal"]);
       seal.style.background = "#a3231a";
       seal.style.color = "#fff9ec";
       head.append(seal);
@@ -890,13 +958,13 @@
     var title = el(doc, "span", "ms-title", row.title || "");
     title.setAttribute("title", row.title || "");
     head.append(title);
-    head.append(el(doc, "span", "ms-state-chip", closed ? COPY.stateClosed : COPY.stateOpen));
+    head.append(el(doc, "span", "ms-state-chip", closed ? COPY["list.state.closed"] : COPY["card.openState"]));
     r.append(head);
 
     // 红色脚注(PixelCardNote):被 open 阻塞时「被 {n} 挡住」
     var blockers = openBlockerCount(row);
     if (blockers > 0 && !closed) {
-      r.append(el(doc, "div", "cd-note", COPY.cardBlockedBy.replace("{n}", String(blockers))));
+      r.append(el(doc, "div", "cd-note", COPY["card.blockedBy"].replace("{n}", String(blockers))));
     }
 
     var foot = el(doc, "div", "ms-row-foot");
@@ -920,8 +988,8 @@
     }
     foot.append(tags);
     var marks = el(doc, "div", "ms-marks");
-    if (isClaimed(row)) marks.append(el(doc, "span", "ms-mark ms-mark-claimed", COPY.markClaimed));
-    if (isBlocked(row)) marks.append(el(doc, "span", "ms-mark ms-mark-blocked", COPY.markBlocked));
+    if (isClaimed(row)) marks.append(el(doc, "span", "ms-mark ms-mark-claimed", COPY["card.legendClaimed"]));
+    if (isBlocked(row)) marks.append(el(doc, "span", "ms-mark ms-mark-blocked", COPY["list.blocked"]));
     foot.append(marks);
     r.append(foot);
     r.addEventListener("click", function () {
@@ -950,12 +1018,12 @@
   function renderFilterRow(doc, rows, view) {
     var bar = el(doc, "div", "ms-filter");
     var STATE_KEYS = [
-      ["all", COPY.filterAll], ["open", COPY.filterOpen], ["closed", COPY.filterClosed],
-      ["blocked", COPY.filterBlocked], ["frontier", COPY.filterFrontier],
+      ["all", COPY["list.state.all"]], ["open", COPY["list.state.open"]], ["closed", COPY["list.state.closed"]],
+      ["blocked", COPY["list.state.blocked"]], ["frontier", COPY["list.state.frontier"]],
     ];
     var SORT_KEYS = [
-      ["updatedAt", COPY.sortUpdatedAt], ["createdAt", COPY.sortCreatedAt],
-      ["number", COPY.sortNumber], ["title", COPY.sortTitle],
+      ["updatedAt", COPY["list.sort.updatedAt"]], ["createdAt", COPY["list.sort.createdAt"]],
+      ["number", COPY["list.sort.number"]], ["title", COPY["list.sort.title"]],
     ];
     var sep = function () {
       return el(doc, "i", "ms-filter-sep");
@@ -1002,7 +1070,7 @@
     });
 
     // 标签组(多选 OR):全部恒清空;普通标签真实色;默认 4 颗,+N 展开/收起
-    var allChip = el(doc, "span", "ms-chip ms-chip-label ms-chip-all" + (view.labels.length === 0 ? " is-on" : ""), COPY.filterLabelAll);
+    var allChip = el(doc, "span", "ms-chip ms-chip-label ms-chip-all" + (view.labels.length === 0 ? " is-on" : ""), COPY["list.all"]);
     allChip.setAttribute("data-label", "");
     if (view.labels.length === 0) {
       allChip.style.background = "rgba(255,255,255,.08)";
@@ -1038,7 +1106,7 @@
       bar.append(chip);
     });
     if (sortedLabels.length > 4) {
-      var more = el(doc, "span", "ms-chip ms-chip-more", view.labelsOpen ? COPY.filterCollapse : "+" + (sortedLabels.length - 4));
+      var more = el(doc, "span", "ms-chip ms-chip-more", view.labelsOpen ? COPY["list.collapse"] : "+" + (sortedLabels.length - 4));
       more.addEventListener("click", function () {
         view.labelsOpen = !view.labelsOpen;
         rerender(doc, doc.getElementById("root"));
@@ -1051,7 +1119,7 @@
   function renderBoard(doc, root, rows, counts, view) {
     var app = el(doc, "div", "ms-app ms-board");
     var head = el(doc, "div", "ms-head");
-    head.append(el(doc, "span", "ms-head-title", COPY.boardTitle));
+    head.append(el(doc, "span", "ms-head-title", COPY["panel.boardTitle"]));
     app.append(head);
     app.append(renderCountsBar(doc, counts));
     app.append(renderFilterRow(doc, rows, view));
@@ -1065,10 +1133,10 @@
     var ctx = { containerStats: containerStatsOf(rows) };
     for (var row of visible) list.append(renderRow(doc, row, ctx));
     app.append(list);
-    if (visible.length === 0) app.append(el(doc, "div", "ms-none", COPY.listNone));
+    if (visible.length === 0) app.append(el(doc, "div", "ms-none", COPY["list.none"]));
     if (view.state === "all" && closedRows.length > 0) {
       var fold = el(doc, "div", "ms-closed-fold" + (view.closedOpen ? " open" : ""),
-        COPY.listClosedN.replace("{n}", String(closedRows.length)));
+        COPY["list.closedN"].replace("{n}", String(closedRows.length)));
       if (view.closedOpen) fold.append(el(doc, "span", "ms-fold-arrow", "▾"));
       else fold.append(el(doc, "span", "ms-fold-arrow", "▸"));
       fold.addEventListener("click", function () {
@@ -1222,28 +1290,8 @@
 // 取数口径(#693):正文与评论一律以 deck_issue_get 那次取数为准;列表行只做轻量预览(元行)。
 "use strict";
 (function () {
-  // ---- 文案(M1 中文内联,键名按上游 copy 词表组织) ----
-  var COPY = {
-    back: "返回列表",
-    descTitle: "描述",
-    bodyLoading: "加载中…",
-    noBody: "无描述",
-    bodyError: "详情加载失败",
-    retry: "重试",
-    getBadShape: "deck_issue_get 应答缺卡数据",
-    commentsLoading: "评论 · 加载中",
-    commentsNotYet: "评论 · 还没拿到",
-    claimed: "已认领",
-    stateOpen: "在办",
-    stateClosed: "已关闭",
-    writeNote: "写回纪律:只动状态行/标签行/评论追加,正文永不重排",
-    // 动作栏(工单 07;悬停文案 = 上游 tip.detailClosedReadonly / tip.detailBlockedBy)
-    actSending: "发送中…",
-    actSent: "已发送",
-    actFail: "发送失败:",
-    actClosedTip: "这张票已关闭，只能查看。",
-    actBlockedTip: "被 {n} 阻塞，等它们关闭后才能执行。",
-  };
+  // ---- 文案(工单 09 收拢):单处集中在 copy.mjs(bundle 段序第一),本段只按键取值。 ----
+  var COPY = globalThis.MattSkillsCopy;
 
   // 上游 IssueDetailComments 的显示切片页大小(detail-page.md §2):
   // 标题计数用全量,时间线一次只铺 50 条,超出给「显示其余」。
@@ -1494,7 +1542,7 @@
         doc,
         "span",
         "ms-state-chip " + (row.state === "closed" ? "ms-chip-closed" : "ms-chip-open"),
-        row.state === "closed" ? COPY.stateClosed : COPY.stateOpen
+        row.state === "closed" ? COPY["list.state.closed"] : COPY["card.openState"]
       )
     );
     var labels = Array.isArray(row.labels) ? row.labels : [];
@@ -1512,12 +1560,12 @@
     var assignees = Array.isArray(row.assignees) ? row.assignees : [];
     for (var a of assignees) {
       if (a && a.login) meta.append(el(doc, "span", "ms-assignee", "@" + a.login));
-      else meta.append(el(doc, "span", "ms-assignee", COPY.claimed)); // claimed 但没记名字
+      else meta.append(el(doc, "span", "ms-assignee", COPY["card.legendClaimed"])); // claimed 但没记名字
     }
     var updated = String(row.updatedAt || "").slice(0, 10);
     var created = String(row.createdAt || "").slice(0, 10);
-    if (updated) meta.append(el(doc, "span", "ms-meta-date", "· 更新 " + updated));
-    if (created) meta.append(el(doc, "span", "ms-meta-date", "· 创建 " + created));
+    if (updated) meta.append(el(doc, "span", "ms-meta-date", COPY["detail.updated"].replace("{n}", updated)));
+    if (created) meta.append(el(doc, "span", "ms-meta-date", COPY["detail.created"].replace("{n}", created)));
     return meta;
   }
 
@@ -1537,6 +1585,13 @@
       svg.append(n);
     }
     return svg;
+  }
+
+  /** 动作栏装槽:容器行/动作域缺席不画;初始与写后重拉共用这一出口整块换新(T09 缝)。 */
+  function appendActionBar(slot, doc, row, seq) {
+    var bar = renderActionBar(doc, row, seq);
+    if (bar) slot.replaceChildren(bar);
+    else slot.replaceChildren();
   }
 
   /**
@@ -1574,8 +1629,8 @@
       // 上游 #1668/#1669:置灰 = aria-disabled + tabIndex -1 + 悬停说原因,点击无动作
       btn.setAttribute("aria-disabled", "true");
       btn.setAttribute("tabindex", "-1");
-      btn.setAttribute("title", gate.reason === "closed" ? COPY.actClosedTip
-        : COPY.actBlockedTip.replace("{n}", gate.blockedNumbers.map(function (n) { return "#" + n; }).join("、")));
+      btn.setAttribute("title", gate.reason === "closed" ? COPY["tip.detailClosedReadonly"]
+        : COPY["tip.detailBlockedBy"].replace("{n}", gate.blockedNumbers.map(function (n) { return "#" + n; }).join("、")));
     }
 
     var sending = false;
@@ -1584,7 +1639,7 @@
       sending = true;
       btn.setAttribute("disabled", "1");
       status.className = "ms-act-status";
-      status.textContent = COPY.actSending;
+      status.textContent = COPY["act.sending"];
       // {url} 的 M1 值:上游取票链接,本地卡是文件;一行带齐卡号/标题/路径(工单验收的上下文占位)
       var ref = numberText(row) + " " + String(row.title || "");
       if (row.url) ref += "（" + row.url + "）";
@@ -1594,14 +1649,14 @@
           if (!cur || cur.seq !== seq) return; // 已返回列表/已换卡:迟到应答丢弃
           sending = false;
           btn.removeAttribute("disabled");
-          status.textContent = COPY.actSent;
+          status.textContent = COPY["act.sent"];
         },
         function (err) {
           if (!cur || cur.seq !== seq) return;
           sending = false;
           btn.removeAttribute("disabled");
           status.className = "ms-act-status is-err";
-          status.textContent = COPY.actFail + ((err && err.message) || String(err));
+          status.textContent = COPY["act.fail"] + ((err && err.message) || String(err));
         }
       );
     });
@@ -1631,11 +1686,11 @@
       var nodes = mdNodes(doc, desc);
       refs.bodyBox.replaceChildren.apply(refs.bodyBox, nodes);
     } else {
-      refs.bodyBox.replaceChildren(el(doc, "div", "ms-body-empty", COPY.noBody));
+      refs.bodyBox.replaceChildren(el(doc, "div", "ms-body-empty", COPY["detail.noBody"]));
     }
     // 评论时间线:计数以详情为准;未取到前不许报「评论 (0)」
     var comments = Array.isArray(card.comments) ? card.comments : [];
-    refs.cmtTitle.textContent = "评论 (" + comments.length + ")";
+    refs.cmtTitle.textContent = COPY["detail.commentsCount"].replace("{n}", String(comments.length));
     refs.cmtList.replaceChildren();
     var shown = Math.min(comments.length, COMMENTS_PAGE_SIZE);
     for (var i = 0; i < shown; i++) refs.cmtList.append(commentItem(doc, comments[i]));
@@ -1643,7 +1698,7 @@
       var more = el(doc, "button", "ms-cmt-more");
       more.setAttribute("type", "button");
       var update = function () {
-        more.textContent = "显示其余 " + (comments.length - shown) + " 条";
+        more.textContent = COPY["detail.commentsMore"].replace("{n}", String(comments.length - shown));
       };
       update();
       more.addEventListener("click", function () {
@@ -1661,36 +1716,39 @@
     var refs = cur.refs;
     var doc = cur.doc;
     var box = el(doc, "div", "ms-body-error");
-    box.append(el(doc, "div", "ms-body-error-title", COPY.bodyError));
+    box.append(el(doc, "div", "ms-body-error-title", COPY["detail.loadFail"]));
     box.append(el(doc, "div", "ms-error-detail", msg || ""));
-    var retry = el(doc, "button", "ms-retry", COPY.retry);
+    var retry = el(doc, "button", "ms-retry", COPY["detail.retry"]);
     retry.setAttribute("type", "button");
     retry.addEventListener("click", function () {
       if (!cur || cur.seq !== seq) return;
       var s2 = ++SEQ;
       cur.seq = s2;
-      refs.bodyBox.replaceChildren(el(doc, "div", "ms-body-loading", COPY.bodyLoading));
-      refs.cmtTitle.textContent = COPY.commentsLoading;
+      refs.bodyBox.replaceChildren(el(doc, "div", "ms-body-loading", COPY["list.loading"]));
+      refs.cmtTitle.textContent = COPY["detail.commentsLoading"];
       refs.cmtList.replaceChildren();
       fetchDetail(s2);
     });
     box.append(retry);
     refs.bodyBox.replaceChildren(box);
-    refs.cmtTitle.textContent = COPY.commentsNotYet;
+    refs.cmtTitle.textContent = COPY["detail.notYet"];
     refs.cmtList.replaceChildren();
   }
 
-  function fetchDetail(seq) {
+  /** rebuildBar 为真(写后重拉路径)时,动作栏档位/置灰按新卡整块重建;首开/重试不动初始栏。 */
+  function fetchDetail(seq, rebuildBar) {
     cur.client.callTool("deck_issue_get", { key: getArgOf(cur.row) }).then(
       function (res) {
         if (!cur || cur.seq !== seq) return; // 已返回列表/已重试:迟到应答丢弃
         if (res && res.isError) return renderFail(seq, textOf(res));
         var card = res && res.structuredContent && res.structuredContent.card;
-        if (!card || typeof card.body !== "string") return renderFail(seq, COPY.getBadShape);
+        if (!card || typeof card.body !== "string") return renderFail(seq, COPY["detail.badShape"]);
         renderCard(card);
         cur.lastCard = card;
         // 工单 06:写后重拉到这里,元行与写入口按钮跟着新卡翻新
         if (cur.refs.metaSlot) cur.refs.metaSlot.replaceChildren(renderMeta(cur.doc, card));
+        // 工单 09 缝:写后重拉时动作栏档位/置灰按新卡重建(详情里关闭卡 → 置灰;重开 → 恢复)
+        if (rebuildBar && cur.refs.actionSlot) appendActionBar(cur.refs.actionSlot, cur.doc, card, seq);
         if (cur.writerApi) cur.writerApi.render();
       },
       function (err) {
@@ -1700,12 +1758,12 @@
     );
   }
 
-  /** 写成功后的重拉(工单 06):作废在途应答,重走 fetchDetail。 */
+  /** 写成功后的重拉(工单 06):作废在途应答,重走 fetchDetail;T09 起动作栏门禁随新卡重建。 */
   function refetchDetail() {
     if (!cur) return; // 已返回列表:迟到写应答不再动画面
     var seq = ++SEQ;
     cur.seq = seq;
-    fetchDetail(seq);
+    fetchDetail(seq, true);
   }
 
   /** 入口:app.js 行点击调进来。shell 即刻渲染(元行用列表行轻量预览),正文/评论等 get 回来。 */
@@ -1722,9 +1780,9 @@
     // 粘性顶栏:返回 + 编号 + 标题(折叠阶梯的三元素,各自留 data-full 底稿)
     var bar = el(doc, "div", "ms-topbar");
     bar.setAttribute("data-detail-topbar", "1");
-    var back = el(doc, "button", "ms-back", COPY.back);
+    var back = el(doc, "button", "ms-back", COPY["list.back"]);
     back.setAttribute("type", "button");
-    back.setAttribute("data-full", COPY.back);
+    back.setAttribute("data-full", COPY["list.back"]);
     var bnum = el(doc, "span", "ms-topbar-num", num);
     bnum.setAttribute("data-full", num);
     bnum.setAttribute("title", num);
@@ -1745,19 +1803,20 @@
     var metaSlot = el(doc, "div", "ms-meta-slot");
     metaSlot.append(renderMeta(doc, row));
     app.append(metaSlot);
-    // 动作栏(工单 07):元行之下、正文之上;容器行返回 null 不画
-    var actionbar = renderActionBar(doc, row, seq);
-    if (actionbar) app.append(actionbar);
+    // 动作栏(工单 07):元行之下、正文之上;装进槽位,写后重拉按新卡换新(T09 缝)
+    var actionSlot = el(doc, "div", "ms-actionbar-slot");
+    appendActionBar(actionSlot, doc, row, seq);
+    app.append(actionSlot);
     // 正文块(三态容器)
     var sec = el(doc, "div", "ms-body-sec");
-    sec.append(el(doc, "div", "ms-sec-title", COPY.descTitle));
+    sec.append(el(doc, "div", "ms-sec-title", COPY["detail.descTitle"]));
     var bodyBox = el(doc, "div", "ms-body");
-    bodyBox.append(el(doc, "div", "ms-body-loading", COPY.bodyLoading));
+    bodyBox.append(el(doc, "div", "ms-body-loading", COPY["list.loading"]));
     sec.append(bodyBox);
     app.append(sec);
     // 评论时间线
     var cmt = el(doc, "div", "ms-comments");
-    var cmtTitle = el(doc, "div", "ms-comments-title", COPY.commentsLoading);
+    var cmtTitle = el(doc, "div", "ms-comments-title", COPY["detail.commentsLoading"]);
     var cmtList = el(doc, "div", "ms-cmt-list");
     cmt.append(cmtTitle, cmtList);
     app.append(cmt);
@@ -1765,9 +1824,9 @@
     var writerHost = el(doc, "div", "ms-writer");
     app.append(writerHost);
     // 底部写回纪律提示
-    app.append(el(doc, "div", "ms-writenote", COPY.writeNote));
+    app.append(el(doc, "div", "ms-writenote", COPY["detail.writeNote"]));
     opts.root.replaceChildren(app);
-    cur.refs = { bodyBox: bodyBox, cmtTitle: cmtTitle, cmtList: cmtList, metaSlot: metaSlot };
+    cur.refs = { bodyBox: bodyBox, cmtTitle: cmtTitle, cmtList: cmtList, metaSlot: metaSlot, actionSlot: actionSlot };
     cur.writerApi =
       window.MattSkillsWriter && typeof window.MattSkillsWriter.mount === "function"
         ? window.MattSkillsWriter.mount({
@@ -1793,7 +1852,7 @@
     foldCtx = {
       bar: bar,
       elems: [
-        { el: back, text: COPY.back },
+        { el: back, text: COPY["list.back"] },
         { el: bnum, text: num },
         { el: btitle, text: title },
       ],
@@ -1826,15 +1885,8 @@
 // onWritten() 让详情重拉;失败把服务端人话错误原样上屏,输入不丢。
 "use strict";
 (function () {
-  var COPY = {
-    closeBtn: "关闭卡",
-    reopenBtn: "重开卡",
-    placeholder: "写评论…(提交即落盘到卡片文件)",
-    send: "提交评论",
-    sending: "写入中…",
-    done: "已写入",
-    emptyBody: "先写点内容再提交。",
-  };
+  // ---- 文案(工单 09 收拢):单处集中在 copy.mjs(bundle 段序第一),本段只按键取值。 ----
+  var COPY = globalThis.MattSkillsCopy;
 
   function el(doc, tag, cls, text) {
     var n = doc.createElement(tag);
@@ -1873,12 +1925,12 @@
     function call(tool, args) {
       if (busy) return;
       busy = true;
-      show(COPY.sending, "");
+      show(COPY["writer.sending"], "");
       client.callTool(tool, args).then(
         function (res) {
           busy = false;
           if (res && res.isError) return show(textOf(res) || "写入失败", "err");
-          show(COPY.done, "ok");
+          show(COPY["writer.done"], "ok");
           draft = ""; // 成功才清草稿;输入框即刻清空(不等重渲染——render 会从 value 回收草稿)
           if (ta) ta.value = "";
           if (typeof window.MattSkillsPanel === "object" && window.MattSkillsPanel && typeof window.MattSkillsPanel.refresh === "function") {
@@ -1895,7 +1947,7 @@
 
     function doComment() {
       var text = String((ta && ta.value) || "").trim();
-      if (!text) return show(COPY.emptyBody, "err");
+      if (!text) return show(COPY["writer.emptyBody"], "err");
       draft = text;
       call("deck_issue_comment", { key: opts.getKey(), body: text });
     }
@@ -1913,7 +1965,7 @@
       if (!card || card.type === "map" || card.type === "spec") return; // 容器(规格/地图)不给写
       var closed = card.state === "closed";
       var row = el(doc, "div", "ms-cmd-row");
-      var btn = el(doc, "button", "ms-cmd-btn" + (closed ? "" : " ms-cmd-close"), closed ? COPY.reopenBtn : COPY.closeBtn);
+      var btn = el(doc, "button", "ms-cmd-btn" + (closed ? "" : " ms-cmd-close"), closed ? COPY["writer.reopen"] : COPY["writer.close"]);
       btn.setAttribute("type", "button");
       btn.setAttribute("data-act", closed ? "reopen" : "close");
       btn.addEventListener("click", function () {
@@ -1924,10 +1976,10 @@
 
       var box = el(doc, "div", "ms-composer");
       ta = el(doc, "textarea", "ms-cmt-input");
-      ta.setAttribute("placeholder", COPY.placeholder);
+      ta.setAttribute("placeholder", COPY["detail.cmtPlaceholder"]);
       ta.setAttribute("rows", "2");
       if (draft) ta.value = draft;
-      var send = el(doc, "button", "ms-cmt-send", COPY.send);
+      var send = el(doc, "button", "ms-cmt-send", COPY["tip.sendComment"]);
       send.setAttribute("type", "button");
       send.addEventListener("click", doComment);
       box.append(ta, send);

@@ -7,28 +7,8 @@
 // 取数口径(#693):正文与评论一律以 deck_issue_get 那次取数为准;列表行只做轻量预览(元行)。
 "use strict";
 (function () {
-  // ---- 文案(M1 中文内联,键名按上游 copy 词表组织) ----
-  var COPY = {
-    back: "返回列表",
-    descTitle: "描述",
-    bodyLoading: "加载中…",
-    noBody: "无描述",
-    bodyError: "详情加载失败",
-    retry: "重试",
-    getBadShape: "deck_issue_get 应答缺卡数据",
-    commentsLoading: "评论 · 加载中",
-    commentsNotYet: "评论 · 还没拿到",
-    claimed: "已认领",
-    stateOpen: "在办",
-    stateClosed: "已关闭",
-    writeNote: "写回纪律:只动状态行/标签行/评论追加,正文永不重排",
-    // 动作栏(工单 07;悬停文案 = 上游 tip.detailClosedReadonly / tip.detailBlockedBy)
-    actSending: "发送中…",
-    actSent: "已发送",
-    actFail: "发送失败:",
-    actClosedTip: "这张票已关闭，只能查看。",
-    actBlockedTip: "被 {n} 阻塞，等它们关闭后才能执行。",
-  };
+  // ---- 文案(工单 09 收拢):单处集中在 copy.mjs(bundle 段序第一),本段只按键取值。 ----
+  var COPY = globalThis.MattSkillsCopy;
 
   // 上游 IssueDetailComments 的显示切片页大小(detail-page.md §2):
   // 标题计数用全量,时间线一次只铺 50 条,超出给「显示其余」。
@@ -279,7 +259,7 @@
         doc,
         "span",
         "ms-state-chip " + (row.state === "closed" ? "ms-chip-closed" : "ms-chip-open"),
-        row.state === "closed" ? COPY.stateClosed : COPY.stateOpen
+        row.state === "closed" ? COPY["list.state.closed"] : COPY["card.openState"]
       )
     );
     var labels = Array.isArray(row.labels) ? row.labels : [];
@@ -297,12 +277,12 @@
     var assignees = Array.isArray(row.assignees) ? row.assignees : [];
     for (var a of assignees) {
       if (a && a.login) meta.append(el(doc, "span", "ms-assignee", "@" + a.login));
-      else meta.append(el(doc, "span", "ms-assignee", COPY.claimed)); // claimed 但没记名字
+      else meta.append(el(doc, "span", "ms-assignee", COPY["card.legendClaimed"])); // claimed 但没记名字
     }
     var updated = String(row.updatedAt || "").slice(0, 10);
     var created = String(row.createdAt || "").slice(0, 10);
-    if (updated) meta.append(el(doc, "span", "ms-meta-date", "· 更新 " + updated));
-    if (created) meta.append(el(doc, "span", "ms-meta-date", "· 创建 " + created));
+    if (updated) meta.append(el(doc, "span", "ms-meta-date", COPY["detail.updated"].replace("{n}", updated)));
+    if (created) meta.append(el(doc, "span", "ms-meta-date", COPY["detail.created"].replace("{n}", created)));
     return meta;
   }
 
@@ -322,6 +302,13 @@
       svg.append(n);
     }
     return svg;
+  }
+
+  /** 动作栏装槽:容器行/动作域缺席不画;初始与写后重拉共用这一出口整块换新(T09 缝)。 */
+  function appendActionBar(slot, doc, row, seq) {
+    var bar = renderActionBar(doc, row, seq);
+    if (bar) slot.replaceChildren(bar);
+    else slot.replaceChildren();
   }
 
   /**
@@ -359,8 +346,8 @@
       // 上游 #1668/#1669:置灰 = aria-disabled + tabIndex -1 + 悬停说原因,点击无动作
       btn.setAttribute("aria-disabled", "true");
       btn.setAttribute("tabindex", "-1");
-      btn.setAttribute("title", gate.reason === "closed" ? COPY.actClosedTip
-        : COPY.actBlockedTip.replace("{n}", gate.blockedNumbers.map(function (n) { return "#" + n; }).join("、")));
+      btn.setAttribute("title", gate.reason === "closed" ? COPY["tip.detailClosedReadonly"]
+        : COPY["tip.detailBlockedBy"].replace("{n}", gate.blockedNumbers.map(function (n) { return "#" + n; }).join("、")));
     }
 
     var sending = false;
@@ -369,7 +356,7 @@
       sending = true;
       btn.setAttribute("disabled", "1");
       status.className = "ms-act-status";
-      status.textContent = COPY.actSending;
+      status.textContent = COPY["act.sending"];
       // {url} 的 M1 值:上游取票链接,本地卡是文件;一行带齐卡号/标题/路径(工单验收的上下文占位)
       var ref = numberText(row) + " " + String(row.title || "");
       if (row.url) ref += "（" + row.url + "）";
@@ -379,14 +366,14 @@
           if (!cur || cur.seq !== seq) return; // 已返回列表/已换卡:迟到应答丢弃
           sending = false;
           btn.removeAttribute("disabled");
-          status.textContent = COPY.actSent;
+          status.textContent = COPY["act.sent"];
         },
         function (err) {
           if (!cur || cur.seq !== seq) return;
           sending = false;
           btn.removeAttribute("disabled");
           status.className = "ms-act-status is-err";
-          status.textContent = COPY.actFail + ((err && err.message) || String(err));
+          status.textContent = COPY["act.fail"] + ((err && err.message) || String(err));
         }
       );
     });
@@ -416,11 +403,11 @@
       var nodes = mdNodes(doc, desc);
       refs.bodyBox.replaceChildren.apply(refs.bodyBox, nodes);
     } else {
-      refs.bodyBox.replaceChildren(el(doc, "div", "ms-body-empty", COPY.noBody));
+      refs.bodyBox.replaceChildren(el(doc, "div", "ms-body-empty", COPY["detail.noBody"]));
     }
     // 评论时间线:计数以详情为准;未取到前不许报「评论 (0)」
     var comments = Array.isArray(card.comments) ? card.comments : [];
-    refs.cmtTitle.textContent = "评论 (" + comments.length + ")";
+    refs.cmtTitle.textContent = COPY["detail.commentsCount"].replace("{n}", String(comments.length));
     refs.cmtList.replaceChildren();
     var shown = Math.min(comments.length, COMMENTS_PAGE_SIZE);
     for (var i = 0; i < shown; i++) refs.cmtList.append(commentItem(doc, comments[i]));
@@ -428,7 +415,7 @@
       var more = el(doc, "button", "ms-cmt-more");
       more.setAttribute("type", "button");
       var update = function () {
-        more.textContent = "显示其余 " + (comments.length - shown) + " 条";
+        more.textContent = COPY["detail.commentsMore"].replace("{n}", String(comments.length - shown));
       };
       update();
       more.addEventListener("click", function () {
@@ -446,36 +433,39 @@
     var refs = cur.refs;
     var doc = cur.doc;
     var box = el(doc, "div", "ms-body-error");
-    box.append(el(doc, "div", "ms-body-error-title", COPY.bodyError));
+    box.append(el(doc, "div", "ms-body-error-title", COPY["detail.loadFail"]));
     box.append(el(doc, "div", "ms-error-detail", msg || ""));
-    var retry = el(doc, "button", "ms-retry", COPY.retry);
+    var retry = el(doc, "button", "ms-retry", COPY["detail.retry"]);
     retry.setAttribute("type", "button");
     retry.addEventListener("click", function () {
       if (!cur || cur.seq !== seq) return;
       var s2 = ++SEQ;
       cur.seq = s2;
-      refs.bodyBox.replaceChildren(el(doc, "div", "ms-body-loading", COPY.bodyLoading));
-      refs.cmtTitle.textContent = COPY.commentsLoading;
+      refs.bodyBox.replaceChildren(el(doc, "div", "ms-body-loading", COPY["list.loading"]));
+      refs.cmtTitle.textContent = COPY["detail.commentsLoading"];
       refs.cmtList.replaceChildren();
       fetchDetail(s2);
     });
     box.append(retry);
     refs.bodyBox.replaceChildren(box);
-    refs.cmtTitle.textContent = COPY.commentsNotYet;
+    refs.cmtTitle.textContent = COPY["detail.notYet"];
     refs.cmtList.replaceChildren();
   }
 
-  function fetchDetail(seq) {
+  /** rebuildBar 为真(写后重拉路径)时,动作栏档位/置灰按新卡整块重建;首开/重试不动初始栏。 */
+  function fetchDetail(seq, rebuildBar) {
     cur.client.callTool("deck_issue_get", { key: getArgOf(cur.row) }).then(
       function (res) {
         if (!cur || cur.seq !== seq) return; // 已返回列表/已重试:迟到应答丢弃
         if (res && res.isError) return renderFail(seq, textOf(res));
         var card = res && res.structuredContent && res.structuredContent.card;
-        if (!card || typeof card.body !== "string") return renderFail(seq, COPY.getBadShape);
+        if (!card || typeof card.body !== "string") return renderFail(seq, COPY["detail.badShape"]);
         renderCard(card);
         cur.lastCard = card;
         // 工单 06:写后重拉到这里,元行与写入口按钮跟着新卡翻新
         if (cur.refs.metaSlot) cur.refs.metaSlot.replaceChildren(renderMeta(cur.doc, card));
+        // 工单 09 缝:写后重拉时动作栏档位/置灰按新卡重建(详情里关闭卡 → 置灰;重开 → 恢复)
+        if (rebuildBar && cur.refs.actionSlot) appendActionBar(cur.refs.actionSlot, cur.doc, card, seq);
         if (cur.writerApi) cur.writerApi.render();
       },
       function (err) {
@@ -485,12 +475,12 @@
     );
   }
 
-  /** 写成功后的重拉(工单 06):作废在途应答,重走 fetchDetail。 */
+  /** 写成功后的重拉(工单 06):作废在途应答,重走 fetchDetail;T09 起动作栏门禁随新卡重建。 */
   function refetchDetail() {
     if (!cur) return; // 已返回列表:迟到写应答不再动画面
     var seq = ++SEQ;
     cur.seq = seq;
-    fetchDetail(seq);
+    fetchDetail(seq, true);
   }
 
   /** 入口:app.js 行点击调进来。shell 即刻渲染(元行用列表行轻量预览),正文/评论等 get 回来。 */
@@ -507,9 +497,9 @@
     // 粘性顶栏:返回 + 编号 + 标题(折叠阶梯的三元素,各自留 data-full 底稿)
     var bar = el(doc, "div", "ms-topbar");
     bar.setAttribute("data-detail-topbar", "1");
-    var back = el(doc, "button", "ms-back", COPY.back);
+    var back = el(doc, "button", "ms-back", COPY["list.back"]);
     back.setAttribute("type", "button");
-    back.setAttribute("data-full", COPY.back);
+    back.setAttribute("data-full", COPY["list.back"]);
     var bnum = el(doc, "span", "ms-topbar-num", num);
     bnum.setAttribute("data-full", num);
     bnum.setAttribute("title", num);
@@ -530,19 +520,20 @@
     var metaSlot = el(doc, "div", "ms-meta-slot");
     metaSlot.append(renderMeta(doc, row));
     app.append(metaSlot);
-    // 动作栏(工单 07):元行之下、正文之上;容器行返回 null 不画
-    var actionbar = renderActionBar(doc, row, seq);
-    if (actionbar) app.append(actionbar);
+    // 动作栏(工单 07):元行之下、正文之上;装进槽位,写后重拉按新卡换新(T09 缝)
+    var actionSlot = el(doc, "div", "ms-actionbar-slot");
+    appendActionBar(actionSlot, doc, row, seq);
+    app.append(actionSlot);
     // 正文块(三态容器)
     var sec = el(doc, "div", "ms-body-sec");
-    sec.append(el(doc, "div", "ms-sec-title", COPY.descTitle));
+    sec.append(el(doc, "div", "ms-sec-title", COPY["detail.descTitle"]));
     var bodyBox = el(doc, "div", "ms-body");
-    bodyBox.append(el(doc, "div", "ms-body-loading", COPY.bodyLoading));
+    bodyBox.append(el(doc, "div", "ms-body-loading", COPY["list.loading"]));
     sec.append(bodyBox);
     app.append(sec);
     // 评论时间线
     var cmt = el(doc, "div", "ms-comments");
-    var cmtTitle = el(doc, "div", "ms-comments-title", COPY.commentsLoading);
+    var cmtTitle = el(doc, "div", "ms-comments-title", COPY["detail.commentsLoading"]);
     var cmtList = el(doc, "div", "ms-cmt-list");
     cmt.append(cmtTitle, cmtList);
     app.append(cmt);
@@ -550,9 +541,9 @@
     var writerHost = el(doc, "div", "ms-writer");
     app.append(writerHost);
     // 底部写回纪律提示
-    app.append(el(doc, "div", "ms-writenote", COPY.writeNote));
+    app.append(el(doc, "div", "ms-writenote", COPY["detail.writeNote"]));
     opts.root.replaceChildren(app);
-    cur.refs = { bodyBox: bodyBox, cmtTitle: cmtTitle, cmtList: cmtList, metaSlot: metaSlot };
+    cur.refs = { bodyBox: bodyBox, cmtTitle: cmtTitle, cmtList: cmtList, metaSlot: metaSlot, actionSlot: actionSlot };
     cur.writerApi =
       window.MattSkillsWriter && typeof window.MattSkillsWriter.mount === "function"
         ? window.MattSkillsWriter.mount({
@@ -578,7 +569,7 @@
     foldCtx = {
       bar: bar,
       elems: [
-        { el: back, text: COPY.back },
+        { el: back, text: COPY["list.back"] },
         { el: bnum, text: num },
         { el: btitle, text: title },
       ],

@@ -10,18 +10,13 @@
 // 执行同一 IIFE。无 DOM 依赖——渲染在 detail.mjs。
 "use strict";
 (function (global) {
-  // ---- 文案(cards.yaml card.act.* 九档中文) ----
-  var ACTION_LABELS = {
-    diagnose: "诊断",
-    fix: "修复",
-    execute: "执行",
-    claim: "接手",
-    supplement: "补充",
-    research: "研究",
-    grill: "讨论",
-    proto: "原型",
-    implement: "实施",
-  };
+  // ---- 档位文案(card.act.* 九档;工单 09 起值单处集中在 copy.mjs,bundle 段序在其后) ----
+  var ACTION_LABELS = {};
+  (function () {
+    var copy = globalThis.MattSkillsCopy || {};
+    var kinds = ["diagnose", "fix", "execute", "claim", "supplement", "research", "grill", "proto", "implement"];
+    for (var i = 0; i < kinds.length; i++) ACTION_LABELS[kinds[i]] = copy["card.act." + kinds[i]] || kinds[i];
+  })();
 
   // ---- 公共小节(shared-sections.yaml zh 全文;mapTicketAdvance = Opening + WrapUp 拼接) ----
   var SHARED_SECTIONS = {

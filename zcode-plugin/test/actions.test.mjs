@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url))); // zcode-plugin/
 
+await import(pathToFileURL(join(ROOT, "src", "ui", "copy.mjs"))); // 挂 globalThis.MattSkillsCopy(段序同 bundle,actions 从表取档位文案)
 await import(pathToFileURL(join(ROOT, "src", "ui", "cards.mjs"))); // 挂 globalThis.MattSkillsCards
 await import(pathToFileURL(join(ROOT, "src", "ui", "actions.mjs"))); // 挂 globalThis.MattSkillsActions
 const Cards = globalThis.MattSkillsCards;

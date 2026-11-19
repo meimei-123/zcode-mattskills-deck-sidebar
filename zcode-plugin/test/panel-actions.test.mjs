@@ -5,6 +5,8 @@
 // {role:"user", content:[{type:"text",text}]},宿主回空 result。
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { makeStubHost, startServer, byClass, byAttr, classesOf, until } from "./stub-host.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url))); // zcode-plugin/
@@ -233,10 +235,61 @@ async function sliceContainers() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 切片 E(工单 09 跨票缝):详情里关闭卡后,写后重拉要把动作栏门禁一起翻新——
+// 关闭 → 动作按钮置灰(aria-disabled + 悬停说明);重开 → 恢复可点。
+// 临时工作区真写盘(与 panel-detail 写面切片同法),cards fixture #02 修复档票。
+// ---------------------------------------------------------------------------
+async function sliceGateAfterWrite() {
+  const ws = mkdtempSync(join(tmpdir(), "t09gate-"));
+  cpSync(join(FIXTURES, "cards"), ws, { recursive: true });
+  const server = await startServer(ws);
+  const host = makeStubHost({ server });
+  const callsOf = (name) => host.sent.filter((m) => m.method === "tools/call" && m.params?.name === name);
+  try {
+    host.start();
+    await until(() => byClass(host.root, "ms-row").length > 0, "rows render");
+    await enterDetail(host, "#cardsdemo/02");
+    await until(() => byClass(host.root, "ms-md-p").length > 0, "detail body");
+    const btn0 = byClass(host.root, "ms-abtn")[0];
+    check("seam: open 卡动作可点", btn0?.getAttribute("aria-disabled") !== "true" && !btn0?.getAttribute("title"),
+      `${btn0?.getAttribute("aria-disabled")} ${btn0?.getAttribute("title")}`);
+
+    // 写入口关闭卡 → 写后重拉 → 动作栏按新状态置灰
+    byAttr(host.root, "data-act", "close")[0].click();
+    check("seam: 经桥发 deck_issue_close", await until(() => callsOf("deck_issue_close").length === 1, "close sent"));
+    const greyed = await until(() => byClass(host.root, "ms-abtn")[0]?.getAttribute("aria-disabled") === "true", "gate after close");
+    check("seam: 写后关闭 → 动作栏置灰", greyed,
+      byClass(host.root, "ms-abtn")[0]?.getAttribute("aria-disabled"));
+    check("seam: 置灰悬停说明",
+      byClass(host.root, "ms-abtn")[0]?.getAttribute("title") === "这张票已关闭，只能查看。",
+      byClass(host.root, "ms-abtn")[0]?.getAttribute("title"));
+
+    // 重开 → 重拉后恢复可点
+    byAttr(host.root, "data-act", "reopen")[0].click();
+    check("seam: 经桥发 deck_issue_reopen", await until(() => callsOf("deck_issue_reopen").length === 1, "reopen sent"));
+    const restored = await until(() => {
+      const b = byClass(host.root, "ms-abtn")[0];
+      return b && b.getAttribute("aria-disabled") !== "true";
+    }, "gate restored");
+    check("seam: 重开 → 动作栏恢复可点", restored,
+      `${byClass(host.root, "ms-abtn")[0]?.getAttribute("aria-disabled")} ${byClass(host.root, "ms-abtn")[0]?.getAttribute("title")}`);
+    check("seam: 恢复后无置灰悬停说明", !byClass(host.root, "ms-abtn")[0]?.getAttribute("title"),
+      byClass(host.root, "ms-abtn")[0]?.getAttribute("title"));
+  } finally {
+    if (host.win.MattSkillsPanel && typeof host.win.MattSkillsPanel.stopPolling === "function") {
+      host.win.MattSkillsPanel.stopPolling();
+    }
+    await server.stop();
+    rmSync(ws, { recursive: true, force: true });
+  }
+}
+
 await sliceTiers();
 await sliceFeedback();
 await sliceGate();
 await sliceContainers();
+await sliceGateAfterWrite();
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);
 process.exit(failures === 0 ? 0 : 1);

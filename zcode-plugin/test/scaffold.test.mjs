@@ -185,6 +185,23 @@ async function smoke() {
   }
 }
 
+// ---- 文案表静态自检(copy.mjs 头注约定):键族前缀、占位符花括号平衡、九档动作键齐 ----
+await import(new URL("../src/ui/copy.mjs", import.meta.url).href); // 挂 globalThis.MattSkillsCopy
+{
+  const COPY = globalThis.MattSkillsCopy || {};
+  const keys = Object.keys(COPY);
+  check("copy 文案表非空", keys.length > 30, String(keys.length));
+  const badKey = keys.find((k) => !/^(panel|nav|list|card|detail|tip|act|writer)\./.test(k));
+  check("copy 键全带家族前缀", !badKey, badKey || "");
+  const badBrace = keys.find((k) => {
+    const v = String(COPY[k]);
+    return (v.match(/\{/g) || []).length !== (v.match(/\}/g) || []).length || /\{(?![A-Za-z0-9_]+\})/.test(v);
+  });
+  check("copy 占位符花括号平衡且形如 {n}", !badBrace, badBrace || "");
+  const nine = ["diagnose", "fix", "execute", "claim", "supplement", "research", "grill", "proto", "implement"];
+  check("copy 九档动作键齐(card.act.*)", nine.every((k) => typeof COPY["card.act." + k] === "string"));
+}
+
 await smoke();
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);

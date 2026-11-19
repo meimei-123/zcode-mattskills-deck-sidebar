@@ -6,15 +6,8 @@
 // onWritten() 让详情重拉;失败把服务端人话错误原样上屏,输入不丢。
 "use strict";
 (function () {
-  var COPY = {
-    closeBtn: "关闭卡",
-    reopenBtn: "重开卡",
-    placeholder: "写评论…(提交即落盘到卡片文件)",
-    send: "提交评论",
-    sending: "写入中…",
-    done: "已写入",
-    emptyBody: "先写点内容再提交。",
-  };
+  // ---- 文案(工单 09 收拢):单处集中在 copy.mjs(bundle 段序第一),本段只按键取值。 ----
+  var COPY = globalThis.MattSkillsCopy;
 
   function el(doc, tag, cls, text) {
     var n = doc.createElement(tag);
@@ -53,12 +46,12 @@
     function call(tool, args) {
       if (busy) return;
       busy = true;
-      show(COPY.sending, "");
+      show(COPY["writer.sending"], "");
       client.callTool(tool, args).then(
         function (res) {
           busy = false;
           if (res && res.isError) return show(textOf(res) || "写入失败", "err");
-          show(COPY.done, "ok");
+          show(COPY["writer.done"], "ok");
           draft = ""; // 成功才清草稿;输入框即刻清空(不等重渲染——render 会从 value 回收草稿)
           if (ta) ta.value = "";
           if (typeof window.MattSkillsPanel === "object" && window.MattSkillsPanel && typeof window.MattSkillsPanel.refresh === "function") {
@@ -75,7 +68,7 @@
 
     function doComment() {
       var text = String((ta && ta.value) || "").trim();
-      if (!text) return show(COPY.emptyBody, "err");
+      if (!text) return show(COPY["writer.emptyBody"], "err");
       draft = text;
       call("deck_issue_comment", { key: opts.getKey(), body: text });
     }
@@ -93,7 +86,7 @@
       if (!card || card.type === "map" || card.type === "spec") return; // 容器(规格/地图)不给写
       var closed = card.state === "closed";
       var row = el(doc, "div", "ms-cmd-row");
-      var btn = el(doc, "button", "ms-cmd-btn" + (closed ? "" : " ms-cmd-close"), closed ? COPY.reopenBtn : COPY.closeBtn);
+      var btn = el(doc, "button", "ms-cmd-btn" + (closed ? "" : " ms-cmd-close"), closed ? COPY["writer.reopen"] : COPY["writer.close"]);
       btn.setAttribute("type", "button");
       btn.setAttribute("data-act", closed ? "reopen" : "close");
       btn.addEventListener("click", function () {
@@ -104,10 +97,10 @@
 
       var box = el(doc, "div", "ms-composer");
       ta = el(doc, "textarea", "ms-cmt-input");
-      ta.setAttribute("placeholder", COPY.placeholder);
+      ta.setAttribute("placeholder", COPY["detail.cmtPlaceholder"]);
       ta.setAttribute("rows", "2");
       if (draft) ta.value = draft;
-      var send = el(doc, "button", "ms-cmt-send", COPY.send);
+      var send = el(doc, "button", "ms-cmt-send", COPY["tip.sendComment"]);
       send.setAttribute("type", "button");
       send.addEventListener("click", doComment);
       box.append(ta, send);

@@ -4,56 +4,22 @@
 // 类名命名空间 ms-(M1 基础卡面;完整 PixelCards 色卡体系是工单 04,届时换 cd- 体系)。
 "use strict";
 (function () {
-  // ---- 文案(M1 中文内联,键名按上游 copy 词表组织,为 M3 配置化留缝) ----
-  var COPY = {
-    loading: "正在加载看板…",
-    loadFail: "看板加载失败",
-    emptyTitle: "还没有工单",
-    emptyBody0: "此工作区还没有 .scratch/ 工单目录。运行 ",
-    emptySetup: "/setup-matt-pocock-skills",
-    emptyMid: " 初始化,或让 agent 用 ",
-    emptyTickets: "/to-tickets",
-    emptyEnd: " 拆解规格。",
-    emptyHint: "生成工单后,本页签会展示任务看板。",
-    boardTitle: "任务看板",
-    stateOpen: "在办",
-    stateClosed: "已关闭",
-    markClaimed: "已认领",
-    markBlocked: "被阻塞",
-    // cards.yaml 中文键(card.*):结案章/认领后缀/阻塞脚注/角标与容器 chip
-    cardClosedSeal: "结案",
-    cardBlockedBy: "被 {n} 挡住",
-    cardBug: "BUG",
-    cardDoing: "在办",
-    cardPickReady: "可接",
-    // 筛选行与折叠(list 词表中文内联)
-    filterAll: "全部",
-    filterOpen: "进行中",
-    filterClosed: "已关闭",
-    filterBlocked: "被阻塞",
-    filterFrontier: "可接",
-    sortUpdatedAt: "更新时间",
-    sortCreatedAt: "创建时间",
-    sortNumber: "编号",
-    sortTitle: "标题",
-    filterLabelAll: "全部",
-    filterCollapse: "收起",
-    listNone: "没有匹配的工单",
-    listClosedN: "已关闭 ({n})",
-  };
+  // ---- 文案(工单 09 收拢):全部界面中文单处集中在 copy.mjs(bundle 段序第一),
+  // 键名按上游 copy 词表组织,为 M3 i18n 配置化留缝;本段只按键取值。 ----
+  var COPY = globalThis.MattSkillsCopy;
 
   // 九条计数口径:顺序即胶囊条从左到右;前三枚带 KPI 色值(list-page.md KPI 行:
-  // 可接 #4ade80 / 占用 #f0883e / 已关闭 #52525b)。
+  // 可接 #4ade80 / 占用 #f0883e / 已关闭 #52525b)。label 是 copy 键(nav.* 家族)。
   var PILLS = [
-    { key: "frontier", label: "可接", color: "#4ade80" },
-    { key: "open", label: "进行中" },
-    { key: "occupied", label: "占用", color: "#f0883e" },
-    { key: "claimed", label: "已认领" },
-    { key: "blocked", label: "被阻塞" },
-    { key: "bug", label: "故障" },
-    { key: "triage", label: "诊断" },
-    { key: "closed", label: "已关闭", color: "#52525b" },
-    { key: "total", label: "全部" },
+    { key: "frontier", label: "nav.takeable", color: "#4ade80" },
+    { key: "open", label: "nav.open" },
+    { key: "occupied", label: "nav.occupied", color: "#f0883e" },
+    { key: "claimed", label: "nav.claimed" },
+    { key: "blocked", label: "nav.blocked" },
+    { key: "bug", label: "nav.bug" },
+    { key: "triage", label: "nav.triage" },
+    { key: "closed", label: "nav.closed", color: "#52525b" },
+    { key: "total", label: "nav.total" },
   ];
 
   // 内置默认标签色表(上游 src/tracker/rooms/markdown/index.ts defaultLabelPalette 的直拷,
@@ -131,13 +97,13 @@
   // ---- 状态视图 ----
   function renderLoading(doc, root) {
     var app = el(doc, "div", "ms-app");
-    app.append(el(doc, "div", "ms-state ms-loading", COPY.loading));
+    app.append(el(doc, "div", "ms-state ms-loading", COPY["panel.loading"]));
     root.replaceChildren(app);
   }
   function renderError(doc, root, err) {
     var app = el(doc, "div", "ms-app");
     var box = el(doc, "div", "ms-state ms-error");
-    box.append(el(doc, "div", "ms-error-title", COPY.loadFail));
+    box.append(el(doc, "div", "ms-error-title", COPY["panel.loadFail"]));
     box.append(el(doc, "div", "ms-error-detail", (err && err.message) || String(err)));
     app.append(box);
     root.replaceChildren(app);
@@ -146,15 +112,15 @@
   function renderGuide(doc, root) {
     var app = el(doc, "div", "ms-app");
     var box = el(doc, "div", "ms-state ms-empty");
-    box.append(el(doc, "h1", "ms-empty-title", COPY.emptyTitle));
+    box.append(el(doc, "h1", "ms-empty-title", COPY["panel.empty.title"]));
     var p = el(doc, "p", "ms-empty-body");
-    p.append(COPY.emptyBody0);
-    p.append(el(doc, "code", null, COPY.emptySetup));
-    p.append(COPY.emptyMid);
-    p.append(el(doc, "code", null, COPY.emptyTickets));
-    p.append(COPY.emptyEnd);
+    p.append(COPY["panel.empty.body0"]);
+    p.append(el(doc, "code", null, COPY["panel.empty.setup"]));
+    p.append(COPY["panel.empty.mid"]);
+    p.append(el(doc, "code", null, COPY["panel.empty.tickets"]));
+    p.append(COPY["panel.empty.end"]);
     box.append(p);
-    box.append(el(doc, "p", "ms-empty-hint", COPY.emptyHint));
+    box.append(el(doc, "p", "ms-empty-hint", COPY["panel.empty.hint"]));
     app.append(box);
     root.replaceChildren(app);
   }
@@ -163,7 +129,7 @@
   function renderCountsBar(doc, counts) {
     var bar = el(doc, "div", "ms-counts");
     for (var p of PILLS) {
-      var pill = el(doc, "span", "ms-pill" + (p.color ? " ms-kpi" : ""), p.label + " " + (counts[p.key] ?? 0));
+      var pill = el(doc, "span", "ms-pill" + (p.color ? " ms-kpi" : ""), COPY[p.label] + " " + (counts[p.key] ?? 0));
       pill.setAttribute("data-key", p.key);
       if (p.color) {
         pill.setAttribute("data-color", p.color);
@@ -237,25 +203,25 @@
     if (row.state === "closed") {
       // closed 票无状态角标(bug 除外)
       if (hasBug) {
-        var bugC = el(doc, "span", "cd-corner", COPY.cardBug);
+        var bugC = el(doc, "span", "cd-corner", COPY["card.bug"]);
         bugC.style.color = "#d73a4a"; // --cd-mark-bug
         host.append(bugC);
       }
       return;
     }
     if (occupied) {
-      var doing = el(doc, "span", "cd-ckb", COPY.cardDoing);
+      var doing = el(doc, "span", "cd-ckb", COPY["card.doing"]);
       doing.style.color = "#2b62b0"; // --cd-mark-doing
       host.append(doing);
       return;
     }
     if (hasBug) {
-      var bug = el(doc, "span", "cd-corner", COPY.cardBug);
+      var bug = el(doc, "span", "cd-corner", COPY["card.bug"]);
       bug.style.color = "#d73a4a"; // --cd-mark-bug
       host.append(bug);
       return;
     }
-    var ready = el(doc, "span", "cd-ckj", COPY.cardPickReady);
+    var ready = el(doc, "span", "cd-ckj", COPY["card.pickReady"]);
     ready.style.color = "#10b981"; // --cd-mark-ready
     host.append(ready);
   }
@@ -297,7 +263,7 @@
     appendBadge(doc, head, row, hex);
     if (closed) {
       // 结案章(PixelClosedSeal):#a3231a 底 #fff9ec 字
-      var seal = el(doc, "span", "cd-sealcn", COPY.cardClosedSeal);
+      var seal = el(doc, "span", "cd-sealcn", COPY["card.closedSeal"]);
       seal.style.background = "#a3231a";
       seal.style.color = "#fff9ec";
       head.append(seal);
@@ -305,13 +271,13 @@
     var title = el(doc, "span", "ms-title", row.title || "");
     title.setAttribute("title", row.title || "");
     head.append(title);
-    head.append(el(doc, "span", "ms-state-chip", closed ? COPY.stateClosed : COPY.stateOpen));
+    head.append(el(doc, "span", "ms-state-chip", closed ? COPY["list.state.closed"] : COPY["card.openState"]));
     r.append(head);
 
     // 红色脚注(PixelCardNote):被 open 阻塞时「被 {n} 挡住」
     var blockers = openBlockerCount(row);
     if (blockers > 0 && !closed) {
-      r.append(el(doc, "div", "cd-note", COPY.cardBlockedBy.replace("{n}", String(blockers))));
+      r.append(el(doc, "div", "cd-note", COPY["card.blockedBy"].replace("{n}", String(blockers))));
     }
 
     var foot = el(doc, "div", "ms-row-foot");
@@ -335,8 +301,8 @@
     }
     foot.append(tags);
     var marks = el(doc, "div", "ms-marks");
-    if (isClaimed(row)) marks.append(el(doc, "span", "ms-mark ms-mark-claimed", COPY.markClaimed));
-    if (isBlocked(row)) marks.append(el(doc, "span", "ms-mark ms-mark-blocked", COPY.markBlocked));
+    if (isClaimed(row)) marks.append(el(doc, "span", "ms-mark ms-mark-claimed", COPY["card.legendClaimed"]));
+    if (isBlocked(row)) marks.append(el(doc, "span", "ms-mark ms-mark-blocked", COPY["list.blocked"]));
     foot.append(marks);
     r.append(foot);
     r.addEventListener("click", function () {
@@ -365,12 +331,12 @@
   function renderFilterRow(doc, rows, view) {
     var bar = el(doc, "div", "ms-filter");
     var STATE_KEYS = [
-      ["all", COPY.filterAll], ["open", COPY.filterOpen], ["closed", COPY.filterClosed],
-      ["blocked", COPY.filterBlocked], ["frontier", COPY.filterFrontier],
+      ["all", COPY["list.state.all"]], ["open", COPY["list.state.open"]], ["closed", COPY["list.state.closed"]],
+      ["blocked", COPY["list.state.blocked"]], ["frontier", COPY["list.state.frontier"]],
     ];
     var SORT_KEYS = [
-      ["updatedAt", COPY.sortUpdatedAt], ["createdAt", COPY.sortCreatedAt],
-      ["number", COPY.sortNumber], ["title", COPY.sortTitle],
+      ["updatedAt", COPY["list.sort.updatedAt"]], ["createdAt", COPY["list.sort.createdAt"]],
+      ["number", COPY["list.sort.number"]], ["title", COPY["list.sort.title"]],
     ];
     var sep = function () {
       return el(doc, "i", "ms-filter-sep");
@@ -417,7 +383,7 @@
     });
 
     // 标签组(多选 OR):全部恒清空;普通标签真实色;默认 4 颗,+N 展开/收起
-    var allChip = el(doc, "span", "ms-chip ms-chip-label ms-chip-all" + (view.labels.length === 0 ? " is-on" : ""), COPY.filterLabelAll);
+    var allChip = el(doc, "span", "ms-chip ms-chip-label ms-chip-all" + (view.labels.length === 0 ? " is-on" : ""), COPY["list.all"]);
     allChip.setAttribute("data-label", "");
     if (view.labels.length === 0) {
       allChip.style.background = "rgba(255,255,255,.08)";
@@ -453,7 +419,7 @@
       bar.append(chip);
     });
     if (sortedLabels.length > 4) {
-      var more = el(doc, "span", "ms-chip ms-chip-more", view.labelsOpen ? COPY.filterCollapse : "+" + (sortedLabels.length - 4));
+      var more = el(doc, "span", "ms-chip ms-chip-more", view.labelsOpen ? COPY["list.collapse"] : "+" + (sortedLabels.length - 4));
       more.addEventListener("click", function () {
         view.labelsOpen = !view.labelsOpen;
         rerender(doc, doc.getElementById("root"));
@@ -466,7 +432,7 @@
   function renderBoard(doc, root, rows, counts, view) {
     var app = el(doc, "div", "ms-app ms-board");
     var head = el(doc, "div", "ms-head");
-    head.append(el(doc, "span", "ms-head-title", COPY.boardTitle));
+    head.append(el(doc, "span", "ms-head-title", COPY["panel.boardTitle"]));
     app.append(head);
     app.append(renderCountsBar(doc, counts));
     app.append(renderFilterRow(doc, rows, view));
@@ -480,10 +446,10 @@
     var ctx = { containerStats: containerStatsOf(rows) };
     for (var row of visible) list.append(renderRow(doc, row, ctx));
     app.append(list);
-    if (visible.length === 0) app.append(el(doc, "div", "ms-none", COPY.listNone));
+    if (visible.length === 0) app.append(el(doc, "div", "ms-none", COPY["list.none"]));
     if (view.state === "all" && closedRows.length > 0) {
       var fold = el(doc, "div", "ms-closed-fold" + (view.closedOpen ? " open" : ""),
-        COPY.listClosedN.replace("{n}", String(closedRows.length)));
+        COPY["list.closedN"].replace("{n}", String(closedRows.length)));
       if (view.closedOpen) fold.append(el(doc, "span", "ms-fold-arrow", "▾"));
       else fold.append(el(doc, "span", "ms-fold-arrow", "▸"));
       fold.addEventListener("click", function () {
