@@ -31,7 +31,7 @@ check(".zcode-plugin/plugin.json 存在", existsSync(manifestPath));
 if (existsSync(manifestPath)) {
   const m = require(manifestPath);
   check("manifest.name", m.name === PLUGIN_NAME, m.name);
-  check("manifest.version 锁 0.3.2(发布版本;package.json 是构建依赖清单,不参与发布)", m.version === "0.3.2", m.version);
+  check("manifest.version 锁 0.4.0(发布版本;package.json 是构建依赖清单,不参与发布)", m.version === "0.4.0", m.version);
 
   const srv = m.mcpServers?.mattskills;
   check("mcpServers.mattskills 存在", !!srv);
@@ -69,11 +69,11 @@ if (existsSync(mkPath)) {
   check("marketplace.plugins[0].source 指向插件目录自身", p?.source === "./" || p?.source === ".",
     JSON.stringify(p?.source));
   // 发布版本真源 = manifest 与市场清单两处;package.json 只是构建依赖清单(zcode-plugin 本体
-  // 零运行时依赖),版本号 0.1.0 不参与发布,别拿它当口径。两处都锁 0.3.2。
+  // 零运行时依赖),版本号 0.1.0 不参与发布,别拿它当口径。两处都锁 0.4.0。
   const manifestVersion = existsSync(manifestPath) ? require(manifestPath).version : null;
   check("marketplace.plugins[0].version 与 manifest.version 一致(发布版本两处对齐)",
     !!p?.version && p.version === manifestVersion, `${p?.version} vs ${manifestVersion}`);
-  check("marketplace.plugins[0].version 锁 0.3.2", p?.version === "0.3.2", p?.version);
+  check("marketplace.plugins[0].version 锁 0.4.0", p?.version === "0.4.0", p?.version);
 }
 
 // --- 4. panel.html 是小引导页:经 __pluginClient 资源机制拉真 UI 资产(ui-host.md 引导五步)。

@@ -39,3 +39,12 @@
 - **测试假 DOM 六份副本**:upstream 六个套件各带一份 fake DOM helper,是既有测试舱模式;本批只新增两套断言,不做全量抽取。已接受为 smell,后续可收进共享 helper。
 - **检查步骤 id 用本仓事实名**:`scratch:workspace`(.scratch 看板目录存在)与 `scratch:cards`(卡片可读)替代借用的上游 `tracker:initialized`/`md:workspace`(上游判据不同);其余 id 不动。连带效应:上游派生的 `setupPendingOf`/`setupCheck` 读不到 `tracker:initialized` 行,恒为 false/undefined —— 这两者在本仓闭包里都没有调用点(调用方 refresh-timer/statusbar 未搬),不产生行为影响。
 - **技能根单一真源**:新建 `src/skill-roots.mjs`,`deck_skill_doc` 与 `env:skills` 判据共用同一顺序(工作区 → ~/.zcode → ~/.agents → 插件内置);env-check 旧实现漏了插件根,随之补齐。
+
+## 实施修订记录(m3,0.4.0,2026-11-20)
+
+- **版本管理页签 = 上游 vc 家族整体克隆**:69 个 UI 叶经 `build-upstream.mjs` splice 进 bundle-1(标记序按上游 `index.ts`:`vcStyles`/`vcShellStyles` 在样式区,其余 67 叶在 `tabs` 之前),19 片 `shared:vc*` 共享层追闭;宿主 70 文件(`src/host/versionControl*.ts` 67 + `stallWatch`/`fsAbsence`/`runningMarkers` 3)与核心 48 文件(`src/shared/version-control/**`)由 `build-git.mjs` 构建期打包进 `dist/git.mjs`。新写的只有 Node 六服务垫片(`subprocess`/`timer`/`fs`/`gate`/`logCtx`/平台)、`deck_git` 一条工具与构建胶水。
+- **有意偏离一:`withGhLane` 直通**:单会话单消费者,没有并发闸需求;`src/git/admission-stub.mjs` 的 `(opts, run) => run()` 取代上游 outbound-admission。
+- **有意偏离二:`deck_git` 路径边界**:`args.cwd` 与克隆/迁移/工作树/平台输出/补丁输出/fast-import 输入等目标路径必须落在工作区根内,越界回 `{ok:false,error:{kind:'boundary'}}`;工具对 agent 可见,不能变成全盘 git 执行器。
+- **垫片要点**:`subprocess` 按上游调用面实现 `spawn({argv,cwd,stdio,graceMs,env}) → {done,collected,stdin?,terminate}`(argv 直传、无 shell;stdout/stderr collector 有字节上限,超限保留尾部并标 lossy/truncated);`timer` 一律 unref(命令超时看门狗不钉住进程);长任务记录落系统临时目录(优先级 `createGitBridge({cacheDir})` > `ZCODE_VC_TASK_CACHE` > 系统临时目录按工作区根散列);`now` 可注入供票期测试。
+- **已知上游问题(只记录,未改)**:`gitPlatformCheck`/`gitPlatformRun` 的 `readScreenOf` 回 `{ok,screen}`,调用方读 `screenReply.data.screen`,形状不一致恒回 `kind=shape`(面板不调用这两条);同步域 pull 的 argv 把 `origin/main` 当仓库地址,`gitSyncWrite` 的 pull 必失败(写域 `gitPull` 走配置上游,正常快进);`prune` 的备份路径算在仓库根同级,工作区根=仓库根时备份落在工作区外;`migrate init` 只支持已存在的空目录;`git-filter-repo` 不是本仓依赖。
+- **既有 smell 顺延**:`src/git/credential-safe.mjs` 是上游 `createCredentialSafeGit` 的人工去类型子集拷贝(升级需重拷,不可按文件 diff 同步);上游测试的假 DOM 各套一份(新增 vc 套件同模式),未做共享抽取。
