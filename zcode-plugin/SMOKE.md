@@ -51,7 +51,7 @@
 | 面 | 跑法 | 结果 |
 |---|---|---|
 | 构建 | `node build.mjs`(src→dist + build-upstream 拼包 + build-git 打包) | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html;bundle-1.txt code.length=2352483(UTF-16 码元),2507726 字节;dist/git.mjs code.length=955015,1021356 字节 |
-| 测试 | `npm test` | ✓ 二十套 2015 断言全绿(scaffold 53 / server-read 124 / server-map 25 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 191 / upstream-mapdetail 78 / upstream-detail 90 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 306 / server-git 35 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106) |
+| 测试 | `npm test` | ✓ 二十套 2024 断言全绿(scaffold 53 / server-read 124 / server-map 34 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 191 / upstream-mapdetail 78 / upstream-detail 90 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 306 / server-git 35 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106) |
 | 地图数据面 | `deck_map_tickets({key, effortId?})` + `deck_issue_list` 容器行 | ✓ 全部子票(含已关闭/关地图)、统计与上游 phone 同形;同号多图不带 effortId 拒绝;非容器/坏键回 isError;目的地解析忽略围栏与注释示例 |
 | 地图渲染面 | upstream-list M4 切片(真 bundle + 真点击) | ✓ 点地图行进 V2 页;档案区标题/目的地/「本图 3 张子票（已关闭 1 张）」;卡片流;取数电话 key=00/effortId=dogfood-test;点档案进 IssueDetail 再逐级返回;返回列表 |
 | 版本 | 双清单 + scaffold | ✓ plugin.json / marketplace.json / scaffold 断言均 0.5.0;package.json 保持 0.1.0;panel.html 未动 |

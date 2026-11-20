@@ -366,6 +366,7 @@ const doc = createFakeDom();
 const toolCalls = [];
 {
   const { scanWorkspace, thinRow } = await import(pathToFileURL(join(ROOT, "src", "cards.mjs")).href);
+  const { mapTicketsFor } = await import(pathToFileURL(join(ROOT, "src", "map-tickets.mjs")).href);
   const scan = scanWorkspace(join(ROOT, "test", "fixtures", "u04-list"));
   // 计数基准 = 非容器票(真 server computeCounts 口径:容器不进 total/open/closed)
   const tickets = scan.rows.filter((r) => r.type !== "map" && r.type !== "spec");
@@ -397,38 +398,9 @@ const toolCalls = [];
       if (name === "deck_issue_list") return { structuredContent: { rows: scan.rows.map(thinRow), revision: 1 } };
       if (name === "deck_issue_counts") return { structuredContent: { counts: { open: openN, closed: closedN, total: tickets.length }, revision: 1 } };
       if (name === "deck_issue_list_labels") return { structuredContent: LABEL_PALETTE };
-      // M4:地图详情页进页必问的电话(按 effort 回该图全部子票,含已关闭)
-      if (name === "deck_map_tickets") {
-        const effortId = String((args && args.effortId) || "");
-        const items = scan.rows
-          .filter((r) => r && r.type !== "map" && r.type !== "spec" && String(r.effortId || "") === effortId && r.parentKey != null && String(r.parentKey) === "00")
-          .map((r) => ({
-            key: String(r.key),
-            number: Number.parseInt(String(r.key), 10),
-            type: r.type,
-            title: r.title,
-            state: String(r.state || "").toUpperCase(),
-            labels: r.labels,
-            parentKey: r.parentKey,
-            blockedBy: Array.isArray(r.blockedBy) ? r.blockedBy.map((b) => String((b && b.key) || b)) : [],
-            claimedBy: "",
-            progress: null,
-            updatedAt: r.updatedAt,
-          }));
-        const closedCount = items.filter((x) => x.state === "CLOSED").length;
-        return {
-          structuredContent: {
-            ok: true,
-            key: "00",
-            items: items,
-            stats: { total: items.length, open: items.length - closedCount, closed: closedCount },
-            total: items.length,
-            fetched: items.length,
-            capped: false,
-            missing: 0,
-          },
-        };
-      }
+      // M4:地图详情页进页必问的电话 —— 直接走真解析器(src/map-tickets.mjs),不手搓回包;
+      // 契约形状由 server-map 套件看守,这里要的是「页面吃到真形状也能画对」。
+      if (name === "deck_map_tickets") return { structuredContent: mapTicketsFor({ rows: scan.rows }, args) };
       throw new Error("no tool " + name);
     },
   };

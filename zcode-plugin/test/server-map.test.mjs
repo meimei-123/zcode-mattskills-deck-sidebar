@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { destinationOf } from "../src/cards.mjs";
+import { progressOf } from "../src/map-tickets.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 let failures = 0;
@@ -125,6 +126,16 @@ try {
     destinationOf("```\n## Destination\n假\n```\n<!--\n## Destination\n假\n-->\n## Destination\n真目的。\n") === "真目的。"
   );
   check("destinationOf 没有该节回空串", destinationOf("## Notes\n只有笔记。\n") === "");
+
+  // ---- 0b. 进度读侧:屏蔽代码块/注释,认 Progress/老标题/紧贴标题 ----
+  check("progressOf 读普通记录", progressOf("## 进度\n\n- 进度：40%（2026-11-21T10:00+08:00）：做了一半\n") === 40);
+  check("progressOf 忽略围栏里的示例", progressOf("## Notes\n\n```md\n## 进度\n\n- 进度：90%\n```\n") === null);
+  check("progressOf 忽略注释里的示例", progressOf("<!--\n## 进度\n\n- 进度：88%\n-->\n") === null);
+  check("progressOf 认英文标题", progressOf("## Progress\n\n- Progress: 55%\n") === 55);
+  check("progressOf 认老标题百分比", progressOf("## 进度：70%\n\n随便写点。\n") === 70);
+  check("progressOf 认紧贴标题", progressOf("##进度\n\n- 进度：30%\n") === 30);
+  check("progressOf 认老票行首写法", progressOf("正文。\n\n进度：25%\n") === 25);
+  check("progressOf 没有进度回 null", progressOf("正文提到进度：7% 而已。\n") === null);
   // ---- 1. list:容器行带 destination ----
   const list = await server.call("deck_issue_list", {});
   const sc = list.result.structuredContent;
@@ -147,6 +158,8 @@ try {
   check("已关闭行 state=CLOSED", closed && closed.state === "CLOSED", closed && closed.state);
   const blocked = mt.items.find((t) => t.key === "03");
   check("阻塞引用压成键串", blocked && Array.isArray(blocked.blockedBy) && blocked.blockedBy[0] === "01", blocked && JSON.stringify(blocked.blockedBy));
+  const blockedRef = blocked && Array.isArray(blocked.blockedByRefs) ? blocked.blockedByRefs[0] : null;
+  check("阻塞引用旁表带 key/标题/状态(上游 blockedByRefs)", !!blockedRef && blockedRef.key === "01" && blockedRef.title === "第一张" && blockedRef.state === "open", blocked && JSON.stringify(blocked.blockedByRefs));
   check("进度从正文解析", blocked && blocked.progress === 40, blocked && String(blocked.progress));
   check("行带 number", blocked && blocked.number === 3);
   const claimed = mt.items.find((t) => t.key === "04");
