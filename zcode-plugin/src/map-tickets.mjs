@@ -4,7 +4,6 @@
 // 未关闭子票(上游 groupDeck 口径),已关闭的与关地图的子票只能现取。回包形状由 api-io.ts 的
 // fetchMapTickets 消费:{ok,key,items,stats,total,fetched,capped,missing};items 每行按上游
 // prepareRow 归一大写 state、压 blockedBy 为键串、认领人从 assignees 取第一个。
-import { findCardByScan } from "./cards.mjs";
 
 /** 正文「## 进度」区的当前值:第一条 `- 进度：N%` 记录;没有区或没有记录回 null(不是 0)。
  *  只实现读侧当前值这一小截(上游真源 src/shared/issue-file/src/progress.ts)。 */
@@ -63,25 +62,26 @@ export function mapTicketsFor(scan, args) {
   const effortId = a.effortId === undefined || a.effortId === null ? "" : String(a.effortId);
   const rows = Array.isArray(scan && scan.rows) ? scan.rows : [];
   const norm = /^\d+$/.test(key) ? key.padStart(2, "0") : key;
+  const effortOf = (r) => String((r && r.effortId) || "");
+  const isContainer = (r) => !!r && (r.type === "map" || r.type === "spec");
 
-  let card = null;
-  if (effortId) {
-    card = findCardByScan(scan, effortId + "/" + norm) || findCardByScan(scan, effortId + "/" + key);
-  } else {
-    const hits = rows.filter((r) => r && r.key === norm);
-    if (hits.length > 1) return errorOf("parse", "同号地图有多张:请带 effortId(如 " + hits[0].effortId + "/" + norm + ")");
-    card = hits[0] || findCardByScan(scan, norm);
+  // 容器优先:00 是地图/规格的保留编号,但脏工作区里也可能有同名普通票 —— 只认容器。
+  const pool = rows.filter((r) => r && String(r.key) === norm && (!effortId || effortOf(r) === effortId));
+  const containers = pool.filter(isContainer);
+  if (!containers.length) {
+    if (!pool.length) return errorOf("parse", "找不到地图 " + (effortId ? effortId + "/" : "") + key);
+    return errorOf("parse", String(pool[0].key) + " 不是地图/规格(它是 " + String(pool[0].type) + ")");
   }
-  if (!card) return errorOf("parse", "找不到地图 " + (effortId ? effortId + "/" : "") + key);
-  if (card.type !== "map" && card.type !== "spec") {
-    return errorOf("parse", String(card.key) + " 不是地图/规格(它是 " + String(card.type) + ")");
+  if (containers.length > 1) {
+    return errorOf("parse", "同号地图有多张:请带 effortId(如 " + effortOf(containers[0]) + "/" + norm + ")");
   }
+  const card = containers[0];
 
   const items = rows
     .filter((r) => {
       if (!r || r === card) return false;
-      if (r.type === "map" || r.type === "spec") return false;
-      if (String(r.effortId || "") !== String(card.effortId || "")) return false;
+      if (isContainer(r)) return false;
+      if (effortOf(r) !== effortOf(card)) return false;
       return r.parentKey != null && String(r.parentKey) === String(card.key);
     })
     .map(ticketItemOf);
