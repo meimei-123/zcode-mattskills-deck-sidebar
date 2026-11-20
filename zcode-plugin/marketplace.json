@@ -4,7 +4,7 @@
     {
       "name": "zcode-mattpocock-skills-deck",
       "source": "./",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "description": "MattSkills 任务看板：ZCode 官方 UI Plugin，侧栏页签读写 .scratch/ 工单，与 agent 共用同一份卡片数据。",
       "displayName": "MattSkills Deck",
       "displayName_i18n": {

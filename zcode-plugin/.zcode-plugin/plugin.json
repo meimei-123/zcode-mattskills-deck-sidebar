@@ -1,6 +1,6 @@
 {
   "name": "zcode-mattpocock-skills-deck",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "MattSkills 任务看板：侧栏页签读写 .scratch/ 工单，与 agent 共用同一份卡片数据。",
   "author": {
     "name": "mattskills-deck"
