@@ -9,7 +9,7 @@
 | 1 | 安装插件并启用,开新会话 | 侧边栏出现 MattSkills 页签(方形看板图标) | **待人工(真机)** |
 | 2 | 打开页签 | 上游复刻看板带数据起(460px 深色壳,列表/计数/筛选);无 `.scratch/` 时显示中文引导态(指向 /setup-matt-pocock-skills 与 /to-tickets) | upstream-skeleton(壳+样式链+引导流量)、upstream-list 覆盖;快照原型实测见下 |
 | 2a | 点「技能」页签 | 技能目录 27 行(名称/摘要/推荐标记);点行开详情,加载中出骨架/文案,正文按 markdown 渲染;读取失败出错误与重试,重试恢复 | upstream-skills 覆盖(目录 27 行 / 详情 markdown / 加载·失败·重试) |
-| 2b | 点「环境检查」页签 | 链快照逐项列出状态/标题/原因(N/M 计数与步骤一致);点「重新检查」真实重扫并更新;失败步的修复按钮把提示词发进当前对话 | upstream-checks 覆盖(链快照状态/标题/原因、重检真重扫、修复动作发话) |
+| 2b | 点「环境检查」页签 | 链快照逐项列出状态/标题/原因(N/M 计数与步骤一致);点「重新检查」真实重扫并更新;失败步的修复按钮把提示词发进当前对话;页签打开时每 5 秒自问一次(本仓无宿主事件源),离页即停 | upstream-checks 覆盖(链快照状态/标题/原因、重检真重扫、修复动作发话、5 秒可见拍与离页停止) |
 | 2c | 拖动侧边栏从宽到窄再拖回 | 窄档(<380px)行内按钮收成图标、页签按优先级折叠、无横向溢出;拖宽内容用满且行/卡面/详情有 460px 上限;任意宽度互切页签状态不串 | upstream-responsive 覆盖(窄档收字/页签折叠/宽侧 460 上限/详情顶栏折叠) |
 | 3 | 对 agent 说"用 /to-tickets 在 m1-core-board 下建几张测试卡" | agent 调 `deck_issue_create`,卡片落盘 `.scratch/m1-core-board/issues/` | server-write 覆盖 |
 | 4 | 看板(不刷新面板) | 防抖后自动出现新卡;计数胶囊条变 | live-refresh 覆盖 |
@@ -34,8 +34,8 @@
 
 | 面 | 跑法 | 结果 |
 |---|---|---|
-| 构建 | `node build.mjs`(src→dist + build-upstream 拼包) | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html(bundle-1.txt 1328148 字节,含 0.3.1 源码;版本占位 `__DSW_VERSION__` 当前没有叶子引用,产物里没有版本串) |
-| 测试 | `npm test` | ✓ 十二套 1108 断言全绿(scaffold 51 / server-read 121 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 176 / upstream-detail 89 / upstream-skills 78 / upstream-responsive 70 / upstream-checks 53) |
+| 构建 | `node build.mjs`(src→dist + build-upstream 拼包) | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html(构建日志口径 code.length=1329160(UTF-16 码元),含 0.3.1 源码;版本占位 `__DSW_VERSION__` 当前没有叶子引用,产物里没有版本串) |
+| 测试 | `npm test` | ✓ 十二套 1131 断言全绿(scaffold 53 / server-read 124 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 176 / upstream-detail 89 / upstream-skills 78 / upstream-responsive 78 / upstream-checks 63) |
 | 收口断言 | upstream-skeleton + upstream-list 新增 9 条 | ✓ bundle/骨架无「U06+ 搬入」;地图详情层 mapV2 占位仍在;页签分发表 skills→SkillsTab、checks→ChecksTab、pr 无能力回 ListTab(点验 KPI 行与 9 行开票行集) |
 
 ## 自动化实测记录(U06 复走,2026-11-20,离线)

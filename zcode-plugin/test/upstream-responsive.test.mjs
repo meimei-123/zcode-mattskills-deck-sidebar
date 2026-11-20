@@ -224,6 +224,10 @@ function createFakeDom() {
   doc.body = createFakeNode(1, "body");
   doc.head.ownerDocument = doc;
   doc.body.ownerDocument = doc;
+  // 真 DOM 语义:head/body 是 document 的子节点(document.querySelectorAll 才看得到面板子树;
+  // P1-2 的 fitAllTags 走 document 级查询,旧假 DOM 只挂了 body 引用、没挂进树里)。
+  doc.appendChild(doc.head);
+  doc.appendChild(doc.body);
   doc.fonts = null;
   return doc;
 }
@@ -504,6 +508,46 @@ if (U) {
     eq("宽档还原:页签折叠清零", tabsRow.attributes["data-tabs-level"], "0");
   }
   check("宽档还原后:面板根节点身份仍未变", panelOf()[0] === panel0);
+
+  // ---- P1-2:宽度拍补标签重排(fitAllTags 指纹不含宽度,拖宽拖窄后 +N 要重算) ----
+  {
+    const tagsRows = qsa(surface, ".dsws-tags");
+    check("标签行在(.dsws-tags)", tagsRows.length > 0, String(tagsRows.length));
+    const tagsRow = tagsRows[0];
+    const more = tagsRow ? qsa(tagsRow, ".dsws-more")[0] : null;
+    check("标签行带 +N 计数芯片(.dsws-more)", !!more);
+    if (tagsRow && more) {
+      // fixture 每行只有 1 颗标签,量不出 +N:补 4 颗可量宽度(40px)的标签模拟多标签行。
+      for (let i = 0; i < 4; i++) {
+        const chip = createFakeNode(1, "span");
+        chip.className = "dsws-chip";
+        chip.ownerDocument = doc;
+        Object.defineProperty(chip, "offsetWidth", { configurable: true, get: () => 40 });
+        tagsRow.appendChild(chip);
+      }
+      for (const c of qsa(tagsRow, ".dsws-chip")) {
+        if (c !== more) Object.defineProperty(c, "offsetWidth", { configurable: true, get: () => 40 });
+      }
+      Object.defineProperty(more, "offsetWidth", { configurable: true, get: () => 30 });
+      const hiddenChips = () => qsa(tagsRow, ".dsws-chip:not(.dsws-more)").filter((c) => c.style.display === "none").length;
+
+      tagsRow.clientWidth = 200;
+      fireRO(panel0, 800);
+      eq("宽档宽度拍:多标签行收 2 颗进 +N", more.textContent, "+2");
+      eq("宽档宽度拍:隐藏 2 颗标签", hiddenChips(), 2);
+
+      tagsRow.clientWidth = 60;
+      fireRO(panel0, 300);
+      check("窄档宽度拍:+N 变大", Number(String(more.textContent).slice(1)) > 2, more.textContent);
+      eq("窄档宽度拍:隐藏 4 颗标签", hiddenChips(), 4);
+
+      tagsRow.clientWidth = 200;
+      fireRO(panel0, 800);
+      eq("宽度还原:+N 回退到 +2", more.textContent, "+2");
+      eq("宽度还原:隐藏数回退到 2", hiddenChips(), 2);
+      await flush();
+    }
+  }
 
   // ---- 切片:详情顶栏逐字折叠(useIssueDetailFold 自持;改宽后触发 + 还原) ----
   U.list.rowHelpers.setActiveIssue(st, 1, "dogfood-detail");

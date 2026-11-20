@@ -294,9 +294,7 @@ function apply(ctx) {
     if (!st) return;
     st.refreshing = true; // #195:重查按钮必须有反应(不因上一次还挂着就锁死)
     try { emit(st); } catch (eR1) { /* 无订阅者不挡后续 */ }
-    const p = typeof chainEventRefresh === "function"
-      ? chainEventRefresh(st, "user-recheck")
-      : loadChain(st, true, "user-recheck");
+    const p = chainEventRefresh(st, "user-recheck");
     Promise.resolve(p)
       .catch(function () { /* 失败由 loadChain 自己记录;这里只负责收圈 */ })
       .then(function () {
@@ -304,6 +302,11 @@ function apply(ctx) {
         try { emit(st); } catch (eR2) { /* 忽略 */ }
       });
   };
+  // 工单 05(P1-1):检查页可见拍间隔。上游界面没有自续定时器 —— 重算由宿主事件源
+  // (切进工作区/人手重检/动作完成)带起,宿主按退避裁定(probe-chain-subscription.ts 头注释)。
+  // 本仓没有宿主推送通道,检查页可见时只能用上游活跃探测拍同一节奏(5 秒档)自问一次;
+  // 离页即停(见 DeckBody 的 effect)。
+  const CHECKS_REVALIDATE_MS = 5000;
 
   // 宿主专属名最小桩(U02 惯例;与被搬叶子的关系逐条列明,缺一即崩的点都有对应上游真源):
   //   snapFresh / loadSnapshot —— 上游住在 refresh rooms 家族(refresh-timer/snapshot-sync),
@@ -518,7 +521,8 @@ function apply(ctx) {
   //      页签也接真视图:ChecksTab 的链快照唯一渲染;#284 起九格 wf.status 视图已退役,不恢复) ----
   // 结构对上游 panel/Dock.ts 的头部三段:dsws-head(标题)/dsws-tabs(useTabsRow 的墨块 + 页签
   // 与 wayfinder、bug 入口、EntryChooser)/dsws-body(按 st.tab 分发;list/skills/checks 都是真视图,
-  // pr 在本地后端无能力、页签不渲染,状态落到 pr 时兜底回列表 —— 与上游 Dock.ts 同一分支同款)。
+  // pr 页签在本地后端无能力、不可达(prTabVisible 缺席)—— 上游 Dock 还会把 st.tab 改回 list,
+  // 本仓只在渲染层兜底回列表,不改状态)。
   // 门组件(上游 #670 同款):无数据先画 dsws-hold 空壳,有数据才挂 DeckBody ——
   // hooks(useTabsRow 等)只在 DeckBody 里调,渲染次数变化不破坏 hook 次序。
   const DeckShell = function () {
@@ -546,11 +550,40 @@ function apply(ctx) {
       try {
         ro = new ResizeObserver(function (entries) {
           try { setDw(entries[0].contentRect.width); } catch (e) { /* 忽略 */ }
+          // 工单 05(P1-2):宽度拍补一次标签重排。上游 ListTab 的重排指纹是
+          // snapshot|tab|stateFilter|lblFilters(不含宽度),靠宿主重挂/重渲触发;
+          // 本仓面板不重挂,拖宽拖窄后不补这一拍 +N 就不重算。页面隐藏时不测量(浏览器不给可用宽)。
+          try {
+            if (typeof document === "undefined" || document.visibilityState !== "hidden") {
+              if (typeof fitAllTags === "function") fitAllTags();
+            }
+          } catch (eFit) { /* 标签重排失败不挡宽度通道 */ }
         });
         ro.observe(el);
       } catch (e) { ro = null; }
       return function () { if (ro) { try { ro.disconnect(); } catch (e) { /* 忽略 */ } } };
     }, []);
+    // ---- 工单 05(P1-1):检查页可见拍(上游靠宿主事件源驱动,本仓没有) ----
+    // 仅当停在检查页签时注册 5 秒拍:force=true 绕本地缓存,每次都真扫 deck_env_check;
+    // document.visibilityState === "hidden"(页面在后台)时这一拍跳过;页签切走或卸载时清掉。
+    // 回调自己吞掉拒绝(失败由 loadChain 记录),不产生未处理拒绝。
+    React.useEffect(function () {
+      if (!st || st.tab !== "checks") return undefined;
+      if (typeof setInterval !== "function" || typeof clearInterval !== "function") return undefined;
+      let alive = true;
+      const id = setInterval(function () {
+        if (!alive) return; // 已离页/卸载:清掉时可能还有一拍排在队里,不再发车
+        try {
+          if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+          const p = chainEventRefresh(st, "checks-visible-tick", true);
+          if (p && typeof p.catch === "function") p.catch(function () {});
+        } catch (e) { /* 一拍失败不挡下一拍 */ }
+      }, CHECKS_REVALIDATE_MS);
+      return function () {
+        alive = false;
+        try { clearInterval(id); } catch (e) { /* 忽略 */ }
+      };
+    }, [st, st.tab]);
     // 页签折叠机(工单 01:上游 panel/Dock.ts 的 applyFold 逐字移植;tabsRef 已由 useTabsRow 持有)。
     // 三道触发与上游一致:ResizeObserver(页签行宽变)+ window resize + document.fonts.ready;
     // 卸载时断开。判据只有 scrollWidth/clientWidth 的 DOM 测量 —— 上游纯函数 tabsLevelDecide
@@ -631,7 +664,8 @@ function apply(ctx) {
               ? h(SkillsTab, { st: st })
               : st.tab === "checks"
                 ? h(ChecksTab, { st: st })
-                // pr 无能力时兜底回列表(上游 Dock.ts 同一分支:showPrTab 为假就画 ListTab)
+                // pr 页签不可达(prTabVisible 缺席),这里只做渲染兜底,不改状态:上游 Dock 还有
+                // 「st.tab === 'pr' 且无能力 → 把 st.tab 改回 list」的 effect,本仓没有(pr 到不了这儿)。
                 : h(ListTab, { st: st, narrow: narrow }),
       ]),
     ]);

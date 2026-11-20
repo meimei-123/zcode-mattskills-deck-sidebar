@@ -389,7 +389,7 @@ async function sliceEnvCheck() {
       JSON.stringify(steps));
 
     // 空工作区:没有 .scratch → 初始化一步不过且带 inject-prompt 修复动作;监听离线;桥恒在。
-    const init = stepOf(sc, "tracker:initialized");
+    const init = stepOf(sc, "scratch:workspace");
     check("env: 无 .scratch → 初始化一步非 done 且带修复动作",
       init && init.status !== "done" && init.actions.length === 1 && init.actions[0].type === "inject-prompt" &&
         typeof init.actions[0].prompt === "string" && init.actions[0].prompt.length > 0,
@@ -428,14 +428,29 @@ async function sliceEnvCheck() {
   try {
     const r = await s2.call("deck_env_check", {});
     const sc = r.result?.structuredContent || {};
-    check("env(有 .scratch/.git): tracker:initialized done", stepOf(sc, "tracker:initialized")?.status === "done", JSON.stringify(stepOf(sc, "tracker:initialized")));
-    check("env(有 .scratch/.git): md:workspace(卡片可读)done", stepOf(sc, "md:workspace")?.status === "done", JSON.stringify(stepOf(sc, "md:workspace")));
+    check("env(有 .scratch/.git): scratch:workspace done", stepOf(sc, "scratch:workspace")?.status === "done", JSON.stringify(stepOf(sc, "scratch:workspace")));
+    check("env(有 .scratch/.git): scratch:cards(卡片可读)done", stepOf(sc, "scratch:cards")?.status === "done", JSON.stringify(stepOf(sc, "scratch:cards")));
     check("env(有 .scratch/.git): env:watch 监听在线", stepOf(sc, "env:watch")?.status === "done", JSON.stringify(stepOf(sc, "env:watch")));
     check("env(有 .scratch/.git): git:repo done", stepOf(sc, "git:repo")?.status === "done", JSON.stringify(stepOf(sc, "git:repo")));
     check("env(有 .scratch/.git): 技能根仍按假 HOME 判(不假报 done)", stepOf(sc, "env:skills")?.status !== "done", JSON.stringify(stepOf(sc, "env:skills")));
     check("env(有 .scratch/.git): 计数随之上升(5/6;技能根按假 HOME 仍未过)", sc.snapshot?.doneCount === 5, JSON.stringify(sc.snapshot?.doneCount));
   } finally {
     await s2.stop();
+  }
+
+  // 技能根单一真源(P2-2):插件内置根也在判据里 —— 工作区与假 HOME 都没有技能时,
+  // ZCODE_PLUGIN_ROOT/skills 可读即 env:skills done,desc 如实点名「插件内置 skills」。
+  mkdirSync(join(base, "plugin", "skills"), { recursive: true });
+  const s3 = await startServer(rootInit, { ...fakeHomeEnv, ZCODE_PLUGIN_ROOT: join(base, "plugin") });
+  try {
+    const r = await s3.call("deck_env_check", {});
+    const sc = r.result?.structuredContent || {};
+    const skills = stepOf(sc, "env:skills");
+    check("env: 插件内置技能根可读 → env:skills done", skills?.status === "done", JSON.stringify(skills));
+    check("env: 技能一步 desc 点名插件内置根", String(skills?.show?.desc || "").includes("插件内置 skills"), JSON.stringify(skills?.show));
+    check("env: 插件根补上后六步全绿", sc.snapshot?.doneCount === 6 && sc.snapshot?.chainState === "allDone", JSON.stringify({ done: sc.snapshot?.doneCount, state: sc.snapshot?.chainState }));
+  } finally {
+    await s3.stop();
     rmSync(base, { recursive: true, force: true });
   }
 }
