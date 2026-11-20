@@ -1,6 +1,6 @@
 {
   "name": "zcode-mattpocock-skills-deck",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MattSkills 任务看板：侧栏页签读写 .scratch/ 工单，与 agent 共用同一份卡片数据。",
   "author": {
     "name": "mattskills-deck"
@@ -10,7 +10,9 @@
     "mattskills": {
       "type": "stdio",
       "command": "node",
-      "args": ["${ZCODE_PLUGIN_ROOT}/dist/server.mjs"],
+      "args": [
+        "${ZCODE_PLUGIN_ROOT}/dist/server.mjs"
+      ],
       "cwd": "${ZCODE_PROJECT_DIR}",
       "env": {
         "ZCODE_WORKSPACE_ROOT": "${ZCODE_PROJECT_DIR}"
