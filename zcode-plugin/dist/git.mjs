@@ -21838,6 +21838,7 @@ function createGitBridge(opts) {
   const options = opts || {};
   const root = path2.resolve(String(options.workspaceRoot || process.cwd()));
   const debugOn = String(options.env && options.env.ZCODE_GIT_DEBUG || process.env.ZCODE_GIT_DEBUG || "") === "1";
+  const now = typeof options.now === "function" ? options.now : Date.now;
   const deps = {
     subprocess: makeSubprocess(options.env || process.env),
     timer: makeTimer(),
@@ -21848,7 +21849,7 @@ function createGitBridge(opts) {
     gate: { noteOutbound() {
     } },
     logCtx: makeLogCtx(debugOn),
-    now: Date.now
+    now
   };
   const vc = createVersionControl(deps);
   const methods = /* @__PURE__ */ new Map();

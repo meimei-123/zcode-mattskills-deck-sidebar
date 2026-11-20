@@ -257,6 +257,8 @@ export function createGitBridge(opts) {
   const options = opts || {};
   const root = path.resolve(String(options.workspaceRoot || process.cwd()));
   const debugOn = String((options.env && options.env.ZCODE_GIT_DEBUG) || process.env.ZCODE_GIT_DEBUG || "") === "1";
+  // 时钟与上游 deps.now 同口径:默认 Date.now;测试可注入可控时钟,以便按真实 120 秒票期验证过期拒绝。
+  const now = typeof options.now === "function" ? options.now : Date.now;
   const deps = {
     subprocess: makeSubprocess(options.env || process.env),
     timer: makeTimer(),
@@ -266,7 +268,7 @@ export function createGitBridge(opts) {
     TIMEOUT_MS: VC_RUN_TIMEOUT_MS,
     gate: { noteOutbound() {} },
     logCtx: makeLogCtx(debugOn),
-    now: Date.now,
+    now,
   };
   const vc = createVersionControl(deps);
   const methods = new Map();
