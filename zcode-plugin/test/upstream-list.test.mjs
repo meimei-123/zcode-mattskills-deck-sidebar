@@ -589,6 +589,23 @@ if (U) {
     fireClick(tabBtn("panel.tab.list"));
     await tick();
     eq("切回列表恢复三段列表(开票行)", rowsNow().length, 9);
+
+    // ---- 工单 04 收口:pr 无能力兜底 ----
+    // 本地后端没有 PR 能力,prTabVisible 缺席 → 页签不渲染;状态若落到 pr,分发必须回列表
+    // 真视图(上游 Dock.ts 同款),不能落回占位。借上游 emit(setActiveIssue 清空导航)重画。
+    if (st) {
+      st.tab = "pr";
+      U.list.rowHelpers.setActiveIssue(st, null);
+      await tick();
+      await new Promise((r) => setTimeout(r, 30)); // 等合批重画落定
+      eq("pr 状态保留(无能力不静默改写 st.tab)", st.tab, "pr");
+      check("pr 无能力时渲染回列表真视图(KPI 行在)", qsa(surface, '[data-list-head="kpi"]').length >= 1);
+      check("pr 兜底不出占位文案(无 U06+ 搬入)", !textOf(body).includes("U06+ 搬入"));
+      check("pr 兜底行集仍是开票 9 行", rowsNow().length === 9, String(rowsNow().length));
+      st.tab = "list";
+      U.list.rowHelpers.setActiveIssue(st, null);
+      await tick();
+    }
   }
 
   // ---- 样式:上游 STYLE_TEXT 仍在 head(令牌族) ----
