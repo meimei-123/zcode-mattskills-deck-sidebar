@@ -3,6 +3,6 @@
 
 U04 列表页全家搬入的在办地图。
 
-## Objective
+## Destination
 
 把上游列表页搬进 ZCode 面板。

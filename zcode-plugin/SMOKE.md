@@ -20,6 +20,7 @@
 | 2j | 危险动作:重置、历史改写、变基、冲突向导 | 预检签票 + 确认卡 + 恢复点(备份/撤销)后才执行;拒绝过期票;冲突页逐文件处理与继续/中止 | server-git-history 覆盖(改写/变基/冲突/子模块);server-git-admin 覆盖(维护确认与备份要求) |
 | 2k | 子模块/维护/迁移/配置钩子/诊断/平台各页 | 按上游能力账本渲染;只读页出数,写页预检签票;缺外部工具/能力时回诚实说明 | server-git-admin 覆盖(维护/迁移/配置钩子/诊断/平台);server-git-history 覆盖(子模块) |
 | 2l | 换到另一个工作区再切回 | VC 读数与写状态整体复位:分支/差异/任务面板不串仓 | **待人工(真机)**(跨工作区复位无自动化断言) |
+| 2m | 点列表里的地图/规格行 | 进上游 V2 地图详情页:顶栏(返回/面包屑/三态主按钮)、档案区(标题/目的地/进度/「本图 N 张子票（已关闭 C 张）」)、子票卡片流(在办/可接/被挡/已完成,含快照里没有的已关闭子票);点档案进这张图自己的详情页,返回逐级弹回,再返回回列表 | upstream-list(M4 切片:进页/档案/取数/卡片流/档案跳转/返回)、upstream-mapdetail(十三叶与接线)、server-map(电话契约与目的地解析) |
 | 3 | 对 agent 说"用 /to-tickets 在 m1-core-board 下建几张测试卡" | agent 调 `deck_issue_create`,卡片落盘 `.scratch/m1-core-board/issues/` | server-write 覆盖 |
 | 4 | 看板(不刷新面板) | 防抖后自动出现新卡;计数胶囊条变 | live-refresh 覆盖 |
 | 5 | 点开一张卡 | 详情:元行/正文/评论时间线;长文折叠可展开 | upstream-detail 覆盖 |
@@ -38,10 +39,22 @@
 - 面板填满侧边栏后,圆角/边框与 ZCode 侧边栏的融合观感(是否像原生的一格,而不是浮在里面的卡片)。**待人工**
 - 两个新页签的真机目检(技能目录/文档详情、环境检查链快照):截图备料见 `E:\mattskillzcode\prototype\m2-shots\README.md`,偏差由人工目检裁定。**待人工**
 - 版本管理页的真机观感(窄侧栏/宽页签):四枚页签行是否折叠得当,改动/历史/工作树三视图与差异区在窄档是否可读、无横向溢出。截图备料见 `E:\mattskillzcode\prototype\m3-shots\README.md`,偏差由人工目检裁定。**待人工**
+- 地图详情页的真机观感:档案区标题/目的地/进度条在窄档是否折行得当;子票卡片流的四段顺序与卡片密度;点档案进 IssueDetail 的面包屑与逐级返回。**待人工**
+- 地图详情页在「一张子票都没有」与「取数失败」两态:档案区应显示占位短横与原因截断,不显示假的 0 张;真机断网可试。**待人工**
 - 真实远端(https/ssh)的凭据提示与失败话术:自动化只用本地 bare 仓与静默 TCP 冒充;真远端要确认凭据助手提示、超时与失败文案是否诚实。**待人工**
 - `git-filter-repo` 等外部工具缺席时的提示:历史改写/维护页应回上游的诚实错误(说明缺什么),不静默失败。**待人工**
 - 非 git 工作区的「不是仓库」引导态:协调根 `E:\mattskillzcode` 本身不是 git 仓、插件仓是嵌套仓;真机要在这种工作区确认 VC 页给引导而不是报错。**待人工**
 - (可选)双击工作区副本 `E:\mattskillzcode\prototype\m1-ui-preview.html` 对照快照原型(U06 已随新 UI 重生成;源在 ui-preview 分支 `zcode-plugin/prototype/`);差异以真机为准——原型是一次性快照,不随代码日常更新。**待人工**
+
+## 自动化实测记录(0.5.0 收口,2026-11-21,离线)
+
+| 面 | 跑法 | 结果 |
+|---|---|---|
+| 构建 | `node build.mjs`(src→dist + build-upstream 拼包 + build-git 打包) | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html;bundle-1.txt code.length=2352483(UTF-16 码元),2507726 字节;dist/git.mjs code.length=955015,1021356 字节 |
+| 测试 | `npm test` | ✓ 二十套 2015 断言全绿(scaffold 53 / server-read 124 / server-map 25 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 191 / upstream-mapdetail 78 / upstream-detail 90 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 306 / server-git 35 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106) |
+| 地图数据面 | `deck_map_tickets({key, effortId?})` + `deck_issue_list` 容器行 | ✓ 全部子票(含已关闭/关地图)、统计与上游 phone 同形;同号多图不带 effortId 拒绝;非容器/坏键回 isError;目的地解析忽略围栏与注释示例 |
+| 地图渲染面 | upstream-list M4 切片(真 bundle + 真点击) | ✓ 点地图行进 V2 页;档案区标题/目的地/「本图 3 张子票（已关闭 1 张）」;卡片流;取数电话 key=00/effortId=dogfood-test;点档案进 IssueDetail 再逐级返回;返回列表 |
+| 版本 | 双清单 + scaffold | ✓ plugin.json / marketplace.json / scaffold 断言均 0.5.0;package.json 保持 0.1.0;panel.html 未动 |
 
 ## 自动化实测记录(0.4.0 收口,2026-11-20,离线)
 

@@ -36,6 +36,17 @@ export function hiddenHeaderValue(text, name) {
   return m ? String(m[1] || "").trim() : "";
 }
 
+/** 容器正文的 `## Destination` 段:取到下一个二级标题为止;没有这一节回空串。
+ *  围栏代码块与 HTML 注释里出现的同名标题不算(与字段行同一纪律)。 */
+export function destinationOf(body) {
+  const text = stripFencedCode(body).replace(/<!--[\s\S]*?-->/g, "");
+  const m = /^##[ \t]+Destination[ \t]*$/im.exec(text);
+  if (!m) return "";
+  const rest = text.slice(m.index + m[0].length);
+  const end = /^##[ \t]+/m.exec(rest);
+  return (end ? rest.slice(0, end.index) : rest).trim();
+}
+
 /** 隐藏注释名单分段:逗号、全角逗号、顿号都算分隔。 */
 function splitHiddenList(value) {
   return String(value || "")
@@ -432,6 +443,11 @@ export function thinRow(card) {
   };
   if (card.assignees) row.assignees = card.assignees;
   if (card.customFields) row.customFields = card.customFields;
+  // 容器的目的地(对齐上游快照 map 行的 destination):地图详情档案区读它。
+  if (card.type === "map" || card.type === "spec") {
+    const destination = destinationOf(card.body);
+    if (destination) row.destination = destination;
+  }
   return row;
 }
 

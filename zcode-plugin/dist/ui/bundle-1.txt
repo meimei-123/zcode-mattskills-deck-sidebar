@@ -1369,8 +1369,8 @@
       const key = o3.effortId ? String(o3.effortId) + "/" + nn2 : nn2;
       return client.callTool("deck_issue_comment", { key, body: String(o3.body || ""), actor: "panel" }).then(function(res) {
         if (res && res.isError) {
-          const text = res.content && res.content[0] && res.content[0].text || "comment failed";
-          return { ok: false, error: { kind: "network", message: text, raw: text } };
+          const text2 = res.content && res.content[0] && res.content[0].text || "comment failed";
+          return { ok: false, error: { kind: "network", message: text2, raw: text2 } };
         }
         return { ok: true, data: res && res.structuredContent || null };
       }).catch(function(e3) {
@@ -1390,8 +1390,8 @@
       }
       return client.callTool("deck_skill_doc", { name }).then(function(res) {
         if (res && res.isError) {
-          const text = res.content && res.content[0] && res.content[0].text || "skill doc failed";
-          throw new Error(text);
+          const text2 = res.content && res.content[0] && res.content[0].text || "skill doc failed";
+          throw new Error(text2);
         }
         const sc = res && res.structuredContent;
         if (sc && sc.ok === true) return { ok: true, name: sc.name || name, md: sc.md, path: sc.path };
@@ -1405,8 +1405,8 @@
       }
       return client.callTool("deck_git", { method: String(method).slice(3), args: args && typeof args === "object" ? args : {} }).then(function(res) {
         if (res && res.isError) {
-          const text = res.content && res.content[0] && res.content[0].text || "git call failed";
-          throw new Error(text);
+          const text2 = res.content && res.content[0] && res.content[0].text || "git call failed";
+          throw new Error(text2);
         }
         return res && res.structuredContent || { ok: false, error: { kind: "shape", message: "" } };
       });
@@ -1419,11 +1419,30 @@
         if (method === "wf.issueDetail") return issueDetailOverGet(args);
         if (method === "wf.issueComments") return issueCommentsOverGet(args);
         if (method === "wf.commentIssue") return commentIssueOverWrite(args);
+        if (method === "wf.mapTickets") return mapTicketsOverTool(args);
         if (method === "wf.chain") return envCheckOverTool(args);
         if (method === "wf.detect") return envCheckOverTool({ force: true });
         if (method === "skill.readDoc") return skillReadDocOverTool(args);
         return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U05)", raw: "" } });
       }
+    };
+    const mapTicketsOverTool = function(args) {
+      const client = clientRef;
+      if (!client || typeof client.callTool !== "function") {
+        return Promise.reject(new Error("ZCode 宿主适配:无工具桥"));
+      }
+      const o3 = args && typeof args === "object" ? args : {};
+      const toolArgs = { key: String(o3.key === void 0 || o3.key === null ? "" : o3.key) };
+      if (o3.effortId !== void 0 && o3.effortId !== null && String(o3.effortId) !== "") toolArgs.effortId = String(o3.effortId);
+      return client.callTool("deck_map_tickets", toolArgs).then(function(res) {
+        if (res && res.isError) {
+          const text2 = res.content && res.content[0] && res.content[0].text || "map tickets failed";
+          throw new Error(text2);
+        }
+        const sc = res && res.structuredContent;
+        if (sc && sc.ok === true) return sc;
+        return { ok: false, error: sc && sc.error || { kind: "shape", message: "" } };
+      });
     };
     const envCheckOverTool = function(args) {
       const o3 = args || {};
@@ -1434,8 +1453,8 @@
       const toolArgs = o3.force === true ? { force: true } : {};
       return client.callTool("deck_env_check", toolArgs).then(function(res) {
         if (res && res.isError) {
-          const text = res.content && res.content[0] && res.content[0].text || "env check failed";
-          return { ok: false, error: { kind: "internal", message: text, raw: text } };
+          const text2 = res.content && res.content[0] && res.content[0].text || "env check failed";
+          return { ok: false, error: { kind: "internal", message: text2, raw: text2 } };
         }
         const sc = res && res.structuredContent;
         if (!sc || sc.ok !== true || !sc.snapshot || !Array.isArray(sc.snapshot.steps)) {
@@ -1946,8 +1965,8 @@
       if (!refId) return "";
       return tpl.split("{refId}").join(refId);
     };
-    function issueRefNumbersFrom(text, st) {
-      const s3 = String(text || "");
+    function issueRefNumbersFrom(text2, st) {
+      const s3 = String(text2 || "");
       if (!s3) return [];
       const srcs = __patternSources(st);
       if (!srcs.length) return [];
@@ -8751,8 +8770,8 @@ Execution: after the user confirms with the reply "Apply it", you do not change 
       return namingContentLang();
     }
     function wordFor(langId, row) {
-      const text = row[langId];
-      return typeof text === "string" && text ? text : row.zh || "";
+      const text2 = row[langId];
+      return typeof text2 === "string" && text2 ? text2 : row.zh || "";
     }
     function placeholderRowFor(langId) {
       const tables = PLACEHOLDER_TITLES;
@@ -9096,11 +9115,11 @@ Execution: after the user confirms with the reply "Apply it", you do not change 
       } catch (eSel) {
         backend = "";
       }
-      let text = "";
+      let text2 = "";
       let injected = false;
       try {
-        text = promptTextFor(st, "healthCheck");
-        injected = !!text;
+        text2 = promptTextFor(st, "healthCheck");
+        injected = !!text2;
       } catch (e3) {
         injected = false;
       }
@@ -9111,7 +9130,7 @@ Execution: after the user confirms with the reply "Apply it", you do not change 
         title = null;
       }
       try {
-        openTextInNewSession(st, text, title || tr("list.healthCheckTitle"));
+        openTextInNewSession(st, text2, title || tr("list.healthCheckTitle"));
       } catch (eOpen) {
       }
       try {
@@ -10076,25 +10095,25 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     };
     const tplText = (id, st) => templates[id] || (TPL_DEFAULT[id] ? TPL_DEFAULT[id](st) : "");
     const renderTemplate = function(id, values, st) {
-      let text = String(tplText(id, st));
+      let text2 = String(tplText(id, st));
       const vals = typeof backendParamsFor === "function" ? backendParamsFor(st, values) : values || {};
       const esc = [];
-      text = text.replace(/\{\{([a-zA-Z][a-zA-Z0-9]*)\}\}/g, function(m3, name) {
+      text2 = text2.replace(/\{\{([a-zA-Z][a-zA-Z0-9]*)\}\}/g, function(m3, name) {
         esc.push("{" + name + "}");
         return "" + (esc.length - 1) + "";
       });
-      text = text.replace(/\{([a-zA-Z][a-zA-Z0-9]*)\}/g, function(m3, name) {
+      text2 = text2.replace(/\{([a-zA-Z][a-zA-Z0-9]*)\}/g, function(m3, name) {
         return Object.prototype.hasOwnProperty.call(vals, name) ? String(vals[name]) : m3;
       });
       esc.forEach(function(s3, i3) {
-        text = text.replace("" + i3 + "", s3);
+        text2 = text2.replace("" + i3 + "", s3);
       });
-      return text;
+      return text2;
     };
     const TPL_BACKEND_MARKERS = [];
-    const validateTemplate = function(id, text) {
+    const validateTemplate = function(id, text2) {
       const found = [];
-      const scrubbed = String(text || "").replace(/\{\{[a-zA-Z][a-zA-Z0-9]*\}\}/g, "");
+      const scrubbed = String(text2 || "").replace(/\{\{[a-zA-Z][a-zA-Z0-9]*\}\}/g, "");
       const re = /\{([a-zA-Z][a-zA-Z0-9]*)\}/g;
       let m3;
       while ((m3 = re.exec(scrubbed)) !== null) found.push(m3[1]);
@@ -10386,11 +10405,11 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       var LOG_RETRY_BACKOFF_MS = 500;
       function estimateBatchBytes2(entries) {
         try {
-          const text = JSON.stringify(entries);
+          const text2 = JSON.stringify(entries);
           const g4 = globalThis;
           if (typeof g4.TextEncoder !== "undefined")
-            return new g4.TextEncoder().encode(text).length;
-          return String(text).length;
+            return new g4.TextEncoder().encode(text2).length;
+          return String(text2).length;
         } catch (e3) {
           return LOG_PACKET_BYTES + 1;
         }
@@ -14341,8 +14360,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     const CAPABILITY_LEDGER_SOURCE = "src/shared/version-control/src/capability-ledger.ts";
     const VERSION_FLOOR = { major: 2, minor: 11, patch: 0 };
     const LOCK_PRUNABLE_FLOOR = { major: 2, minor: 31, patch: 0 };
-    function parseVersion(text) {
-      const m3 = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(String(text || ""));
+    function parseVersion(text2) {
+      const m3 = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(String(text2 || ""));
       if (!m3) return null;
       return { major: Number(m3[1]), minor: Number(m3[2]), patch: m3[3] === void 0 ? 0 : Number(m3[3]) };
     }
@@ -14701,8 +14720,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       return stableOf(plan === void 0 || plan === null ? null : plan);
     }
     function syncVersionAtLeast(version, major, minor) {
-      const text = textOf(version);
-      const found = /([0-9]+)\.([0-9]+)/.exec(text);
+      const text2 = textOf(version);
+      const found = /([0-9]+)\.([0-9]+)/.exec(text2);
       if (found === null) return false;
       const gotMajor = parseInt(found[1], 10);
       const gotMinor = parseInt(found[2], 10);
@@ -14741,8 +14760,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     };
     function syncReasonTextOf(reason) {
       const id = String(reason === void 0 || reason === null ? "" : reason);
-      const text = SYNC_REASONS[id];
-      return typeof text === "string" ? text : "未知原因：" + id;
+      const text2 = SYNC_REASONS[id];
+      return typeof text2 === "string" ? text2 : "未知原因：" + id;
     }
     function pushReason(list, reason) {
       if (list.indexOf(reason) < 0) list.push(reason);
@@ -14791,8 +14810,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       return "推送";
     }
     function shortOid(oid) {
-      const text = typeof oid === "string" ? oid : "";
-      return text.length > 12 ? text.slice(0, 12) : text;
+      const text2 = typeof oid === "string" ? oid : "";
+      return text2.length > 12 ? text2.slice(0, 12) : text2;
     }
     function syncConfirmOf(plan, extra) {
       const e3 = extra === void 0 || extra === null ? {} : extra;
@@ -14878,50 +14897,50 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       return { ok: false, reason, message };
     }
     function migratePathProblem(value) {
-      const text = mgTextOf(value);
-      if (text === "") return "路径不能为空";
-      if (text.length > 2048) return "路径超过 2048 个字符";
-      if (text.indexOf("\0") >= 0) return "路径里不许有 NUL 字符";
-      if (/^[-+]/.test(text) === true) return "路径不许以短横线或加号开头";
-      const segments = text.split(/[\\/]/);
+      const text2 = mgTextOf(value);
+      if (text2 === "") return "路径不能为空";
+      if (text2.length > 2048) return "路径超过 2048 个字符";
+      if (text2.indexOf("\0") >= 0) return "路径里不许有 NUL 字符";
+      if (/^[-+]/.test(text2) === true) return "路径不许以短横线或加号开头";
+      const segments = text2.split(/[\\/]/);
       for (let i3 = 0; i3 < segments.length; i3 = i3 + 1) {
         if (segments[i3] === "..") return "路径里不许有上跳段（..）";
       }
-      if (/^(?:[A-Za-z]:[\\/]|[\\/])/.test(text) === false) return "路径必须是绝对路径（例如 D:/备份/repo.bundle）";
+      if (/^(?:[A-Za-z]:[\\/]|[\\/])/.test(text2) === false) return "路径必须是绝对路径（例如 D:/备份/repo.bundle）";
       return "";
     }
     function migrateRefProblem(value) {
-      const text = mgTextOf(value);
-      if (text === "") return "引用不能为空";
-      if (text.length > 300) return "引用超过 300 个字符";
-      if (text.charAt(0) === "-" || text.charAt(0) === "+") return "引用不许以短横线或加号开头";
-      if (/[\s\u0000-\u001f]/.test(text) === true) return "引用里不许有空白或控制字符";
+      const text2 = mgTextOf(value);
+      if (text2 === "") return "引用不能为空";
+      if (text2.length > 300) return "引用超过 300 个字符";
+      if (text2.charAt(0) === "-" || text2.charAt(0) === "+") return "引用不许以短横线或加号开头";
+      if (/[\s\u0000-\u001f]/.test(text2) === true) return "引用里不许有空白或控制字符";
       return "";
     }
     function migrateBranchProblem(value) {
-      const text = mgTextOf(value);
-      if (text === "") return "初始分支名不能为空";
-      if (text.length > 200) return "初始分支名超过 200 个字符";
-      if (text.charAt(0) === "-" || text.charAt(0) === "/") return "初始分支名不许以短横线或斜杠开头";
-      if (/[\s\u0000-\u001f]/.test(text) === true) return "初始分支名里不许有空白或控制字符";
-      if (text.indexOf("..") >= 0) return "初始分支名里不许有连续两个点";
-      if (text.indexOf("@{") >= 0) return "初始分支名里不许有 @{";
-      if (/[~^:?*\[\\]/.test(text) === true) return "初始分支名里不许有 git 的保留符号";
-      if (text.charAt(text.length - 1) === "/") return "初始分支名不许以斜杠结尾";
+      const text2 = mgTextOf(value);
+      if (text2 === "") return "初始分支名不能为空";
+      if (text2.length > 200) return "初始分支名超过 200 个字符";
+      if (text2.charAt(0) === "-" || text2.charAt(0) === "/") return "初始分支名不许以短横线或斜杠开头";
+      if (/[\s\u0000-\u001f]/.test(text2) === true) return "初始分支名里不许有空白或控制字符";
+      if (text2.indexOf("..") >= 0) return "初始分支名里不许有连续两个点";
+      if (text2.indexOf("@{") >= 0) return "初始分支名里不许有 @{";
+      if (/[~^:?*\[\\]/.test(text2) === true) return "初始分支名里不许有 git 的保留符号";
+      if (text2.charAt(text2.length - 1) === "/") return "初始分支名不许以斜杠结尾";
       return "";
     }
     function migrateUrlProblem(value) {
-      const text = mgTextOf(value);
-      if (text === "") return "svn 地址不能为空";
-      if (text.length > 2048) return "svn 地址超过 2048 个字符";
-      if (/[\s\u0000-\u001f]/.test(text) === true) return "svn 地址里不许有空白或控制字符";
-      if (text.charAt(0) === "-") return "svn 地址不许以短横线开头";
-      if (/^(?:https?|svn|svn\+ssh|file|ssh|git):\/\//.test(text) === false) return "svn 地址必须以 http(s)://、svn://、svn+ssh:// 或 file:// 开头";
+      const text2 = mgTextOf(value);
+      if (text2 === "") return "svn 地址不能为空";
+      if (text2.length > 2048) return "svn 地址超过 2048 个字符";
+      if (/[\s\u0000-\u001f]/.test(text2) === true) return "svn 地址里不许有空白或控制字符";
+      if (text2.charAt(0) === "-") return "svn 地址不许以短横线开头";
+      if (/^(?:https?|svn|svn\+ssh|file|ssh|git):\/\//.test(text2) === false) return "svn 地址必须以 http(s)://、svn://、svn+ssh:// 或 file:// 开头";
       return "";
     }
     function migrateVersionAtLeast(version, major, minor) {
-      const text = mgTextOf(version);
-      const found = /([0-9]+)\.([0-9]+)/.exec(text);
+      const text2 = mgTextOf(version);
+      const found = /([0-9]+)\.([0-9]+)/.exec(text2);
       if (found === null) return false;
       const gotMajor = parseInt(found[1], 10);
       const gotMinor = parseInt(found[2], 10);
@@ -15146,10 +15165,10 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       return STASH_SELECTOR_PATTERN.test(String(selector || ""));
     };
     const vcStashMessageError = function(message) {
-      const text = String(message === void 0 || message === null ? "" : message);
-      if (text.trim() === "") return "empty";
-      if (text.length > STASH_MESSAGE_MAX) return "too-long";
-      if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) return "control";
+      const text2 = String(message === void 0 || message === null ? "" : message);
+      if (text2.trim() === "") return "empty";
+      if (text2.length > STASH_MESSAGE_MAX) return "too-long";
+      if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text2)) return "control";
       return "";
     };
     const vcStashBranchError = function(branch) {
@@ -15198,12 +15217,12 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     const stashRestoreArgs = function(subject, oid) {
       const hash = String(oid || "");
       if (!/^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$/.test(hash)) return argsFail("oid", "提交号不是 40 或 64 位十六进制：" + hash);
-      const text = String(subject === void 0 || subject === null ? "" : subject);
-      const message = text.trim() === "" ? "stash " + hash.slice(0, 12) : text.slice(0, STASH_MESSAGE_MAX);
+      const text2 = String(subject === void 0 || subject === null ? "" : subject);
+      const message = text2.trim() === "" ? "stash " + hash.slice(0, 12) : text2.slice(0, STASH_MESSAGE_MAX);
       return { ok: true, args: ["stash", "store", "-m", message, hash] };
     };
-    const stashParseVersion = function(text) {
-      const m3 = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(String(text || ""));
+    const stashParseVersion = function(text2) {
+      const m3 = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(String(text2 || ""));
       if (!m3) return null;
       return { major: Number(m3[1]), minor: Number(m3[2]), patch: m3[3] === void 0 ? 0 : Number(m3[3]) };
     };
@@ -15232,12 +15251,12 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     const PLATFORM_ARG_MAX = 1024;
     const PLATFORM_STORE_HELPER = "store";
     const vcConfigTruthyOf = function(value) {
-      const text = String(value === void 0 || value === null ? "" : value).trim().toLowerCase();
-      return text === "true" || text === "yes" || text === "on" || text === "1";
+      const text2 = String(value === void 0 || value === null ? "" : value).trim().toLowerCase();
+      return text2 === "true" || text2 === "yes" || text2 === "on" || text2 === "1";
     };
-    const vcNulValuesOf = function(text, max) {
+    const vcNulValuesOf = function(text2, max) {
       const limit = typeof max === "number" && isFinite(max) && max > 0 ? Math.floor(max) : PLATFORM_CREDENTIAL_MAX;
-      const raw = String(text === void 0 || text === null ? "" : text);
+      const raw = String(text2 === void 0 || text2 === null ? "" : text2);
       if (raw === "") return [];
       return raw.split("\0").map(function(one) {
         return one.trim();
@@ -15245,8 +15264,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
         return one !== "";
       }).slice(0, limit);
     };
-    const vcCredentialHelpersOf = function(text) {
-      return vcNulValuesOf(text, PLATFORM_CREDENTIAL_MAX);
+    const vcCredentialHelpersOf = function(text2) {
+      return vcNulValuesOf(text2, PLATFORM_CREDENTIAL_MAX);
     };
     const vcCredentialStoreOf = function(helpers) {
       const list = Array.isArray(helpers) ? helpers : [];
@@ -15261,16 +15280,16 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       return { risk: storeHelper !== "", storeHelper, advice: storeHelper !== "" ? "replace-store" : "ok" };
     };
     const vcUpdateRefsOf = function(value) {
-      const text = String(value === void 0 || value === null ? "" : value).trim();
-      return { value: text, enabled: text !== "" && vcConfigTruthyOf(text) };
+      const text2 = String(value === void 0 || value === null ? "" : value).trim();
+      return { value: text2, enabled: text2 !== "" && vcConfigTruthyOf(text2) };
     };
     const vcArgProblemOf = function(value, what) {
-      const text = String(value === void 0 || value === null ? "" : value);
-      if (text.trim() === "") return what + "不能为空";
-      if (text.length > PLATFORM_ARG_MAX) return what + "太长（最多 " + PLATFORM_ARG_MAX + " 个字符）";
-      if (text.indexOf("\0") >= 0) return what + "里不能有 NUL 字符";
-      if (/\s/.test(text)) return what + "里不能有空白字符";
-      if (text.charAt(0) === "-" || text.charAt(0) === "+") return what + "不能以短横线或加号开头";
+      const text2 = String(value === void 0 || value === null ? "" : value);
+      if (text2.trim() === "") return what + "不能为空";
+      if (text2.length > PLATFORM_ARG_MAX) return what + "太长（最多 " + PLATFORM_ARG_MAX + " 个字符）";
+      if (text2.indexOf("\0") >= 0) return what + "里不能有 NUL 字符";
+      if (/\s/.test(text2)) return what + "里不能有空白字符";
+      if (text2.charAt(0) === "-" || text2.charAt(0) === "+") return what + "不能以短横线或加号开头";
       return "";
     };
     const vcRequestPullArgsOf = function(input) {
@@ -15603,8 +15622,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       if (!/^[a-z0-9][a-z0-9-]*$/.test(s3) || s3.length > 64) return "hook-name";
       return null;
     }
-    function configVersionOf(text) {
-      const m3 = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(String(text === void 0 || text === null ? "" : text));
+    function configVersionOf(text2) {
+      const m3 = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(String(text2 === void 0 || text2 === null ? "" : text2));
       if (!m3) return null;
       return { major: Number(m3[1]), minor: Number(m3[2]), patch: m3[3] === void 0 ? 0 : Number(m3[3]) };
     }
@@ -15619,8 +15638,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       if (!atLeast(v3, 2, 36, 0)) return { state: "hidden", needed: CONFIG_HOOK_RUN_MIN_VERSION, alternative: CONFIG_HOOK_RUN_ALTERNATIVE };
       return { state: "full", needed: CONFIG_HOOK_RUN_MIN_VERSION, alternative: null };
     }
-    function normPath(text) {
-      const s3 = String(text === void 0 || text === null ? "" : text);
+    function normPath(text2) {
+      const s3 = String(text2 === void 0 || text2 === null ? "" : text2);
       return s3.split("\\").join("/").replace(/\/{2,}/g, "/");
     }
     function configScopeOf(origin, localConfigPath) {
@@ -15637,9 +15656,9 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       return "other";
     }
     function parseConfigList(stdout) {
-      const text = String(stdout === void 0 || stdout === null ? "" : stdout);
-      if (text === "") return { ok: true, entries: [] };
-      const parts = text.split("\0");
+      const text2 = String(stdout === void 0 || stdout === null ? "" : stdout);
+      if (text2 === "") return { ok: true, entries: [] };
+      const parts = text2.split("\0");
       if (parts.length > 0 && parts[parts.length - 1] === "") parts.pop();
       if (parts.length % 2 !== 0) return { ok: false, detail: "字段数不成对（" + parts.length + " 段）" };
       const entries = [];
@@ -15692,9 +15711,9 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       return rows;
     }
     function parseCheckAttr(stdout) {
-      const text = String(stdout === void 0 || stdout === null ? "" : stdout);
-      if (text === "") return { ok: true, entries: [] };
-      const parts = text.split("\0");
+      const text2 = String(stdout === void 0 || stdout === null ? "" : stdout);
+      if (text2 === "") return { ok: true, entries: [] };
+      const parts = text2.split("\0");
       if (parts.length > 0 && parts[parts.length - 1] === "") parts.pop();
       if (parts.length % 3 !== 0) return { ok: false, detail: "字段数不是三的倍数（" + parts.length + " 段）" };
       const entries = [];
@@ -15752,8 +15771,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
         const value = s3(a3.value);
         const problem = identityValueError(key, value);
         if (problem) {
-          const text = problem === "email-invalid" ? "邮箱形状不对：要有 @ 与域名点号，且不含空白" : problem === "value-too-long" ? "新值太长了（最多 " + CONFIG_VALUE_MAX + " 个字符）" : problem === "value-empty" ? "新值不能为空" : "新值里有换行或控制字符，配置值写不下这些";
-          return { ok: false, reason: problem, message: text };
+          const text2 = problem === "email-invalid" ? "邮箱形状不对：要有 @ 与域名点号，且不含空白" : problem === "value-too-long" ? "新值太长了（最多 " + CONFIG_VALUE_MAX + " 个字符）" : problem === "value-empty" ? "新值不能为空" : "新值里有换行或控制字符，配置值写不下这些";
+          return { ok: false, reason: problem, message: text2 };
         }
         return { ok: true, plan: { op: want, key, scope, value } };
       }
@@ -16092,8 +16111,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       }
       return out.join("/") + "/info/sparse-checkout";
     };
-    const worktreeSparseCandidatesOf = function(text) {
-      const lines = String(text === void 0 || text === null ? "" : text).split(/\r?\n/);
+    const worktreeSparseCandidatesOf = function(text2) {
+      const lines = String(text2 === void 0 || text2 === null ? "" : text2).split(/\r?\n/);
       const out = [];
       for (let i3 = 0; i3 < lines.length; i3 += 1) {
         const s3 = lines[i3].trim();
@@ -16102,8 +16121,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       out.sort();
       return out;
     };
-    const worktreeSparseRulesOf = function(text) {
-      return worktreeSparseCandidatesOf(text);
+    const worktreeSparseRulesOf = function(text2) {
+      return worktreeSparseCandidatesOf(text2);
     };
     const worktreeDigestOf = function(rows) {
       const list = Array.isArray(rows) ? rows : [];
@@ -16214,13 +16233,13 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       return null;
     }
     function submoduleUrlHasCredentials(value) {
-      const text = typeof value === "string" ? value : "";
-      return /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/@]*:[^/@]*@/.test(text);
+      const text2 = typeof value === "string" ? value : "";
+      return /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/@]*:[^/@]*@/.test(text2);
     }
     function submoduleRedactUrl(value) {
-      let text = typeof value === "string" ? value : "";
-      if (submoduleUrlHasCredentials(text)) text = text.replace(/^([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/@]*@/, "$1**@");
-      return text.length > 400 ? text.slice(0, 400) + "…" : text;
+      let text2 = typeof value === "string" ? value : "";
+      if (submoduleUrlHasCredentials(text2)) text2 = text2.replace(/^([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/@]*@/, "$1**@");
+      return text2.length > 400 ? text2.slice(0, 400) + "…" : text2;
     }
     function submoduleStatusArgs() {
       return ["submodule", "status", "--recursive"];
@@ -16228,8 +16247,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     function submoduleConfigArgs() {
       return ["config", "-f", ".gitmodules", "--get-regexp", "^submodule\\."];
     }
-    function submoduleParseStatus(text) {
-      const s3 = typeof text === "string" ? text : "";
+    function submoduleParseStatus(text2) {
+      const s3 = typeof text2 === "string" ? text2 : "";
       const lines = s3.split(/\r?\n/);
       const rows = [];
       for (const raw of lines) {
@@ -16256,8 +16275,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       }
       return { ok: true, rows };
     }
-    function submoduleParseConfig(text) {
-      const s3 = typeof text === "string" ? text : "";
+    function submoduleParseConfig(text2) {
+      const s3 = typeof text2 === "string" ? text2 : "";
       const modules = [];
       const byName = {};
       for (const raw of s3.split(/\r?\n/)) {
@@ -16461,8 +16480,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     }
     const SUBMODULE_SOURCE = "src/shared/version-control/src/submodule-ops.ts";
     const CONFLICT_MARKERS = ["<<<<<<<", "|||||||", "=======", ">>>>>>>"];
-    function conflictLinesOf(text) {
-      const s3 = String(text === void 0 || text === null ? "" : text);
+    function conflictLinesOf(text2) {
+      const s3 = String(text2 === void 0 || text2 === null ? "" : text2);
       const out = [];
       let i3 = 0;
       while (i3 < s3.length) {
@@ -16489,16 +16508,16 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       }
       return null;
     }
-    function conflictMarkerLineOf(text) {
-      const lines = conflictLinesOf(text);
+    function conflictMarkerLineOf(text2) {
+      const lines = conflictLinesOf(text2);
       for (let i3 = 0; i3 < lines.length; i3 += 1) {
         const m3 = conflictMarkerOf(lines[i3]);
         if (m3 !== null) return { line: i3 + 1, marker: m3 };
       }
       return null;
     }
-    function conflictMarkerLinesOf(text) {
-      const lines = conflictLinesOf(text);
+    function conflictMarkerLinesOf(text2) {
+      const lines = conflictLinesOf(text2);
       const out = [];
       for (let i3 = 0; i3 < lines.length; i3 += 1) {
         const m3 = conflictMarkerOf(lines[i3]);
@@ -16506,11 +16525,11 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       }
       return out;
     }
-    function conflictTextKindOf(text) {
-      return String(text === void 0 || text === null ? "" : text).indexOf("\0") >= 0 ? "binary" : "text";
+    function conflictTextKindOf(text2) {
+      return String(text2 === void 0 || text2 === null ? "" : text2).indexOf("\0") >= 0 ? "binary" : "text";
     }
-    function conflictSegmentsOf(text) {
-      const lines = conflictLinesOf(text);
+    function conflictSegmentsOf(text2) {
+      const lines = conflictLinesOf(text2);
       const segments = [];
       let pending = [];
       let hunkCount = 0;
@@ -16568,8 +16587,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       flushText();
       return { ok: true, segments, hunkCount };
     }
-    function splitConflictHunks(text) {
-      const parsed = conflictSegmentsOf(text);
+    function splitConflictHunks(text2) {
+      const parsed = conflictSegmentsOf(text2);
       if (parsed.ok !== true) return parsed;
       const hunks = [];
       for (let i3 = 0; i3 < parsed.segments.length; i3 += 1) {
@@ -16579,8 +16598,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       if (hunks.length === 0) return { ok: false, reason: "no-markers" };
       return { ok: true, hunks };
     }
-    function applyConflictChoices(text, choices) {
-      const parsed = conflictSegmentsOf(text);
+    function applyConflictChoices(text2, choices) {
+      const parsed = conflictSegmentsOf(text2);
       if (parsed.ok !== true) return parsed;
       const list = Array.isArray(choices) ? choices : [];
       if (list.length !== parsed.hunkCount) return { ok: false, reason: "missing-choice" };
@@ -16602,11 +16621,11 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       }
       return { ok: true, text: parts.join("") };
     }
-    function conflictTextProblem(text, maxLen) {
-      if (typeof text !== "string") return { reason: "bad-text" };
+    function conflictTextProblem(text2, maxLen) {
+      if (typeof text2 !== "string") return { reason: "bad-text" };
       const limit = typeof maxLen === "number" && isFinite(maxLen) && maxLen > 0 ? maxLen : 1048576;
-      if (text.length > limit) return { reason: "text-too-large", length: text.length, limit };
-      const marker = conflictMarkerLineOf(text);
+      if (text2.length > limit) return { reason: "text-too-large", length: text2.length, limit };
+      const marker = conflictMarkerLineOf(text2);
       if (marker !== null) return { reason: "conflict-markers", line: marker.line, marker: marker.marker };
       return null;
     }
@@ -16753,10 +16772,10 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       return /^[1-9][0-9]{0,6}[kKmMgG]?$/.test(value) ? null : "bad-threshold";
     }
     function rewriteThresholdBytesOf(value) {
-      const text = String(value || "");
-      const unit = text.slice(-1).toLowerCase();
+      const text2 = String(value || "");
+      const unit = text2.slice(-1).toLowerCase();
       const power = unit === "g" ? 3 : unit === "m" ? 2 : unit === "k" ? 1 : 0;
-      const number = Number(power === 0 ? text : text.slice(0, -1));
+      const number = Number(power === 0 ? text2 : text2.slice(0, -1));
       if (!isFinite(number) || number <= 0) return 0;
       return Math.round(number * Math.pow(1024, power));
     }
@@ -16943,8 +16962,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     function recoverySummaryOf(point) {
       const p3 = point || {};
       const d3 = p3.discard || {};
-      const text = String(Number(d3.files) || 0) + " 个文件、" + (String(Number(d3.added) || 0) + " 行新增、" + String(Number(d3.deleted) || 0) + " 行删除");
-      return Number(d3.binary) > 0 ? text + "，另有 " + String(Number(d3.binary)) + " 个二进制文件" : text;
+      const text2 = String(Number(d3.files) || 0) + " 个文件、" + (String(Number(d3.added) || 0) + " 行新增、" + String(Number(d3.deleted) || 0) + " 行删除");
+      return Number(d3.binary) > 0 ? text2 + "，另有 " + String(Number(d3.binary)) + " 个二进制文件" : text2;
     }
     const RECOVERY_POINT_SOURCE = "src/shared/version-control/src/recovery-point.ts";
     function backupPointOf(input) {
@@ -18949,7 +18968,7 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
         const c3 = colorOf[nm];
         return c3 ? "#" + c3 : fb;
       };
-      const mk = (icon, label, text, colorHex, tipText) => {
+      const mk = (icon, label, text2, colorHex, tipText) => {
         const light = isLight(colorHex);
         const tipByLabel = tipText || function() {
           try {
@@ -18974,7 +18993,7 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
           "data-log": "issue.action." + x4.number,
           onClick: function(e3) {
             e3.stopPropagation();
-            inject(st, text);
+            inject(st, text2);
           },
           style: { display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 6px", fontSize: 11, flex: "none", background: colorHex, borderColor: "transparent", color: light ? "#140a1e" : "#ffffff" }
         }, [Ic({ n: icon, size: icon === "prototype" ? 12 : 10 }), narrow ? null : h3("span", null, label)]));
@@ -19777,7 +19796,7 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       entryArtSeq += 1;
       return "dsws-entry-art-" + entryArtSeq;
     }
-    function svgText(x4, y3, text, size, fill, extra) {
+    function svgText(x4, y3, text2, size, fill, extra) {
       const attrs = { x: x4, y: y3, fontSize: size, fill };
       if (extra) {
         if (extra.weight != null) attrs.fontWeight = extra.weight;
@@ -19786,14 +19805,14 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
         if (extra.opacity != null) attrs.fillOpacity = extra.opacity;
         if (extra.family) attrs.fontFamily = extra.family;
       }
-      return h3("text", attrs, String(text == null ? "" : text));
+      return h3("text", attrs, String(text2 == null ? "" : text2));
     }
     const NO_LINE_START = "，。、；：！？）】》」』%";
     const NO_LINE_END = "（【《「『(";
     const KEEP_WORDS = ["规格", "实施票", "文档", "问号", "开工", "没定", "一条", "几条", "到底", "问清", "清楚", "想清楚", "没想清楚", "什么程度", "细节", "做到", "写成", "落成", "消掉", "摊开", "分头", "探出", "探路", "一排", "每个", "什么", "手里", "多了"];
     const HAS_CJK = /[\u3400-\u9fff]/;
-    function splitUnits(text) {
-      const raw = String(text == null ? "" : text);
+    function splitUnits(text2) {
+      const raw = String(text2 == null ? "" : text2);
       if (!HAS_CJK.test(raw)) {
         const words = [];
         raw.split(/\s+/).forEach(function(w4) {
@@ -19972,18 +19991,18 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     const CHAIN_NODE_H = 16;
     const CHAIN_FONT = 9.2;
     function nodeWidth(label, size) {
-      const text = String(label == null ? "" : label);
-      const textW = HAS_CJK.test(text) ? text.length * size : text.length * size * 0.55;
+      const text2 = String(label == null ? "" : label);
+      const textW = HAS_CJK.test(text2) ? text2.length * size : text2.length * size * 0.55;
       return Math.max(28, Math.ceil(textW) + 5);
     }
-    function chainNode(x4, y3, w4, text, opt) {
+    function chainNode(x4, y3, w4, text2, opt) {
       const o3 = opt || {};
       const size = o3.size || CHAIN_FONT;
       const attrs = { x: x4, y: y3, width: w4, height: CHAIN_NODE_H, rx: o3.rx == null ? 5 : o3.rx, fill: o3.fill || "rgba(255,255,255,.04)", stroke: o3.stroke || "#8b8b95", strokeWidth: 1 };
       if (o3.dash) attrs.strokeDasharray = "3 2";
       return h3("g", null, [
         h3("rect", Object.assign({ key: "r" }, attrs)),
-        svgText(x4 + w4 / 2, y3 + CHAIN_NODE_H / 2 + size * 0.36, text, size, o3.text || "#e6edf3", { anchor: "middle", family: MONO })
+        svgText(x4 + w4 / 2, y3 + CHAIN_NODE_H / 2 + size * 0.36, text2, size, o3.text || "#e6edf3", { anchor: "middle", family: MONO })
       ]);
     }
     function chainArrow(x1, x22, y3, color) {
@@ -20075,8 +20094,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       return h3("g", null, parts);
     }
     const entryBodyLines = function(body) {
-      const text = String(body || "");
-      return packLines(splitUnits(text), HAS_CJK.test(text) ? 12 : 24);
+      const text2 = String(body || "");
+      return packLines(splitUnits(text2), HAS_CJK.test(text2) ? 12 : 24);
     };
     const buildEntryCard = function(kind) {
       const isMap = kind !== "spec";
@@ -20188,10 +20207,10 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     function pickEntry(st, kind) {
       const card = kind === "spec" ? "spec" : "map";
       const from = String(st && st.entryFrom || "");
-      let text = "";
+      let text2 = "";
       let title = "";
       try {
-        text = card === "map" ? newWayfinderText(st) : newSpecText(st);
+        text2 = card === "map" ? newWayfinderText(st) : newSpecText(st);
         title = newSessionTitleNew(card === "map" ? "requirement" : "spec");
       } catch (eAssemble) {
         try {
@@ -20200,10 +20219,10 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
         }
         return;
       }
-      const textLen = String(text == null ? "" : text).length;
+      const textLen = String(text2 == null ? "" : text2).length;
       entryChooserClose(st);
       try {
-        openTextInNewSession(st, text, title);
+        openTextInNewSession(st, text2, title);
       } catch (eOpen) {
         try {
           log("warn", "entry.pick", { from, card, ok: false, textLen });
@@ -20363,13 +20382,13 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
         style: boxStyle
       }, children));
     };
-    const openTextInNewSession = function(st, text, title, opts) {
+    const openTextInNewSession = function(st, text2, title, opts) {
       try {
-        if (typeof deckPromptFiltered === "function" && typeof isDeckClosed === "function" && isDeckClosed(st && st.cwd)) text = deckPromptFiltered(text, true);
+        if (typeof deckPromptFiltered === "function" && typeof isDeckClosed === "function" && isDeckClosed(st && st.cwd)) text2 = deckPromptFiltered(text2, true);
       } catch (ePF) {
       }
       try {
-        const t3 = String(text || "");
+        const t3 = String(text2 || "");
         const cur = String(title || "");
         const isGeneric = cur === "[New] 新建需求" || cur === "[New] 新建 Bug" || cur === "[New] New Requirement" || cur === "[New] New Bug";
         let actFromOpts = null;
@@ -20411,12 +20430,12 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       const entryKind = opts && typeof opts.kind === "string" ? String(opts.kind) : "text";
       let cwdSource = "none";
       const doFallback = function() {
-        inject(st, text);
+        inject(st, text2);
         flash(st, tr("toast.newSessionManual", { title }), "warn");
       };
       if (!sessions || typeof sessions.create !== "function") {
         try {
-          log("info", "newsession.decide", { entry: entryKind, textLen: String(text || "").length, curSidHash: dswsLogHash(String(st && st.sessionId || "")), cwdHash: dswsLogHash(String(st && st.cwd || "")), cwdSource, wsResolved: "no", wsSource: "none", wsItems: 0, branch: "fallback", reuseFrom: "none", reuseSidHash: "", allowReuse: "none", reuseSkip: "", createOpts: "", sidHash: "", outcome: "no-sessions", errorHash: "" });
+          log("info", "newsession.decide", { entry: entryKind, textLen: String(text2 || "").length, curSidHash: dswsLogHash(String(st && st.sessionId || "")), cwdHash: dswsLogHash(String(st && st.cwd || "")), cwdSource, wsResolved: "no", wsSource: "none", wsItems: 0, branch: "fallback", reuseFrom: "none", reuseSidHash: "", allowReuse: "none", reuseSkip: "", createOpts: "", sidHash: "", outcome: "no-sessions", errorHash: "" });
         } catch (eNS) {
         }
         doFallback();
@@ -20454,7 +20473,7 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       ensureCwd().then(function(cwd) {
         if (!cwd) {
           try {
-            log("info", "newsession.decide", { entry: entryKind, textLen: String(text || "").length, curSidHash: dswsLogHash(String(st && st.sessionId || "")), cwdHash: dswsLogHash(String(cwd || "")), cwdSource, wsResolved: "no", wsSource: "none", wsItems: 0, branch: "fallback", reuseFrom: "none", reuseSidHash: "", allowReuse: "none", reuseSkip: "", createOpts: "", sidHash: "", outcome: "empty-cwd", errorHash: "" });
+            log("info", "newsession.decide", { entry: entryKind, textLen: String(text2 || "").length, curSidHash: dswsLogHash(String(st && st.sessionId || "")), cwdHash: dswsLogHash(String(cwd || "")), cwdSource, wsResolved: "no", wsSource: "none", wsItems: 0, branch: "fallback", reuseFrom: "none", reuseSidHash: "", allowReuse: "none", reuseSkip: "", createOpts: "", sidHash: "", outcome: "empty-cwd", errorHash: "" });
           } catch (eEC) {
           }
           doFallback();
@@ -20645,9 +20664,9 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
             if (sid === st.sessionId) {
               try {
                 if (ns && typeof ns.injector === "function") {
-                  var directText = text;
+                  var directText = text2;
                   try {
-                    if (typeof withTrailingNewline === "function") directText = withTrailingNewline(text);
+                    if (typeof withTrailingNewline === "function") directText = withTrailingNewline(text2);
                   } catch (eNl) {
                   }
                   ns.injector(directText);
@@ -20656,23 +20675,23 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
                   } catch (eFocus) {
                   }
                 } else if (typeof inject === "function") {
-                  inject(ns || st, text);
+                  inject(ns || st, text2);
                 } else {
-                  ns.incomingDraft = text;
+                  ns.incomingDraft = text2;
                   try {
                     emit(ns);
                   } catch (eEmit) {
                   }
                 }
               } catch (eDirect) {
-                ns.incomingDraft = text;
+                ns.incomingDraft = text2;
               }
             } else {
-              ns.incomingDraft = text;
+              ns.incomingDraft = text2;
             }
             const logReuseOutcome = function(outcome0, err0) {
               try {
-                log("info", "newsession.decide", { entry: entryKind, textLen: String(text || "").length, curSidHash: dswsLogHash(String(st.sessionId || "")), cwdHash: dswsLogHash(String(cwd || "")), cwdSource, wsResolved, wsSource, wsItems, branch: "reuse", reuseFrom: sid === st.sessionId ? "current" : "blank", reuseSidHash: dswsLogHash(String(sid || "")), allowReuse: reuseMode, createOpts: "", reuseSkip, sidHash: dswsLogHash(String(sid || "")), outcome: outcome0, errorHash: err0 ? dswsLogHash(dswsLogTrunc(String(err0 && err0.message || err0), 120, "error")) : "" });
+                log("info", "newsession.decide", { entry: entryKind, textLen: String(text2 || "").length, curSidHash: dswsLogHash(String(st.sessionId || "")), cwdHash: dswsLogHash(String(cwd || "")), cwdSource, wsResolved, wsSource, wsItems, branch: "reuse", reuseFrom: sid === st.sessionId ? "current" : "blank", reuseSidHash: dswsLogHash(String(sid || "")), allowReuse: reuseMode, createOpts: "", reuseSkip, sidHash: dswsLogHash(String(sid || "")), outcome: outcome0, errorHash: err0 ? dswsLogHash(dswsLogTrunc(String(err0 && err0.message || err0), 120, "error")) : "" });
               } catch (eLogRe) {
               }
             };
@@ -20740,12 +20759,12 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
           }
           const createOpts = typeof buildCreateOpts === "function" ? buildCreateOpts(workspaceId, cwd) : workspaceId ? { workspaceId, agentPreset: "ptc" } : { cwd, agentPreset: "ptc" };
           const __createOnce = function() {
-            return typeof createPTCSession === "function" ? createPTCSession(sessions, workspaceId, cwd, text) : sessions.create(createOpts).then(function(__sid) {
+            return typeof createPTCSession === "function" ? createPTCSession(sessions, workspaceId, cwd, text2) : sessions.create(createOpts).then(function(__sid) {
               try {
-                if (__sid) storeOf(__sid).incomingDraft = text;
+                if (__sid) storeOf(__sid).incomingDraft = text2;
               } catch (eD) {
                 try {
-                  inject(st, text);
+                  inject(st, text2);
                 } catch (e22) {
                 }
               }
@@ -20824,9 +20843,9 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
                 registerTracked(null);
               });
             };
-            if (sid) ns.incomingDraft = text;
+            if (sid) ns.incomingDraft = text2;
             try {
-              log("info", "newsession.decide", { entry: entryKind, textLen: String(text || "").length, curSidHash: dswsLogHash(String(st.sessionId || "")), cwdHash: dswsLogHash(String(cwd || "")), cwdSource, wsResolved, wsSource, wsItems, branch: "create", reuseFrom: "none", reuseSidHash: "", allowReuse: "none", reuseSkip, createOpts: workspaceId ? "workspaceId" : "cwd-only", sidHash: dswsLogHash(String(sid || "")), outcome: sid ? "create-draft" : "create-no-draft", errorHash: "" });
+              log("info", "newsession.decide", { entry: entryKind, textLen: String(text2 || "").length, curSidHash: dswsLogHash(String(st.sessionId || "")), cwdHash: dswsLogHash(String(cwd || "")), cwdSource, wsResolved, wsSource, wsItems, branch: "create", reuseFrom: "none", reuseSidHash: "", allowReuse: "none", reuseSkip, createOpts: workspaceId ? "workspaceId" : "cwd-only", sidHash: dswsLogHash(String(sid || "")), outcome: sid ? "create-draft" : "create-no-draft", errorHash: "" });
             } catch (eLogCr) {
             }
             const __ok742b = function() {
@@ -20838,7 +20857,7 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
             };
             const __fail742b = function() {
               try {
-                log("info", "newsession.decide", { entry: entryKind, textLen: String(text || "").length, curSidHash: dswsLogHash(String(st.sessionId || "")), cwdHash: dswsLogHash(String(cwd || "")), cwdSource, wsResolved, wsSource, wsItems, branch: "create", reuseFrom: "none", reuseSidHash: "", allowReuse: "none", reuseSkip, createOpts: workspaceId ? "workspaceId" : "cwd-only", sidHash: dswsLogHash(String(sid || "")), outcome: "open-failed", errorHash: "" });
+                log("info", "newsession.decide", { entry: entryKind, textLen: String(text2 || "").length, curSidHash: dswsLogHash(String(st.sessionId || "")), cwdHash: dswsLogHash(String(cwd || "")), cwdSource, wsResolved, wsSource, wsItems, branch: "create", reuseFrom: "none", reuseSidHash: "", allowReuse: "none", reuseSkip, createOpts: workspaceId ? "workspaceId" : "cwd-only", sidHash: dswsLogHash(String(sid || "")), outcome: "open-failed", errorHash: "" });
               } catch (eLF2) {
               }
               try {
@@ -20887,7 +20906,7 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
             __go742b();
           }).catch(function(err) {
             try {
-              log("info", "newsession.decide", { entry: entryKind, textLen: String(text || "").length, curSidHash: dswsLogHash(String(st.sessionId || "")), cwdHash: dswsLogHash(String(cwd || "")), cwdSource, wsResolved, wsSource, wsItems, branch: "create", reuseFrom: "none", reuseSidHash: "", allowReuse: "none", reuseSkip, createOpts: workspaceId ? "workspaceId" : "cwd-only", sidHash: "", outcome: "create-failed", errorHash: dswsLogHash(dswsLogTrunc(String(err && err.message || err), 120, "error")) });
+              log("info", "newsession.decide", { entry: entryKind, textLen: String(text2 || "").length, curSidHash: dswsLogHash(String(st.sessionId || "")), cwdHash: dswsLogHash(String(cwd || "")), cwdSource, wsResolved, wsSource, wsItems, branch: "create", reuseFrom: "none", reuseSidHash: "", allowReuse: "none", reuseSkip, createOpts: workspaceId ? "workspaceId" : "cwd-only", sidHash: "", outcome: "create-failed", errorHash: dswsLogHash(dswsLogTrunc(String(err && err.message || err), 120, "error")) });
             } catch (eLogCf) {
             }
             try {
@@ -20909,16 +20928,16 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
         title = n2 !== "" ? "[#" + String(n2) + "] " + base : "[New]";
         if (!title || title === "[#] ") title = "[New]";
       }
-      let text = "";
+      let text2 = "";
       try {
-        text = rowActionText(st, x4);
+        text2 = rowActionText(st, x4);
       } catch (e3) {
         try {
-          text = rowActionText(st, x4);
+          text2 = rowActionText(st, x4);
         } catch (e22) {
-          text = "";
+          text2 = "";
         }
-        if (!text) {
+        if (!text2) {
           const u3 = typeof issueUrlFor === "function" ? function() {
             try {
               return issueUrlFor(st, x4 && x4.number, typeof effortOf === "function" ? effortOf(x4) : void 0);
@@ -20927,7 +20946,7 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
             }
           }() : "";
           const uu = u3 || (x4 && x4.number != null ? "#" + String(x4.number) : "");
-          text = uu ? "/wayfinder " + uu : "/wayfinder";
+          text2 = uu ? "/wayfinder " + uu : "/wayfinder";
         }
       }
       let kind = null;
@@ -20935,10 +20954,10 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
         kind = typeof rowActionKind === "function" ? rowActionKind(x4) : null;
       } catch (eK) {
       }
-      openTextInNewSession(st, text, title, kind ? { kind } : null);
+      openTextInNewSession(st, text2, title, kind ? { kind } : null);
     };
-    const inject = (st, text) => {
-      var bodyText = typeof deckPromptFiltered === "function" && typeof isDeckClosed === "function" && isDeckClosed(st && st.cwd) ? deckPromptFiltered(text, true) : text;
+    const inject = (st, text2) => {
+      var bodyText = typeof deckPromptFiltered === "function" && typeof isDeckClosed === "function" && isDeckClosed(st && st.cwd) ? deckPromptFiltered(text2, true) : text2;
       try {
         if (typeof withTrailingNewline === "function") bodyText = withTrailingNewline(bodyText);
       } catch (eNl) {
@@ -20953,15 +20972,15 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       } else copyText(st, bodyText, tr("toast.copiedFallback"));
       scheduleActionProbe();
     };
-    const withTrailingNewline = function(text) {
+    const withTrailingNewline = function(text2) {
       try {
-        var s3 = String(text == null ? "" : text);
+        var s3 = String(text2 == null ? "" : text2);
         if (!s3) return s3;
         if (s3.charAt(s3.length - 1) === "\n") return s3;
         return s3 + "\n";
       } catch (eN) {
         try {
-          return String(text);
+          return String(text2);
         } catch (eN2) {
           return "";
         }
@@ -21129,9 +21148,9 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       } catch (e3) {
       }
     };
-    const copyText = (st, text, okMsg) => {
+    const copyText = (st, text2, okMsg) => {
       if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
-        return navigator.clipboard.writeText(text).then(function() {
+        return navigator.clipboard.writeText(text2).then(function() {
           flash(st, okMsg || tr("toast.copied"), "ok");
           return true;
         }).catch(function() {
@@ -21150,8 +21169,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     const dswsNormalizeError = function(input, fallbackText) {
       const o3 = input && typeof input === "object" ? input : null;
       const field = o3 ? o3.error : input;
-      const text = typeof field === "string" ? field : String(field && field.message || "");
-      const raw = String((typeof (o3 && o3.raw) === "string" ? o3.raw : "") || text || o3 && o3.message || "");
+      const text2 = typeof field === "string" ? field : String(field && field.message || "");
+      const raw = String((typeof (o3 && o3.raw) === "string" ? o3.raw : "") || text2 || o3 && o3.message || "");
       const given = String(o3 && o3.kind || "");
       const known = dswsErrorKinds.indexOf(given) >= 0 ? given : Object.prototype.hasOwnProperty.call(dswsLegacyKinds, given) ? dswsLegacyKinds[given] : "";
       const seen = o3 && (o3.status || o3.statusCode || o3.httpCode) || (/\b(401|403|404|409|422|429)\b/.exec(raw) || [0])[0];
@@ -21322,15 +21341,15 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
     const submitIssueComment = function(st, n2, body, opts) {
       const num = Number(n2 === void 0 || n2 === null || String(n2).trim() === "" ? NaN : n2);
       if (isNaN(num) || num < 0) return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
-      const text = String(body == null ? "" : body);
-      if (!text.trim()) return Promise.resolve({ ok: false, error: { kind: "parse", message: "comment body required", raw: "" } });
+      const text2 = String(body == null ? "" : body);
+      if (!text2.trim()) return Promise.resolve({ ok: false, error: { kind: "parse", message: "comment body required", raw: "" } });
       if (typeof host === "undefined" || typeof host.call !== "function") {
         return Promise.resolve({ ok: false, error: { kind: "env", message: tr("err.hostUnavailable"), raw: "" } });
       }
       const cwdArg = st.cwd ? { cwd: st.cwd } : {};
       const ciT0 = Date.now();
       const ciEffort = opts && opts.effortId !== void 0 && opts.effortId !== null ? String(opts.effortId) : "";
-      return host.call("wf.commentIssue", Object.assign({ number: num, body: text }, ciEffort ? { effortId: ciEffort } : {}, cwdArg)).then(function(res) {
+      return host.call("wf.commentIssue", Object.assign({ number: num, body: text2 }, ciEffort ? { effortId: ciEffort } : {}, cwdArg)).then(function(res) {
         try {
           if (res && res.ok === true) log("info", "host.call", { method: "wf.commentIssue", latencyMs: Date.now() - ciT0, ok: true, kind: "comment" });
           else log("warn", "host.call.fail", { method: "wf.commentIssue", kind: "comment", errorHash: dswsLogHash(dswsLogTrunc(String(res && res.error && (res.error.message || res.error.kind) || "comment-not-ok"), 120, "error")) });
@@ -21890,8 +21909,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       if (isNaN(n2)) return null;
       return Math.max(0, Math.min(100, n2));
     }
-    function parseHeading(text) {
-      const m3 = /^ {0,3}(#{1,6})([\s\S]*)$/.exec(text);
+    function parseHeading(text2) {
+      const m3 = /^ {0,3}(#{1,6})([\s\S]*)$/.exec(text2);
       if (!m3) return null;
       return { level: m3[1].length, title: m3[2].replace(/^[ \t]+/, "").trim() };
     }
@@ -21901,8 +21920,8 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       if (m3[1] === void 0) return { percent: null };
       return { percent: clampPercent(m3[1]) };
     }
-    function isFieldLine(text) {
-      return /^\s*(?:Status|Type|Blocked\s+by|Labels)\s*[:：]/.test(text);
+    function isFieldLine(text2) {
+      return /^\s*(?:Status|Type|Blocked\s+by|Labels)\s*[:：]/.test(text2);
     }
     function analyzeLines(lines) {
       const marks = [];
@@ -21990,35 +22009,35 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       const entries = [];
       const freeText = [];
       for (let i3 = section.contentStart; i3 < section.end; i3++) {
-        const text = lines[i3].text;
+        const text2 = lines[i3].text;
         const mark = marks[i3];
-        if (mark.fenced || mark.inComment || /^\s*>/.test(text)) {
-          freeText.push(text);
+        if (mark.fenced || mark.inComment || /^\s*>/.test(text2)) {
+          freeText.push(text2);
           continue;
         }
-        const bullet = ENTRY_BULLET_RE.exec(text) || ENTRY_LINE_RE.exec(text);
+        const bullet = ENTRY_BULLET_RE.exec(text2) || ENTRY_LINE_RE.exec(text2);
         if (bullet) {
           const entry = parseEntryTail(bullet[1], bullet[2]);
           if (entry) {
-            entries.push({ raw: text, entry });
+            entries.push({ raw: text2, entry });
             continue;
           }
         }
-        const bare = ENTRY_BARE_RE.exec(text);
+        const bare = ENTRY_BARE_RE.exec(text2);
         if (bare) {
           const percent = clampPercent(bare[1]);
           if (percent !== null) {
-            entries.push({ raw: text, entry: { percent, note: "", updatedAt: null } });
+            entries.push({ raw: text2, entry: { percent, note: "", updatedAt: null } });
             continue;
           }
         }
-        freeText.push(text);
+        freeText.push(text2);
       }
       return { entries, freeText };
     }
     function parseProgressDetail(body) {
-      const text = body == null ? "" : String(body);
-      const lines = splitBodyLines(text);
+      const text2 = body == null ? "" : String(body);
+      const lines = splitBodyLines(text2);
       const marks = analyzeLines(lines);
       const sections = findProgressSections(lines, marks);
       if (sections.length > 0) {
@@ -23905,6 +23924,81 @@ ${formatProgressEntry(entry)}
       ]);
     };
     styles.insert(PIXEL_CARDS_STYLE_TEXT);
+    const MAP_DETAIL_V2_STYLE_TEXT = [
+      // 整页：一列。地图档案区一块，卡片流一块，已完成就接在卡片流最下面（维护者定的连续一条流）。
+      // 三档中性色只在 .m2v2-page 上定义、由子元素继承：炭灰底 + 亮一档的面板 + 一档描边，避免纯黑纯白。
+      ".m2v2-page{--m2v2-ground:#1e2023;--m2v2-panel:#272a2e;--m2v2-line:#3b3e43;--m2v2-card-min:208px;display:flex;flex-direction:column;gap:10px;padding-bottom:24px;min-width:0;background:var(--m2v2-ground)}",
+      // #1402 接入真实入口后：Dock 的内容区是 .dsws-body（内边距 10px 12px，见 panel/Dock.ts:401 与 kernel/styles.ts:46），
+      // 页面的底色如果只铺在自己的盒子里，会在面板四周留一圈宿主底色，看起来像一张内嵌的色卡。
+      // 这一条只对 Dock 里的直接子元素生效（演示页没有 .dsws-body，不受影响）：抵消那圈内边距、补回内容缩进，并撑满可视高度。
+      ".dsws-body>.m2v2-page{margin:-10px -12px;min-height:100%;padding:10px 12px 24px}",
+      // 浅色主题：暖白底 + 纸白面板 + 浅描边。判断方式与卡片皮肤一致（宿主浅色时 body 上没有 data-ds-dark-theme）。
+      "body:not([data-ds-dark-theme]) .m2v2-page{--m2v2-ground:#ece6d8;--m2v2-panel:#f7f4ea;--m2v2-line:#d8cfbd}",
+      // 档案区（MAP 自身内容）：普通信息卡，用同一族的中性面板色，比「地」亮一档。
+      ".m2v2-profile{border:1px solid var(--m2v2-line,var(--dsw-alias-border-l1,#2a2d35));border-radius:12px;padding:12px 14px;background:var(--m2v2-panel,var(--dsw-alias-bg-layer-1,rgba(255,255,255,.03)));min-width:0}",
+      // 整块档案是进「地图档案」的入口（维护者 2026-10-23 第二次反馈：可点区域只有标题一行，太小）。
+      // 悬停只提亮描边并加一圈淡影，不换面板底色——浅色主题下面板是暖白纸，改用宿主的深色层会脏。
+      // 页内不再画「地图 / 规格 + 编号」那一行：顶栏的面包屑与身份小签已经写着同一个编号。
+      ".m2v2-title{display:flex;align-items:baseline;gap:8px;margin:0;font-size:15px;line-height:1.4;font-weight:600;color:var(--dsw-alias-label-primary,#e6edf3)}",
+      ".m2v2-title-txt{min-width:0;word-break:break-word}",
+      ".m2v2-title-go{flex:none;align-self:center;font-size:10px;font-weight:500;line-height:16px;letter-spacing:.04em;padding:0 6px;border:1px solid var(--m2v2-line,var(--dsw-alias-border-l1,#2a2d35));border-radius:999px;color:var(--dsw-alias-label-caption,#8b8b95)}",
+      ".m2v2-profile-link{cursor:pointer;transition:border-color " + MOTION.hoverFadeMs + "ms ease,box-shadow " + MOTION.hoverFadeMs + "ms ease}",
+      ".m2v2-profile-link:hover{border-color:var(--dsw-alias-label-caption,#8b8b95);box-shadow:0 0 0 3px var(--dsw-alias-bg-layer-2,rgba(255,255,255,.06))}",
+      ".m2v2-profile-link:hover .m2v2-title-go{color:var(--dsw-alias-label-secondary,#a1a1aa);border-color:var(--dsw-alias-label-caption,#8b8b95)}",
+      ".m2v2-profile-link:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#58a6ff));outline-offset:2px}",
+      // 目的地：一句话说清「要去哪」。老页用绿色目标图标，这里沿用同一语义与色。
+      ".m2v2-dest{display:flex;align-items:flex-start;gap:4px;margin-top:6px;font-size:12px;line-height:1.55;color:var(--dsw-alias-state-success-primary,#3fb950);word-break:break-word}",
+      ".m2v2-dest-ic{flex:none;margin-top:2px}",
+      ".m2v2-dest-empty{color:var(--dsw-alias-label-caption,#8b8b95)}",
+      // 档案区的「计数 / 完成度 + 子票那句」两行固定成一块（维护者 2026-10-23 三次反馈：进页面时
+      // 「正在取子票」独占一行、随后消失，卡片跟着抖；这行不要；删掉后空一行也不行）。
+      // 现在那句挂在进度条右边，不再单独占一行；取数中计数与数字写占位、进度条跑斜纹，取到后原地换数字；
+      // 确实没有子票时整块 visibility:hidden——位置留着，卡片不会被这块消失往上拽。
+      ".m2v2-meta{display:flex;flex-direction:column}",
+      '.m2v2-meta[data-empty="1"]{visibility:hidden}',
+      // 四个计数（可接 / 已认领 / 被阻塞 / 已关闭）：子票总数与已完成由进度条那一行交代，这里不重复。
+      ".m2v2-counts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}",
+      ".m2v2-count{font-size:11px;line-height:18px;padding:0 8px;border-radius:999px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.06));color:var(--dsw-alias-label-secondary,#a1a1aa)}",
+      '.m2v2-count[data-status="ready"]{color:var(--dsw-alias-state-success-primary,#3fb950)}',
+      '.m2v2-count[data-status="doing"]{color:#58a6ff}',
+      '.m2v2-count[data-status="blocked"]{color:var(--dsw-alias-state-error-primary,#f87171)}',
+      '.m2v2-count[data-status="closed"]{color:var(--dsw-alias-label-caption,#8b8b95)}',
+      // 完成度：一条细进度条（按已完成张数算，替代老页的「层级进度」）。
+      // 「子票那句」与它同一行（维护者：不要单独占一行）；空间不够时在 .m2v2-prog 内部折行，不再多一层行。
+      // 取数中（data-busy="1"）轨道上画流动斜纹：「正在取数」就这里表达。颜色取中性灰，深浅两套底色上都看得见；
+      // 系统要求减少动效时停掉动画，只留静态斜纹，仍然是「还没取到」的样子。
+      ".m2v2-prog{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}",
+      ".m2v2-prog-cap{flex:none;font-size:11px;color:var(--dsw-alias-label-caption,#8b8b95)}",
+      ".m2v2-track{flex:1;height:6px;min-width:80px;border-radius:999px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.08));overflow:hidden}",
+      '.m2v2-prog[data-busy="1"] .m2v2-track{background-image:repeating-linear-gradient(135deg,rgba(128,128,128,.55) 0,rgba(128,128,128,.55) 6px,transparent 6px,transparent 12px);background-size:24px 24px;animation:m2v2-stripes ' + MOTION.busyStripesMs + "ms linear infinite}",
+      "@keyframes m2v2-stripes{from{background-position:0 0}to{background-position:24px 0}}",
+      '@media (prefers-reduced-motion: reduce){.m2v2-prog[data-busy="1"] .m2v2-track{animation:none}}',
+      ".m2v2-fill{height:100%;border-radius:999px;background:var(--dsw-alias-state-success-primary,#3fb950);transition:width " + MOTION.progressFillMs + "ms ease}",
+      ".m2v2-prog-num{flex:none;font-size:11px;color:var(--dsw-alias-label-secondary,#a1a1aa);font-variant-numeric:tabular-nums}",
+      // 「子票那句」：本图 N 张子票 / 没取到 / 被截断 / 有差额，都在这一个元素里说。
+      // 它是进度条那一行末尾的 span（不单独占行）；取数中说的是同一句话、数字换成短横占位，
+      // 宽度与取到后接近，不会因为换字突然折行。
+      ".m2v2-feed{flex:0 1 auto;font-size:11px;line-height:1.55;color:var(--dsw-alias-label-caption,#8b8b95);word-break:break-word}",
+      '.m2v2-feed[data-state="failed"]{color:var(--dsw-alias-state-error-primary,#f87171)}',
+      ".m2v2-err{display:flex;align-items:center;gap:4px;margin-top:6px;font-size:11px;color:var(--dsw-alias-state-error-primary,#f87171);word-break:break-word}",
+      // 卡片流：卡片自带像素皮肤（含深浅两套），这里只负责排法，不再给卡片套第二层皮肤。
+      // 排法（维护者 2026-10-23）：一张卡有一个「最小宽度」——四颗按钮缩到只剩图标时的宽度，算下来
+      // 两颗图标按钮 40×2 + 两颗文字按钮各 38（图标 12 + 缝 4 + 内边距 16 + 边框 6）+ 三处按钮缝 18 = 174，
+      // 加卡片描边与内边距 30，最小 204px；取 208px 留 2px 余量，即 --m2v2-card-min。
+      // 用栅格（grid + auto-fit）：一行先按最小宽度 208 尽量多排几列（列数 = 可用宽度 ÷（208 + 列间距）向下取整），
+      // 再把这一行剩下的宽度平均分给各列；每张卡最多保留原型定下的自然宽度 300px（只剩一张时不会被拉成一条长条）。
+      // 为什么不用 flex-wrap：flex 是逐行决定张数的，最后一行不足时卡片会被撑到 300px，出现「第一行五张窄卡、
+      // 第二行三张宽卡」这种同一页里卡片宽窄不一的情况；栅格一次算出列数，所有行共用同一套列宽。
+      // 卡片自己的样式默认按 content-box 算宽度，这里必须改成 border-box：否则最小宽度 208 只是内容宽，
+      // 加上 4px 描边与左右内边距会变成 234px，一行能塞的张数就比算好的少一张。
+      // 实际手感：面板 565px → 2 列、每列约 274px（按钮文字完整）；520px → 2 列、约 244px（文字开始逐字收）；
+      // 480px → 2 列、208px（按钮只剩图标，这就是最小宽度）；1200px → 5 列、约 220px。
+      ".m2v2-flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(var(--m2v2-card-min,208px),100%),1fr));gap:18px 16px;margin-top:6px;min-width:0}",
+      // 面板本身比最小宽度还窄时（极窄侧栏），min(…,100%) 让卡片跟着面板继续缩，不要横向溢出。
+      ".m2v2-flow .cd-card{box-sizing:border-box;width:100%;max-width:300px}",
+      ".m2v2-empty{font-size:12px;color:var(--dsw-alias-label-caption,#8b8b95);padding:8px 2px}"
+    ];
+    styles.insert(MAP_DETAIL_V2_STYLE_TEXT);
     styles.insert(
       [
         "html,body,#dsws-surface{height:100%}",
@@ -24252,8 +24346,8 @@ ${formatProgressEntry(entry)}
     const vcChangeToneOf = function(change) {
       return VC_CHANGE_TONE[String(change)] || "warning";
     };
-    const vcTail = function(text, maxChars) {
-      const s3 = String(text === null || text === void 0 ? "" : text);
+    const vcTail = function(text2, maxChars) {
+      const s3 = String(text2 === null || text2 === void 0 ? "" : text2);
       const cp = Array.from(s3);
       const n2 = Math.floor(Number(maxChars));
       if (!isFinite(n2) || n2 <= 0) return s3;
@@ -24271,8 +24365,8 @@ ${formatProgressEntry(entry)}
       const headLen = Math.ceil(keep * 0.4);
       return cp.slice(0, headLen).join("") + "…" + cp.slice(cp.length - (keep - headLen)).join("");
     };
-    const vcOneLine = function(text, maxChars) {
-      const s3 = String(text === null || text === void 0 ? "" : text).replace(/\r/g, "").split("\n")[0].trim();
+    const vcOneLine = function(text2, maxChars) {
+      const s3 = String(text2 === null || text2 === void 0 ? "" : text2).replace(/\r/g, "").split("\n")[0].trim();
       const n2 = Math.floor(Number(maxChars));
       if (!isFinite(n2) || n2 <= 0) return s3;
       const cp = Array.from(s3);
@@ -24419,20 +24513,20 @@ ${formatProgressEntry(entry)}
       const cpLen = function(s3) {
         return Array.from(String(s3 || "")).length;
       };
-      const tailAt = function(text, drop) {
-        const keep = cpLen(text) - drop;
-        return keep <= 0 ? "" : vcTail(text, keep);
+      const tailAt = function(text2, drop) {
+        const keep = cpLen(text2) - drop;
+        return keep <= 0 ? "" : vcTail(text2, keep);
       };
       const path = l3.path ? pathDrop >= cpLen(l3.path) ? "" : vcMiddle(l3.path, cpLen(l3.path) - pathDrop) : "";
       const acts = l3.actions || null;
       return {
         tier: n2,
         path,
-        others: l3.others.map(function(text, i3) {
-          return tailAt(text, otherDrop[i3] || 0);
+        others: l3.others.map(function(text2, i3) {
+          return tailAt(text2, otherDrop[i3] || 0);
         }),
-        commits: l3.commits.map(function(text, i3) {
-          return tailAt(text, commitDrop[i3] || 0);
+        commits: l3.commits.map(function(text2, i3) {
+          return tailAt(text2, commitDrop[i3] || 0);
         }),
         // #842：四颗写操作按钮在这一档各自该画几个字（完整文字在调用方的悬停提示里）。
         actions: acts ? {
@@ -25304,9 +25398,9 @@ ${formatProgressEntry(entry)}
     const vcBusyClsOf = function(runningOp, op) {
       return runningOp === op ? " dsws-fb-busy" : "";
     };
-    const vcBusyKidsOf = function(h4, runningOp, op, text) {
-      if (runningOp !== op) return text;
-      return [h4("span", { key: "t", className: "fb-t", "aria-hidden": "true" }, text), h4("span", { key: "s", className: "fb-spin", "aria-hidden": "true" }, vcBusySpinOf(h4))];
+    const vcBusyKidsOf = function(h4, runningOp, op, text2) {
+      if (runningOp !== op) return text2;
+      return [h4("span", { key: "t", className: "fb-t", "aria-hidden": "true" }, text2), h4("span", { key: "s", className: "fb-spin", "aria-hidden": "true" }, vcBusySpinOf(h4))];
     };
     const vcRowStageNodes = function(h4, o3) {
       const a3 = o3 && o3.row ? o3.row.stageAction : null;
@@ -25362,9 +25456,9 @@ ${formatProgressEntry(entry)}
         return String(a3[op] && (a3[op].hint || a3[op].tip) || "");
       };
       const hintNode = function(op) {
-        const text = hintOf(op);
-        if (!text) return null;
-        return h4("div", { key: "hint-" + op, "data-vc-action-hint": op, tabIndex: 0, style: { fontSize: 11, marginTop: 2 } }, text);
+        const text2 = hintOf(op);
+        if (!text2) return null;
+        return h4("div", { key: "hint-" + op, "data-vc-action-hint": op, tabIndex: 0, style: { fontSize: 11, marginTop: 2 } }, text2);
       };
       return h4("div", { key: "actions", "data-vc-actions": 1, style: { display: "flex", flexDirection: "column", gap: 2, marginTop: 2 } }, [
         h4("div", { key: "row", style: { display: "flex", gap: 6, alignItems: "center" } }, [
@@ -26448,7 +26542,7 @@ ${formatProgressEntry(entry)}
           }
         });
       });
-      const bind = function(k4, el) {
+      const bind2 = function(k4, el) {
         try {
           if (iosRef.current[k4]) iosRef.current[k4].disconnect();
         } catch (e3) {
@@ -26468,9 +26562,9 @@ ${formatProgressEntry(entry)}
         io.observe(el);
         iosRef.current[k4] = io;
       };
-      const refOf = function(k4) {
+      const refOf2 = function(k4) {
         if (!cbsRef.current[k4]) cbsRef.current[k4] = function(el) {
-          bind(k4, el);
+          bind2(k4, el);
         };
         return cbsRef.current[k4];
       };
@@ -26485,7 +26579,7 @@ ${formatProgressEntry(entry)}
           iosRef.current = {};
         };
       }, []);
-      return { refOf };
+      return { refOf: refOf2 };
     };
     const VC_FIRST_SCREEN_PHONE = "wf.gitFirstScreen";
     const VC_FIRST_SCREEN_REFRESH = { enter: "进入页面", "task-done": "任务完成后", manual: "手动刷新" };
@@ -27985,8 +28079,8 @@ ${formatProgressEntry(entry)}
       if (!data || !Array.isArray(data.reasons) || data.reasons.length === 0) return null;
       const items = data.reasons.map(function(reason) {
         const key = typeof reason === "string" ? reason : String(reason && reason.id || "");
-        const text = typeof reason === "string" ? syncReasonTextOf(reason) : String(reason && reason.text || syncReasonTextOf(key));
-        return h4("li", { key, className: "vcs-sync-why-item", "data-vc-sync-reason": key }, text);
+        const text2 = typeof reason === "string" ? syncReasonTextOf(reason) : String(reason && reason.text || syncReasonTextOf(key));
+        return h4("li", { key, className: "vcs-sync-why-item", "data-vc-sync-reason": key }, text2);
       });
       return h4("div", { key: "why", className: "vcs-sync-why", "data-vc-sync-why": "1" }, [
         h4("span", { key: "title", className: "vcs-sync-why-title" }, t3("vc.sync.reasonTitle")),
@@ -28326,9 +28420,9 @@ ${formatProgressEntry(entry)}
       };
       for (let i3 = 0; i3 < entry.fields.length; i3 += 1) {
         const f3 = entry.fields[i3];
-        const text = pick(f3.name);
-        if (f3.required && text === "") return bad2(f3.name, "required-missing");
-        if (f3.type === "number" && text !== "" && !/^[0-9]+$/.test(text)) return bad2(f3.name, "not-number");
+        const text2 = pick(f3.name);
+        if (f3.required && text2 === "") return bad2(f3.name, "required-missing");
+        if (f3.type === "number" && text2 !== "" && !/^[0-9]+$/.test(text2)) return bad2(f3.name, "not-number");
       }
       if (kind === "blame") {
         const a3 = Number(pick("lineStart"));
@@ -28338,9 +28432,9 @@ ${formatProgressEntry(entry)}
       }
       const params = {};
       entry.fields.forEach(function(f3) {
-        const text = pick(f3.name);
-        if (text === "") return;
-        params[f3.name] = f3.type === "number" ? Number(text) : text;
+        const text2 = pick(f3.name);
+        if (text2 === "") return;
+        params[f3.name] = f3.type === "number" ? Number(text2) : text2;
       });
       return { ok: true, params };
     };
@@ -28784,8 +28878,8 @@ ${formatProgressEntry(entry)}
         plan.target = String(target === void 0 || target === null ? "" : target);
         setCommit({ plan, decision: null, result: null });
       };
-      const setMessage = function(text) {
-        setCommit({ message: String(text === void 0 || text === null ? "" : text), result: null });
+      const setMessage = function(text2) {
+        setCommit({ message: String(text2 === void 0 || text2 === null ? "" : text2), result: null });
       };
       const toggleOption = function(name) {
         const plan = planNow();
@@ -28796,9 +28890,9 @@ ${formatProgressEntry(entry)}
       const applyTemplate = function() {
         const form = state().form;
         if (!form || !form.template || form.template.problem || !String(form.template.text || "")) return false;
-        const text = String(form.template.text || "");
+        const text2 = String(form.template.text || "");
         const cur = String(state().message || "");
-        setCommit({ message: cur.trim() === "" ? text : cur + (cur.slice(-1) === "\n" ? "" : "\n") + text, templateApplied: true });
+        setCommit({ message: cur.trim() === "" ? text2 : cur + (cur.slice(-1) === "\n" ? "" : "\n") + text2, templateApplied: true });
         return true;
       };
       const failureOf = function(reply, plan) {
@@ -29751,9 +29845,9 @@ ${formatProgressEntry(entry)}
     };
     const vcChangesReadNode = function(h4, t3, meta2, read) {
       const r3 = read || {};
-      const text = r3.ok === false ? String(r3.message || "") : String(r3.text || "");
+      const text2 = r3.ok === false ? String(r3.message || "") : String(r3.text || "");
       return h4("div", { key: "read", className: "vcs-changes-read", "data-vc-changes-read": String(meta2.capId) }, [
-        h4("p", { key: "text", className: "vcs-changes-read-text" }, t3("vc.changes.result.read", { text }))
+        h4("p", { key: "text", className: "vcs-changes-read-text" }, t3("vc.changes.result.read", { text: text2 }))
       ]);
     };
     const vcChangesRowNode = function(h4, t3, meta2, opts) {
@@ -29935,8 +30029,8 @@ ${formatProgressEntry(entry)}
       });
     };
     const vcStashShortOidOf = function(oid) {
-      const text = String(oid || "");
-      return text.length > 10 ? text.slice(0, 10) : text;
+      const text2 = String(oid || "");
+      return text2.length > 10 ? text2.slice(0, 10) : text2;
     };
     const vcStashWhenOf = function(atMs) {
       const ms = Number(atMs);
@@ -29956,8 +30050,8 @@ ${formatProgressEntry(entry)}
       return vars ? t3(key, vars) : t3(key);
     };
     const vcStashEntrySubjectOf = function(t3, entry) {
-      const text = String(entry && entry.subject || "").trim();
-      return text === "" ? vcStashText(t3, "vc.stash.entry.unknownSubject", null) : text;
+      const text2 = String(entry && entry.subject || "").trim();
+      return text2 === "" ? vcStashText(t3, "vc.stash.entry.unknownSubject", null) : text2;
     };
     const vcStashRowOf = function(h4, t3, entry, ctx2) {
       const selector = String(entry.selector || "");
@@ -30895,14 +30989,14 @@ ${formatProgressEntry(entry)}
       return entry ? String(entry.targetDefault || "") : "";
     }
     function vcUndoRevProblem(rev) {
-      const text = String(rev === void 0 || rev === null ? "" : rev).trim();
-      if (text === "") return "required";
-      if (text.length > VC_UNDO_REV_MAX) return "too-long";
-      if (/[\s\u0000]/.test(text)) return "bad-shape";
-      if (text.charAt(0) === "-") return "bad-shape";
-      if (text.indexOf("..") >= 0) return "bad-shape";
-      if (text.indexOf(":") >= 0) return "bad-shape";
-      if (text.indexOf("\\") >= 0) return "bad-shape";
+      const text2 = String(rev === void 0 || rev === null ? "" : rev).trim();
+      if (text2 === "") return "required";
+      if (text2.length > VC_UNDO_REV_MAX) return "too-long";
+      if (/[\s\u0000]/.test(text2)) return "bad-shape";
+      if (text2.charAt(0) === "-") return "bad-shape";
+      if (text2.indexOf("..") >= 0) return "bad-shape";
+      if (text2.indexOf(":") >= 0) return "bad-shape";
+      if (text2.indexOf("\\") >= 0) return "bad-shape";
       return null;
     }
     function vcUndoCommitsOf(input) {
@@ -30911,8 +31005,8 @@ ${formatProgressEntry(entry)}
         const arr = input;
         for (let i3 = 0; i3 < arr.length; i3 += 1) raw.push(String(arr[i3] === void 0 || arr[i3] === null ? "" : arr[i3]));
       } else {
-        const text = String(input === void 0 || input === null ? "" : input).replace(/\r/g, "");
-        raw = text.split("\n");
+        const text2 = String(input === void 0 || input === null ? "" : input).replace(/\r/g, "");
+        raw = text2.split("\n");
       }
       const out = [];
       for (let i3 = 0; i3 < raw.length; i3 += 1) {
@@ -31033,8 +31127,8 @@ ${formatProgressEntry(entry)}
       return steps;
     }
     function vcUndoShortOidOf(oid) {
-      const text = String(oid === void 0 || oid === null ? "" : oid);
-      return text.slice(0, 10);
+      const text2 = String(oid === void 0 || oid === null ? "" : oid);
+      return text2.slice(0, 10);
     }
     function vcUndoWhenOf(atMs) {
       const ms = Number(atMs);
@@ -31081,8 +31175,8 @@ ${formatProgressEntry(entry)}
       "write"
     ];
     function vcUndoFailKnownOf(key) {
-      const text = String(key === void 0 || key === null ? "" : key);
-      for (let i3 = 0; i3 < VC_UNDO_FAIL_KEYS.length; i3 += 1) if (VC_UNDO_FAIL_KEYS[i3] === text) return true;
+      const text2 = String(key === void 0 || key === null ? "" : key);
+      for (let i3 = 0; i3 < VC_UNDO_FAIL_KEYS.length; i3 += 1) if (VC_UNDO_FAIL_KEYS[i3] === text2) return true;
       return false;
     }
     const VC_UNDO_OPS_SOURCE = "src/client/views/versionControl/vcUndoOps.ts";
@@ -31830,8 +31924,8 @@ ${formatProgressEntry(entry)}
     const vcWtVersionNode = function(h4, t3, model, capId) {
       const version = vcWorktreeAvailabilityOf(model && model.version, capId);
       if (!version || version.state === "full") return null;
-      const text = version.state === "hidden" || version.state === "degraded" ? vcWorktreesVersionHintOf(t3, capId) : String(t3("vc.wt.versionUnknown"));
-      return h4("p", { key: "version", className: "vc-wt-version", "data-wt-version": String(version.state) }, text);
+      const text2 = version.state === "hidden" || version.state === "degraded" ? vcWorktreesVersionHintOf(t3, capId) : String(t3("vc.wt.versionUnknown"));
+      return h4("p", { key: "version", className: "vc-wt-version", "data-wt-version": String(version.state) }, text2);
     };
     const vcWtButtonNode = function(h4, t3, o3) {
       const opts = o3 || {};
@@ -32215,8 +32309,8 @@ ${formatProgressEntry(entry)}
       if (!data || !Array.isArray(data.reasons) || data.reasons.length === 0) return null;
       const items = data.reasons.map(function(reason) {
         const key = typeof reason === "string" ? reason : String(reason && reason.id || "");
-        const text = typeof reason === "string" ? reason : String(reason && reason.text || "");
-        return h4("li", { key, className: "vcs-migrate-why-item", "data-vc-migrate-reason": key }, text);
+        const text2 = typeof reason === "string" ? reason : String(reason && reason.text || "");
+        return h4("li", { key, className: "vcs-migrate-why-item", "data-vc-migrate-reason": key }, text2);
       });
       return h4("div", { key: "why", className: "vcs-migrate-why", "data-vc-migrate-why": "1" }, [
         h4("span", { key: "title", className: "vcs-migrate-why-title" }, t3("vc.migrate.reasonTitle")),
@@ -32573,9 +32667,9 @@ ${formatProgressEntry(entry)}
     const vcCloneProgressNode = function(h4, t3, o3) {
       const p3 = vcCloneProgressOf(o3.task);
       const task = o3.task || {};
-      const text = p3.percent === null ? vcCloneTextOf(t3, "vc.shell.clone.progress.uncertain", null) : vcCloneTextOf(t3, "vc.shell.clone.progress", { n: String(p3.percent) });
+      const text2 = p3.percent === null ? vcCloneTextOf(t3, "vc.shell.clone.progress.uncertain", null) : vcCloneTextOf(t3, "vc.shell.clone.progress", { n: String(p3.percent) });
       const children = [
-        h4("p", { key: "pct", className: "vcs-clone-percent", "data-vc-clone-percent": p3.percent === null ? "" : String(p3.percent) }, text),
+        h4("p", { key: "pct", className: "vcs-clone-percent", "data-vc-clone-percent": p3.percent === null ? "" : String(p3.percent) }, text2),
         p3.phase ? h4("p", { key: "phase", className: "vcs-clone-phase", "data-vc-clone-phase": p3.phase }, vcCloneTextOf(t3, "vc.shell.clone.phase", { phase: p3.phase })) : null,
         h4("p", { key: "state", className: "vcs-clone-task-state", "data-vc-clone-task-state": String(task.state || "") }, vcCloneTextOf(t3, "vc.shell.clone.taskState." + String(task.state || "running"), null))
       ];
@@ -33488,8 +33582,8 @@ ${formatProgressEntry(entry)}
       ]);
     };
     const vcConflictsHunksNode = function(h4, t3, meta2, read, state, handlers) {
-      const text = String(read && read.text || "");
-      const parsed = splitConflictHunks(text);
+      const text2 = String(read && read.text || "");
+      const parsed = splitConflictHunks(text2);
       if (!parsed || parsed.ok !== true) return h4("p", { key: "hunks-none", className: "vcs-conflicts-note", "data-vc-conflicts-hunks-none": "1" }, t3("vc.conflicts.view.noHunks"));
       const choices = vcConflictsChoicesOf(parsed.hunks.length, state && state.choices);
       const blocks = parsed.hunks.map(function(hunk) {
@@ -33972,18 +34066,18 @@ ${formatProgressEntry(entry)}
       const resultKey = isAttr ? "data-vc-config-attr-result" : "data-vc-config-mailmap-result";
       const value = isAttr ? String(ctx2.edit && ctx2.edit.path || "") : String(ctx2.edit && ctx2.edit.address || "");
       const st = state && state.state ? String(state.state) : "idle";
-      let text = "";
+      let text2 = "";
       if (st === "ok") {
         if (isAttr) {
           const entries = Array.isArray(state.entries) ? state.entries : [];
-          text = entries.map(function(one) {
+          text2 = entries.map(function(one) {
             return String(one.attr || "") + "=" + String(one.value || "");
           }).join("；") || vcConfigText(t3, isAttr ? "vc.config.attr.none" : "vc.config.mailmap.none", null);
         } else {
-          text = String(state.mapped || "");
+          text2 = String(state.mapped || "");
         }
       } else if (st === "err") {
-        text = vcConfigText(t3, isAttr ? "vc.config.attr.err" : "vc.config.mailmap.err", null);
+        text2 = vcConfigText(t3, isAttr ? "vc.config.attr.err" : "vc.config.mailmap.err", null);
       }
       const children = [
         h4("span", { key: "label", className: "vcs-config-query-label" }, vcConfigText(t3, isAttr ? "vc.config.attr.label" : "vc.config.mailmap.label", null)),
@@ -34007,7 +34101,7 @@ ${formatProgressEntry(entry)}
             ctx2.actQuery(kind);
           }
         }, vcConfigText(t3, isAttr ? "vc.config.attr.go" : "vc.config.mailmap.go", null)),
-        h4("span", { key: "result", className: "vcs-config-query-result", [resultKey]: st }, text)
+        h4("span", { key: "result", className: "vcs-config-query-result", [resultKey]: st }, text2)
       ];
       return h4("div", { key: kind, className: "vcs-config-query", [isAttr ? "data-vc-config-attr" : "data-vc-config-mailmap"]: "1" }, children);
     };
@@ -35002,8 +35096,8 @@ ${formatProgressEntry(entry)}
       const r3 = rebase || {};
       const st = r3.state || {};
       const stateName = vcRebasePageStrOf(st.state);
-      const text = stateName === "" ? t3("vc.rebase.stateLine.clean", { branch: vcRebasePageStrOf(st.branch), head: vcRebasePageStrOf(st.headOid).slice(0, 10) }) : t3("vc.rebase.stateLine.ongoing", { state: t3(vcRebaseStateLabelKeyOf(stateName)) });
-      return h4("p", { className: "vcs-note", "data-vc-rebase-state-line": stateName === "" ? "clean" : "ongoing" }, [text]);
+      const text2 = stateName === "" ? t3("vc.rebase.stateLine.clean", { branch: vcRebasePageStrOf(st.branch), head: vcRebasePageStrOf(st.headOid).slice(0, 10) }) : t3("vc.rebase.stateLine.ongoing", { state: t3(vcRebaseStateLabelKeyOf(stateName)) });
+      return h4("p", { className: "vcs-note", "data-vc-rebase-state-line": stateName === "" ? "clean" : "ongoing" }, [text2]);
     };
     const vcRebaseUpdateRefsNode = function(h4, t3, rebase) {
       const st = (rebase || {}).state || {};
@@ -35108,8 +35202,8 @@ ${formatProgressEntry(entry)}
       const confirm = r3.confirm || null;
       const meta2 = r3.confirmOp ? vcRebaseOpMetaOf(r3.confirmOp) : null;
       if (!confirm || !meta2) return null;
-      const seg = function(name, text) {
-        return h4("p", { className: "vcs-note", "data-vc-rebase-confirm-seg": name }, [text]);
+      const seg = function(name, text2) {
+        return h4("p", { className: "vcs-note", "data-vc-rebase-confirm-seg": name }, [text2]);
       };
       const handlers = r3.handlers || {};
       return h4("section", { className: "vcs-card vcs-danger", "data-vc-rebase-confirm": r3.confirmOp, role: "alertdialog" }, [
@@ -35228,8 +35322,8 @@ ${formatProgressEntry(entry)}
     const vcRewriteFieldHintKeyOf = function(field) {
       return "vc.rewrite.field." + String(field || "paths") + "Hint";
     };
-    const vcRewriteLinesOf = function(text) {
-      const raw = String(text === void 0 || text === null ? "" : text).split(/\r?\n/);
+    const vcRewriteLinesOf = function(text2) {
+      const raw = String(text2 === void 0 || text2 === null ? "" : text2).split(/\r?\n/);
       const out = [];
       for (let i3 = 0; i3 < raw.length; i3 += 1) {
         const line = raw[i3].trim();
@@ -35237,8 +35331,8 @@ ${formatProgressEntry(entry)}
       }
       return out;
     };
-    const vcRewriteRenamesOf = function(text) {
-      const lines = vcRewriteLinesOf(text);
+    const vcRewriteRenamesOf = function(text2) {
+      const lines = vcRewriteLinesOf(text2);
       const out = [];
       for (let i3 = 0; i3 < lines.length; i3 += 1) {
         const cut = lines[i3].indexOf("=>");
@@ -35250,8 +35344,8 @@ ${formatProgressEntry(entry)}
       }
       return out;
     };
-    const vcRewriteReplacementsOf = function(text) {
-      const lines = vcRewriteLinesOf(text);
+    const vcRewriteReplacementsOf = function(text2) {
+      const lines = vcRewriteLinesOf(text2);
       const out = [];
       for (let i3 = 0; i3 < lines.length; i3 += 1) {
         const cut = lines[i3].indexOf("=>");
@@ -35263,8 +35357,8 @@ ${formatProgressEntry(entry)}
       }
       return out;
     };
-    const vcRewriteAuthorsOf = function(text) {
-      const lines = vcRewriteLinesOf(text);
+    const vcRewriteAuthorsOf = function(text2) {
+      const lines = vcRewriteLinesOf(text2);
       const out = [];
       const pattern = /^(.*?)\s*<([^<>]*)>\s*(?:\|\s*(.*?)\s*<([^<>]*)>\s*)?$/;
       for (let i3 = 0; i3 < lines.length; i3 += 1) {
@@ -36202,8 +36296,8 @@ ${formatProgressEntry(entry)}
             const reply = (data.reads || {})[op];
             const objects = vcMaintenanceObjectsOf(reply);
             const status = vcMaintenanceStatusOf(reply);
-            const rowsOf = status ? vcMaintStatusRowsOf(status) : [];
-            return vcMaintReadCardOf(h4, t3, op, rowsOf, "");
+            const rowsOf2 = status ? vcMaintStatusRowsOf(status) : [];
+            return vcMaintReadCardOf(h4, t3, op, rowsOf2, "");
           })
         )
       ];
@@ -37232,17 +37326,17 @@ ${formatProgressEntry(entry)}
     };
     const useTabsRow = function(s3, tabsRef) {
       const [tabTip, setTabTip] = React.useState(null);
-      const tabsTip = function(e3, text, priority) {
+      const tabsTip = function(e3, text2, priority) {
         const t3 = tabsRef && tabsRef.current;
         setTabTip(null);
-        if (!t3 || !text || typeof e3 === "undefined") return;
+        if (!t3 || !text2 || typeof e3 === "undefined") return;
         const btn = t3.querySelector('[data-priority="' + priority + '"]');
         if (!btn || !btn.classList.contains("collapsed")) return;
         if (typeof window === "undefined") return;
         const W3 = 238;
         let x4 = e3.clientX + 12, y3 = e3.clientY + 12;
         if (x4 + W3 > window.innerWidth) x4 = e3.clientX - 12 - W3;
-        setTabTip({ x: x4, y: y3, text });
+        setTabTip({ x: x4, y: y3, text: text2 });
       };
       const tabsTipOff = function() {
         setTabTip(null);
@@ -37630,10 +37724,10 @@ ${formatProgressEntry(entry)}
         return h4("span", { key: c3, style: { whiteSpace: "nowrap" } }, tr2("workRouteTable.col." + c3));
       }));
     };
-    const workRouteTipGroup = function(h4, icon, text, key) {
+    const workRouteTipGroup = function(h4, icon, text2, key) {
       return h4("span", { key, style: { display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 } }, [
         h4("span", { style: { display: "inline-flex", flex: "none", color: "var(--dsw-alias-label-caption,#8b8b95)" } }, Ic({ n: icon, size: 12 })),
-        h4("span", { style: { minWidth: 0, wordBreak: "break-word" } }, text)
+        h4("span", { style: { minWidth: 0, wordBreak: "break-word" } }, text2)
       ]);
     };
     const WorkRouteRow = ({ r: r3, nowMs, st, onNavigate, cells }) => {
@@ -37998,12 +38092,12 @@ ${formatProgressEntry(entry)}
       }
       return overlay;
     };
-    const mdInline = function(text, keyBase, opts) {
+    const mdInline = function(text2, keyBase, opts) {
       const o3 = opts || {};
       const inLink = !!o3.inLink;
       const st = o3.st || null;
       const out = [];
-      let rest = mdEsc(text);
+      let rest = mdEsc(text2);
       let k4 = 0;
       const imgParts = [];
       rest = rest.replace(MD_HTML_IMG_RE, function(tag) {
@@ -38395,9 +38489,9 @@ ${formatProgressEntry(entry)}
         return bt && bt.state === "OPEN";
       };
       const blocked = t3.state === "OPEN" && t3.blockedBy.some(openBlocker);
-      const subItem = (icon, color, text) => h4("span", { style: { display: "inline-flex", alignItems: "center", gap: 3, color, minWidth: 0 } }, [
+      const subItem = (icon, color, text2) => h4("span", { style: { display: "inline-flex", alignItems: "center", gap: 3, color, minWidth: 0 } }, [
         Ic({ n: icon, size: 11 }),
-        h4(Tip, { content: h4("div", { style: { display: "flex", flexDirection: "column", gap: 2 } }, [h4("div", { style: { fontSize: 10, color: "#8b8b95", lineHeight: "14px" } }, tr("tip.header.text")), h4("div", { style: { fontSize: 11, color: "#e6edf3", lineHeight: "16px", wordBreak: "break-word", whiteSpace: "normal" } }, text)]) }, h4("span", { className: "dsws-ellip", style: { maxWidth: 200 } }, text))
+        h4(Tip, { content: h4("div", { style: { display: "flex", flexDirection: "column", gap: 2 } }, [h4("div", { style: { fontSize: 10, color: "#8b8b95", lineHeight: "14px" } }, tr("tip.header.text")), h4("div", { style: { fontSize: 11, color: "#e6edf3", lineHeight: "16px", wordBreak: "break-word", whiteSpace: "normal" } }, text2)]) }, h4("span", { className: "dsws-ellip", style: { maxWidth: 200 } }, text2))
       ]);
       return h4("div", { className: "dsws-trow", "data-press": "row", "data-log": "ticket.row." + (t3.key != null ? t3.key : t3.number), style: indent ? { paddingLeft: 18 } : null }, [
         h4("div", { className: "dsws-tt" }, [
@@ -38455,6 +38549,113 @@ ${formatProgressEntry(entry)}
         }()
       ]);
     });
+    const MapDetailTop = ({ st, m: m3, navCrumb, effStats, goBack, kind, tri: triProp }) => {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const mEffort = function() {
+        try {
+          return effortOf(m3);
+        } catch (e3) {
+          return "";
+        }
+      }();
+      const topBarRef = useIssueDetailFold(st, m3.number, mEffort);
+      const cKind = kind || "map";
+      const cState = typeof containerStateOf === "function" ? containerStateOf({ stats: effStats }) : effStats && effStats.total === 0 ? "empty" : effStats && effStats.total > 0 && effStats.closed === effStats.total ? "done" : "open";
+      const triEmptyColor = function() {
+        return typeof CONTAINER_EMPTY_COLOR === "string" && CONTAINER_EMPTY_COLOR ? CONTAINER_EMPTY_COLOR : "";
+      };
+      const triDoneColor = function() {
+        return typeof CONTAINER_DONE_COLOR === "string" && CONTAINER_DONE_COLOR ? CONTAINER_DONE_COLOR : "";
+      };
+      const tri = triProp || (typeof containerTriState === "function" ? containerTriState(cKind, cState) : cState === "empty" ? { labelKey: "act.inspect", color: triEmptyColor(), icon: "search", titleKey: "map.inspectTitle" } : cState === "done" ? { labelKey: "act.done", color: triDoneColor(), icon: "check", titleKey: "map.doneTitle" } : { labelKey: "act.execute", color: typeof CONTAINER_ACCENT === "object" && CONTAINER_ACCENT ? CONTAINER_ACCENT.map : "", icon: "play", titleKey: "map.executeTitle" });
+      const triTextColor = cState === "done" ? "#0c1a10" : typeof isLightHex === "function" && isLightHex(tri.color) ? "#140a1e" : "#ffffff";
+      const newStyle = { display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 6px", fontSize: 11, flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", borderColor: "transparent", background: tri.color, color: triTextColor, fontWeight: 600 };
+      const chipClass = typeof CONTAINER_CHIP_CLASS === "object" && CONTAINER_CHIP_CLASS && CONTAINER_CHIP_CLASS[cKind] ? CONTAINER_CHIP_CLASS[cKind] : cKind === "spec" ? "dsws-chip-s" : "dsws-chip-m";
+      const chipLabelKey = typeof CONTAINER_CHIP_LABEL_KEY === "object" && CONTAINER_CHIP_LABEL_KEY && CONTAINER_CHIP_LABEL_KEY[cKind] ? CONTAINER_CHIP_LABEL_KEY[cKind] : cKind === "spec" ? "list.specChip" : "list.mapChip";
+      const chipText = tr(chipLabelKey);
+      const copyUrl = function(e3) {
+        if (e3 && e3.stopPropagation) e3.stopPropagation();
+        try {
+          copyText(st, issueUrlFor(st, m3.number, mEffort), tr("toast.copiedLink", { n: m3.number }));
+        } catch (err) {
+        }
+      };
+      const openUrl2 = typeof issueUrlFor === "function" ? function() {
+        try {
+          return issueUrlFor(st, m3.number, mEffort);
+        } catch (err) {
+          return "";
+        }
+      }() : "";
+      const openIsUrl = openModeFor(st, "container", openUrl2) === "url";
+      const openTracker = function(e3) {
+        if (e3 && e3.stopPropagation) e3.stopPropagation();
+        try {
+          openTrackerTarget(st, m3.number, typeof host !== "undefined" ? host : null, mEffort, "container");
+        } catch (err) {
+        }
+      };
+      const promptText2 = function() {
+        if (typeof containerPromptText === "function") {
+          try {
+            return containerPromptText(st, Object.assign({}, m3, { stats: effStats || m3.stats }), cKind, cState, openUrl2);
+          } catch (e3) {
+          }
+        }
+        if (cState === "empty") {
+          if (cKind === "spec") return "/to-tickets " + openUrl2;
+          let t22 = "";
+          try {
+            t22 = inspectPrompt(st, m3.number, m3.title, mEffort);
+          } catch (e3) {
+            try {
+              t22 = promptTextFor(st, "mapInspect", { n: m3.number === void 0 || m3.number === null ? "" : String(m3.number), ["title"]: String(m3.title || ""), url: openUrl2 });
+              if (t22) t22 = "/wayfinder " + openUrl2 + "\n\n" + t22;
+            } catch (_3) {
+              t22 = startText(st, m3);
+            }
+          }
+          return t22;
+        }
+        if (cState === "done") return completePrompt(st, m3.number, m3.title, effStats ? effStats.total : 0, effStats ? effStats.closed : 0, mEffort);
+        if (cKind === "spec") return "/implement-spec " + openUrl2;
+        return startText(st, m3);
+      };
+      const primaryBtn = h4(Tip, { content: tr(tri.titleKey) }, h4("button", { className: "dsws-btn primary", "data-press": "button", "data-log": "map.top.exec", onClick: function() {
+        inject(st, promptText2());
+      }, style: { display: "inline-flex", alignItems: "center", gap: 4, padding: "1px 6px", fontSize: 11, background: tri.color, borderColor: "transparent", color: triTextColor, fontWeight: 600, flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } }, [
+        Ic({ n: tri.icon, size: 10 }),
+        h4("span", { "data-detail-primary-text": 1, "data-full": tr(tri.labelKey), style: { overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 } }, tr(tri.labelKey))
+      ]));
+      return h4("div", { ref: topBarRef, className: "dsws-stickybar", style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap", minWidth: 0, overflow: "hidden" } }, [
+        // 返回按钮的悬停提示走 Tip（T2/T3 纪律），不再用原生 title
+        h4(Tip, { content: tr("list.back") }, h4("button", { className: "dsws-btn", "data-press": "button", "data-log": "map.top.back", onClick: goBack, style: { display: "inline-flex", alignItems: "center", gap: 4, flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } }, [
+          Ic({ n: "back", size: 12 }),
+          h4("span", { "data-detail-back-text": 1, "data-full": tr("list.back"), style: { overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 } }, tr("list.back"))
+        ])),
+        h4(Tip, { content: navCrumb }, h4("span", { "data-detail-crumb": 1, "data-full": navCrumb, style: { fontSize: 11, color: "var(--dsw-alias-label-secondary,#a1a1aa)", whiteSpace: "nowrap", flex: "none", minWidth: 0, overflow: "hidden" } }, navCrumb)),
+        h4(Tip, { content: chipText }, h4("span", { className: "dsws-chip " + chipClass, style: { flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } }, [
+          Ic({ n: "map", size: 11 }),
+          h4("span", { "data-detail-snapshot": 1, "data-full": chipText, style: { overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 } }, chipText)
+        ])),
+        h4("span", { style: { flex: 1, minWidth: 8 } }),
+        h4("div", { style: { display: "flex", alignItems: "center", gap: 3, flex: "none", minWidth: 0, overflow: "hidden", flexWrap: "nowrap" } }, [
+          primaryBtn,
+          h4(Tip, { content: tr("map.newSessionTitle") }, h4("button", { className: "dsws-btn primary", "data-press": "button", "data-log": "map.top.newsession", onClick: function(e3) {
+            e3.stopPropagation();
+            openInNewSession(st, m3);
+          }, style: newStyle }, [
+            Ic({ n: "external-link", size: 10 }),
+            h4("span", { "data-detail-new-text": 1, "data-full": tr("list.newSessionLabel"), style: { overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 } }, tr("list.newSessionLabel"))
+          ])),
+          h4(Tip, { content: tr("tip.copyLink") }, h4("button", { className: "dsws-btn ghost", "data-press": "icon", "data-log": "map.top.copy", onClick: copyUrl, style: { display: "inline-flex", alignItems: "center", padding: "2px 4px", flex: "none" } }, Ic({ n: "clipboard", size: 13 }))),
+          openIsUrl ? h4(Tip, { content: tr("tip.openInTracker", { n: m3.number }) }, h4("a", { className: "dsws-btn ghost", href: openUrl2, target: "_blank", rel: "noreferrer", "data-press": "icon", "data-log": "map.top.link", onClick: function(e3) {
+            e3.stopPropagation();
+          }, style: { display: "inline-flex", alignItems: "center", padding: "2px 4px", flex: "none" }, "aria-label": tr("tip.openInTracker", { n: m3.number }) }, Ic({ n: "link", size: 13 }))) : h4(Tip, { content: tr("tip.openInTracker", { n: m3.number }) }, h4("button", { className: "dsws-btn ghost", onClick: openTracker, "data-press": "icon", "data-log": "map.top.link", style: { display: "inline-flex", alignItems: "center", padding: "2px 4px", flex: "none" }, "aria-label": tr("tip.openInTracker", { n: m3.number }) }, Ic({ n: "link", size: 13 })))
+        ])
+      ]);
+    };
     const DetailActionBar = ({ st, m: m3, kind, cState, effStats, tri }) => {
       const cx2 = React.useContext(DswsCtx);
       const h4 = cx2 ? cx2.h : React.createElement;
@@ -38524,6 +38725,954 @@ ${formatProgressEntry(entry)}
         }()
       ]);
     };
+    const CARD_ACTION_BY_SOURCE = {
+      diagnose: "diagnose",
+      takeover: "claim",
+      supplement: "supplement",
+      fix: "fix",
+      discuss: "grill",
+      research: "research",
+      prototype: "proto",
+      execute: "execute",
+      implement: "implement"
+    };
+    const CARD_STATUS_COPY_KEY = {
+      ready: "card.pickReady",
+      doing: "card.doing",
+      blocked: "card.blockedCount",
+      closed: "card.closedState"
+    };
+    const WAYFINDER_TYPES = ["map", "research", "prototype", "grilling", "task"];
+    const CLOSED_STATE = "CLOSED";
+    function text(value) {
+      return value === null || value === void 0 ? "" : String(value);
+    }
+    function ticketNumberOf(row) {
+      if (!row) return null;
+      const direct = row.number;
+      if (typeof direct === "number" && Number.isFinite(direct)) return direct;
+      const parsed = typeof row.key === "number" ? row.key : parseInt(text(row.key), 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    function ticketLabelNamesOf(row) {
+      const out = [];
+      const seen = {};
+      const list = row && Array.isArray(row.labels) ? row.labels : [];
+      for (const item of list) {
+        const name = typeof item === "string" ? item : text(item && item.name);
+        if (!name || seen[name]) continue;
+        seen[name] = true;
+        out.push(name);
+      }
+      return out;
+    }
+    function numberKeyOf(raw) {
+      const trimmed = text(raw).trim();
+      if (!trimmed) return "";
+      const digits = /^0*(\d+)$/.exec(trimmed);
+      return digits ? String(Number(digits[1])) : trimmed;
+    }
+    function claimedPersonOf(row) {
+      const claimed = row ? row.claimedBy : null;
+      if (claimed) {
+        if (typeof claimed === "object") return text(claimed.login) || text(claimed.name);
+        return text(claimed);
+      }
+      const list = row && Array.isArray(row.assignees) ? row.assignees : [];
+      for (const person of list) {
+        if (person && person.login) return text(person.login);
+      }
+      return "";
+    }
+    function blockerNumbersOf(row) {
+      const out = [];
+      const list = row && Array.isArray(row.blockedBy) ? row.blockedBy : [];
+      for (const raw of list) {
+        const key = numberKeyOf(raw);
+        if (key) out.push(key);
+      }
+      return out;
+    }
+    function blockerBlocksPage(blockerNo, openByNumber, blockerStates) {
+      if (Object.prototype.hasOwnProperty.call(openByNumber, blockerNo)) return openByNumber[blockerNo] === true;
+      return !blockerStates || blockerStates[blockerNo] !== "closed";
+    }
+    function ticketCardStatusOf(row, openByNumber, blockerStates) {
+      if (text(row && row.state).toUpperCase() === CLOSED_STATE) return "closed";
+      if (claimedPersonOf(row)) return "doing";
+      for (const blockerNo of blockerNumbersOf(row)) {
+        if (blockerBlocksPage(blockerNo, openByNumber, blockerStates)) return "blocked";
+      }
+      return "ready";
+    }
+    function ticketTypeOf(row) {
+      for (const name of ticketLabelNamesOf(row)) {
+        const bare = name.indexOf("wayfinder:") === 0 ? name.slice("wayfinder:".length) : "";
+        if (WAYFINDER_TYPES.indexOf(bare) >= 0) return bare;
+      }
+      const own = text(row && row.type).trim();
+      return own || "issue";
+    }
+    function cardActionOf(sourceAction) {
+      const mapped = CARD_ACTION_BY_SOURCE[sourceAction];
+      return mapped || "execute";
+    }
+    function updatedTextOf(row) {
+      const raw = text(row && row.updatedAt);
+      const matched = /^\d{4}-(\d{2})-(\d{2})/.exec(raw);
+      if (!matched) return "";
+      const month = Number(matched[1]);
+      const day = Number(matched[2]);
+      if (!(month >= 1 && month <= 12 && day >= 1 && day <= 31)) return "";
+      return matched[1] + "-" + matched[2];
+    }
+    function tagColorOf(row, labelName, colorOf) {
+      const list = row && Array.isArray(row.labels) ? row.labels : [];
+      for (const item of list) {
+        if (typeof item === "string") continue;
+        if (item && text(item.name) === labelName && item.color) return text(item.color);
+      }
+      const fromTable = colorOf ? colorOf[labelName] : "";
+      return fromTable ? text(fromTable) : "";
+    }
+    function typeTagsOf(row, ctx2) {
+      const type = ticketTypeOf(row);
+      if (type === "issue") return [];
+      const labelName = "wayfinder:" + type;
+      const color = tagColorOf(row, labelName, ctx2.colorOf || null);
+      const tag = { text: ctx2.textOf("type." + type) };
+      if (color) tag.color = color;
+      return [tag];
+    }
+    function rowCardIdOf(prefix, numberKey, rowKey) {
+      if (!prefix || !numberKey) return null;
+      const suffix = rowKey && rowKey !== numberKey ? "-" + rowKey : "";
+      return prefix + "-" + numberKey + suffix;
+    }
+    function ticketFactsContextOf(rows, env) {
+      const openByNumber = {};
+      const blockerStates = {};
+      const titleByNumber = {};
+      const cardIdByNumber = {};
+      const firstBlockedByBlocker = {};
+      for (const row of rows) {
+        const number = ticketNumberOf(row);
+        if (number === null) continue;
+        const key = String(number);
+        openByNumber[key] = text(row.state).toUpperCase() !== CLOSED_STATE;
+        titleByNumber[key] = text(row.title);
+        if (cardIdByNumber[key] === void 0) {
+          cardIdByNumber[key] = rowCardIdOf(env.cardIdPrefix, key, text(row.key) || key);
+        }
+      }
+      for (const row of rows) {
+        const refs = row && Array.isArray(row.blockedByRefs) ? row.blockedByRefs : [];
+        for (const ref of refs) {
+          const key = numberKeyOf(ref && ref.key);
+          if (!key) continue;
+          const state = text(ref && ref.state).trim().toUpperCase();
+          if (state === "OPEN") blockerStates[key] = "open";
+          else if (state === CLOSED_STATE && blockerStates[key] !== "open") blockerStates[key] = "closed";
+          const refTitle = text(ref && ref.title);
+          if (refTitle && !titleByNumber[key]) titleByNumber[key] = refTitle;
+        }
+      }
+      for (const row of rows) {
+        const number = ticketNumberOf(row);
+        if (number === null) continue;
+        if (ticketCardStatusOf(row, openByNumber, blockerStates) !== "blocked") continue;
+        const primary = primaryBlockerNumberOf(row, openByNumber, blockerStates);
+        if (!primary) continue;
+        const blockedKey = String(number);
+        const previous = firstBlockedByBlocker[primary];
+        if (previous === void 0) {
+          firstBlockedByBlocker[primary] = blockedKey;
+          continue;
+        }
+        if (parseInt(blockedKey, 10) < parseInt(previous, 10)) firstBlockedByBlocker[primary] = blockedKey;
+      }
+      return {
+        cardIdPrefix: env.cardIdPrefix,
+        colorOf: env.colorOf || null,
+        actionOf: env.actionOf,
+        textOf: env.textOf,
+        openByNumber,
+        blockerStates,
+        titleByNumber,
+        cardIdByNumber,
+        firstBlockedByBlocker
+      };
+    }
+    function primaryBlockerNumberOf(row, openByNumber, blockerStates) {
+      let best = "";
+      for (const blockerNo of blockerNumbersOf(row)) {
+        if (!blockerBlocksPage(blockerNo, openByNumber, blockerStates)) continue;
+        if (!best || parseInt(blockerNo, 10) < parseInt(best, 10)) best = blockerNo;
+      }
+      return best;
+    }
+    function refOf(numberKey, ctx2) {
+      return {
+        no: numberKey,
+        title: ctx2.titleByNumber[numberKey] || "",
+        cardId: ctx2.cardIdByNumber[numberKey] || null
+      };
+    }
+    function ticketCardFactsOf(row, ctx2) {
+      const number = ticketNumberOf(row);
+      const numberKey = number === null ? "" : String(number);
+      const rowKey = text(row.key) || numberKey;
+      const status = ticketCardStatusOf(row, ctx2.openByNumber, ctx2.blockerStates);
+      const closed = status === "closed";
+      const action = cardActionOf(ctx2.actionOf(row));
+      let blockedBy = null;
+      if (status === "blocked") {
+        const blockerNo = primaryBlockerNumberOf(row, ctx2.openByNumber, ctx2.blockerStates);
+        if (blockerNo) blockedBy = refOf(blockerNo, ctx2);
+      }
+      let blocks = null;
+      if (!closed && numberKey) {
+        const blockedNo = ctx2.firstBlockedByBlocker[numberKey];
+        if (blockedNo) blocks = refOf(blockedNo, ctx2);
+      }
+      const pickCorner = closed ? null : status === "ready" ? "ready" : status === "doing" ? "doing" : null;
+      return {
+        number,
+        rowKey,
+        noText: numberKey ? "#" + numberKey : "",
+        title: text(row.title),
+        status,
+        action,
+        tags: typeTagsOf(row, ctx2),
+        // 在办的票优先画「在办」角标，不再给 BUG 三角（p101 定版 cornerFor：先判认领，再判 bug）。
+        // 组件本身是 BUG 优先，所以这处优先级必须在这里定死，不能把两个布尔一起丢给页面。
+        bug: status !== "doing" && ticketLabelNamesOf(row).indexOf("bug") >= 0,
+        claimedBy: closed ? "" : claimedPersonOf(row),
+        updatedText: updatedTextOf(row),
+        closedAt: text(row.closedAt),
+        footText: ctx2.textOf(CARD_STATUS_COPY_KEY[status]),
+        pickCorner,
+        cardId: rowCardIdOf(ctx2.cardIdPrefix, numberKey, rowKey),
+        blockedBy,
+        blocks
+      };
+    }
+    const STATUS_RANK = { doing: 0, ready: 1, blocked: 2, closed: 3 };
+    function numberOrLast(facts) {
+      return facts.number === null ? Number.MAX_SAFE_INTEGER : facts.number;
+    }
+    function blockerNumberOrLast(facts) {
+      if (!facts.blockedBy) return Number.MAX_SAFE_INTEGER;
+      const parsed = Number(String(facts.blockedBy.no).replace(/^#/, ""));
+      return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+    }
+    function compareWithinSection(left, right) {
+      const byNumber = numberOrLast(left) - numberOrLast(right);
+      if (byNumber !== 0) return byNumber;
+      if (left.rowKey !== right.rowKey) return left.rowKey < right.rowKey ? -1 : 1;
+      if (left.title !== right.title) return left.title < right.title ? -1 : 1;
+      return 0;
+    }
+    function compareForOpenPlacement(left, right) {
+      const byRank = STATUS_RANK[left.status] - STATUS_RANK[right.status];
+      if (byRank !== 0) return byRank;
+      if (left.status === "blocked" && right.status === "blocked") {
+        const byBlocker = blockerNumberOrLast(left) - blockerNumberOrLast(right);
+        if (byBlocker !== 0) return byBlocker;
+      }
+      return compareWithinSection(left, right);
+    }
+    function orderOpenTickets(facts) {
+      const open = facts.filter(function(one) {
+        return one.status !== "closed";
+      });
+      return open.sort(compareForOpenPlacement);
+    }
+    function closedStampOf(facts) {
+      const parsed = Date.parse(facts.closedAt || "");
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    function orderClosedTickets(facts) {
+      const closed = facts.filter(function(one) {
+        return one.status === "closed";
+      });
+      return closed.sort(function(left, right) {
+        const byStamp = closedStampOf(right) - closedStampOf(left);
+        if (byStamp !== 0) return byStamp;
+        return compareWithinSection(left, right);
+      });
+    }
+    function orderTicketBoard(facts) {
+      return { open: orderOpenTickets(facts), closed: orderClosedTickets(facts) };
+    }
+    function boardCountsOf(facts) {
+      const counts = { total: 0, closed: 0, ready: 0, doing: 0, blocked: 0 };
+      for (const one of facts) {
+        counts.total += 1;
+        if (one.status === "closed") counts.closed += 1;
+        else if (one.status === "ready") counts.ready += 1;
+        else if (one.status === "doing") counts.doing += 1;
+        else counts.blocked += 1;
+      }
+      return counts;
+    }
+    function rowsOf(value) {
+      return Array.isArray(value) ? value : [];
+    }
+    function messageOf(error) {
+      if (!error) return "";
+      if (typeof error === "string") return error;
+      return String(error.message || "");
+    }
+    function emptyOf(state, rows, stats) {
+      if (state !== "ready") return false;
+      if (rows.length > 0) return false;
+      const total = stats && typeof stats.total === "number" ? stats.total : 0;
+      return !(total > 0);
+    }
+    function ticketKeyOf(row) {
+      if (!row) return "";
+      const n2 = row.number != null ? row.number : row.key;
+      return n2 == null ? "" : String(n2);
+    }
+    function mergeTicketRows(snapshotRows, fetchedRows) {
+      const out = snapshotRows.slice();
+      const at = /* @__PURE__ */ new Map();
+      for (let i3 = 0; i3 < out.length; i3 += 1) at.set(ticketKeyOf(out[i3]), i3);
+      for (let j4 = 0; j4 < fetchedRows.length; j4 += 1) {
+        const key = ticketKeyOf(fetchedRows[j4]);
+        const hit = at.get(key);
+        if (hit !== void 0) out[hit] = fetchedRows[j4];
+        else {
+          at.set(key, out.length);
+          out.push(fetchedRows[j4]);
+        }
+      }
+      return out;
+    }
+    function ticketFeedOf(mt, m3) {
+      const bucket = mt || {};
+      const map = m3 || {};
+      const mode = String(bucket.mode || "");
+      const snapshotRows = rowsOf(map.tickets);
+      const snapshotStats = map.stats || null;
+      if (mode === "real" && Array.isArray(bucket.items)) {
+        const rows = mergeTicketRows(snapshotRows, bucket.items);
+        return {
+          rows,
+          stats: bucket.stats || snapshotStats,
+          state: "ready",
+          source: "requested",
+          total: typeof bucket.total === "number" ? bucket.total : null,
+          capped: bucket.capped === true,
+          missing: typeof bucket.missing === "number" ? bucket.missing : 0,
+          failedMessage: "",
+          empty: emptyOf("ready", rows, bucket.stats || snapshotStats)
+        };
+      }
+      if (mode === "real") {
+        return {
+          rows: snapshotRows,
+          stats: snapshotStats,
+          state: "failed",
+          source: "snapshot",
+          total: null,
+          capped: false,
+          missing: 0,
+          failedMessage: "",
+          empty: false
+        };
+      }
+      if (mode === "loading") {
+        return {
+          rows: snapshotRows,
+          stats: snapshotStats,
+          state: "loading",
+          source: "snapshot",
+          total: null,
+          capped: false,
+          missing: 0,
+          failedMessage: "",
+          empty: emptyOf("loading", snapshotRows, snapshotStats)
+        };
+      }
+      if (mode === "err") {
+        const kind = bucket.error && typeof bucket.error === "object" ? String(bucket.error.kind || "") : "";
+        const unsupported = kind === "unsupported";
+        return {
+          rows: snapshotRows,
+          stats: snapshotStats,
+          state: unsupported ? "unsupported" : "failed",
+          source: "snapshot",
+          total: null,
+          capped: false,
+          missing: 0,
+          failedMessage: unsupported ? "" : messageOf(bucket.error).slice(0, 120),
+          empty: emptyOf(unsupported ? "unsupported" : "failed", snapshotRows, snapshotStats)
+        };
+      }
+      return {
+        rows: snapshotRows,
+        stats: snapshotStats,
+        state: "ready",
+        source: "snapshot",
+        total: null,
+        capped: false,
+        missing: 0,
+        failedMessage: "",
+        empty: emptyOf("ready", snapshotRows, snapshotStats)
+      };
+    }
+    const MAP_PROFILE_CAPPED_LIMIT = 1e3;
+    const FEED_PLACEHOLDER = "–";
+    const MAP_PROFILE_COUNT_KEY = {
+      map: "map.subCount",
+      spec: "map.specSubCount"
+    };
+    function textOf(value) {
+      return typeof value === "string" ? value.trim() : "";
+    }
+    function integerOf(value) {
+      if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
+      if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim());
+      return null;
+    }
+    function containerKindOfRow(m3) {
+      return m3 && String(m3.type || "") === "spec" ? "spec" : "map";
+    }
+    function mapProgressPercentOf(counts) {
+      const c3 = counts || { total: 0, closed: 0, ready: 0, doing: 0, blocked: 0 };
+      if (!(c3.total > 0)) return 0;
+      const pct = Math.round(c3.closed / c3.total * 100);
+      if (pct < 0) return 0;
+      return pct > 100 ? 100 : pct;
+    }
+    function mapFeedSegmentsOf(feed, kind) {
+      const f3 = feed || null;
+      if (!f3) return [];
+      if (f3.state === "loading") {
+        const stats2 = f3.stats || {};
+        const total = integerOf(stats2.total);
+        const countKey2 = MAP_PROFILE_COUNT_KEY[kind || "map"];
+        if (total !== null && total > 0) {
+          const closed = integerOf(stats2.closed) !== null ? integerOf(stats2.closed) : 0;
+          return [{ key: countKey2, params: { n: total, c: closed } }];
+        }
+        return [{ key: countKey2, params: { n: FEED_PLACEHOLDER, c: FEED_PLACEHOLDER } }];
+      }
+      if (f3.state === "unsupported") return [];
+      if (f3.state === "failed") return [{ key: "map.subCountFail", params: { msg: f3.failedMessage || "" } }];
+      const stats = f3.stats || {};
+      const n2 = integerOf(stats.total) !== null ? integerOf(stats.total) : f3.rows.length;
+      const c3 = integerOf(stats.closed) !== null ? integerOf(stats.closed) : 0;
+      const countKey = MAP_PROFILE_COUNT_KEY[kind || "map"];
+      const segments = [{ key: countKey, params: { n: n2, c: c3 } }];
+      if (f3.capped) segments.push({ key: "map.subCountCapped", params: { n: MAP_PROFILE_CAPPED_LIMIT } });
+      if (f3.missing > 0) segments.push({ key: "map.subCountShort", params: { n: f3.missing } });
+      return segments;
+    }
+    function mapErrorTextOf(m3) {
+      if (!m3 || !m3.error) return "";
+      const raw = typeof m3.error === "string" ? m3.error : m3.error.error;
+      return textOf(raw).slice(0, 160);
+    }
+    function mapProfileOf(m3, feed, counts) {
+      const row = m3 || {};
+      const kind = containerKindOfRow(row);
+      const destination = textOf(row.destination);
+      return {
+        kind,
+        title: textOf(row.title),
+        destination,
+        hasDestination: destination.length > 0,
+        counts: counts || { total: 0, closed: 0, ready: 0, doing: 0, blocked: 0 },
+        progressPercent: mapProgressPercentOf(counts),
+        feedSegments: mapFeedSegmentsOf(feed, kind),
+        errorText: mapErrorTextOf(row)
+      };
+    }
+    function bind(facts, handler) {
+      return typeof handler === "function" ? function() {
+        handler(facts);
+      } : null;
+    }
+    function cardPropsOf(facts, handlers, colorOf) {
+      const h4 = handlers || {};
+      return {
+        action: facts.action,
+        noText: facts.noText,
+        title: facts.title,
+        tags: facts.tags,
+        updatedText: facts.updatedText,
+        footActionText: facts.footText,
+        closed: facts.status === "closed",
+        claimedBy: facts.claimedBy || null,
+        bugCorner: facts.bug,
+        pickCorner: facts.pickCorner,
+        blockedBy: facts.blockedBy ? { no: facts.blockedBy.no, title: facts.blockedBy.title, cardId: facts.blockedBy.cardId } : null,
+        blocksChip: facts.blocks ? { no: facts.blocks.no, title: facts.blocks.title } : null,
+        cardId: facts.cardId,
+        colorOf: colorOf || null,
+        onMain: bind(facts, h4.onMain),
+        onNew: bind(facts, h4.onNew),
+        onCopy: bind(facts, h4.onCopy),
+        onOpen: bind(facts, h4.onOpen),
+        onCard: bind(facts, h4.onCard)
+      };
+    }
+    function cardPropsListOf(factsList, handlers, colorOf) {
+      return factsList.map(function(facts) {
+        return cardPropsOf(facts, handlers, colorOf);
+      });
+    }
+    function cardPropsOfBoard(board, handlers, colorOf) {
+      const open = cardPropsListOf(board.open, handlers, colorOf);
+      const closed = cardPropsListOf(board.closed, handlers, colorOf);
+      return { open, closed, sequence: open.concat(closed) };
+    }
+    function mapDetailPageModelOf(input) {
+      const feed = ticketFeedOf(input.bucket, input.map);
+      const env = {
+        cardIdPrefix: input.cardIdPrefix,
+        colorOf: input.colorOf || null,
+        actionOf: input.actionOf,
+        textOf: input.textOf
+      };
+      const ctx2 = ticketFactsContextOf(feed.rows, env);
+      const facts = feed.rows.map(function(row) {
+        return ticketCardFactsOf(row, ctx2);
+      });
+      const board = orderTicketBoard(facts);
+      const counts = boardCountsOf(facts);
+      const profile = mapProfileOf(input.map, feed, counts);
+      const colorOf = input.colorOf || null;
+      const rawHandlers = input.handlers || null;
+      const handlers = typeof rawHandlers === "function" ? rawHandlers(feed.rows) : rawHandlers;
+      return {
+        profile,
+        feed,
+        board,
+        counts,
+        cards: cardPropsOfBoard(board, handlers, colorOf)
+      };
+    }
+    function useMapTicketsFeed(st, m3) {
+      const effortId = String(effortOf(m3) || "");
+      const rawKey = m3 && m3.key !== void 0 && m3.key !== null && String(m3.key) !== "" ? m3.key : m3 && m3.number;
+      const mKey = String(rawKey === void 0 || rawKey === null ? "" : rawKey).trim();
+      const bucketKey = idOfParts(effortId, mKey);
+      const cwd = st && st.cwd;
+      const bucket = st && st.mapTickets && st.mapTickets[bucketKey] || null;
+      React.useEffect(function() {
+        if (!m3 || !mKey) return;
+        try {
+          fetchMapTickets(st, mKey, { effortId });
+        } catch (e3) {
+        }
+      }, [bucketKey, cwd]);
+      return bucket;
+    }
+    function rowKeyOfRow(row) {
+      const raw = row.key;
+      return raw === void 0 || raw === null || String(raw) === "" ? "" : String(raw);
+    }
+    function rowIndexOf(rows) {
+      const index = { byRowKey: {}, byNumber: {}, duplicateNumbers: {} };
+      for (const row of rows || []) {
+        if (!row) continue;
+        const rowKey = rowKeyOfRow(row);
+        if (rowKey && index.byRowKey[rowKey] === void 0) index.byRowKey[rowKey] = row;
+        const no = row.number;
+        if (no === void 0 || no === null || no === "") continue;
+        const numberKey = String(no);
+        if (index.byNumber[numberKey] === void 0) index.byNumber[numberKey] = row;
+        else index.duplicateNumbers[numberKey] = true;
+      }
+      return index;
+    }
+    function sourceRowOf(facts, index) {
+      if (!facts) return null;
+      const rowKey = facts.rowKey != null ? String(facts.rowKey) : "";
+      if (rowKey) {
+        const byKey = index.byRowKey[rowKey];
+        if (byKey) return byKey;
+      }
+      if (facts.number != null) {
+        const numberKey = String(facts.number);
+        if (index.duplicateNumbers[numberKey]) return null;
+        return index.byNumber[numberKey] || null;
+      }
+      return null;
+    }
+    function urlOf(st, facts, row) {
+      try {
+        return String(issueUrlFor(st, facts.number, row ? effortOf(row) : void 0) || "");
+      } catch (e3) {
+        return "";
+      }
+    }
+    function pageActionHandlersOf(st, rows) {
+      const index = rowIndexOf(rows || []);
+      return {
+        /** 主按钮：把这张票的推进提示词注入输入框（注入内容与列表行的同一颗按钮同源：rowActionText）。 */
+        onMain: function(facts) {
+          const row = sourceRowOf(facts, index);
+          if (!row) return;
+          try {
+            inject(st, rowActionText(st, row));
+          } catch (e3) {
+          }
+        },
+        /** 新会话：在新会话里推进这张票（与列表行、老地图的行内按钮同一个入口）。 */
+        onNew: function(facts) {
+          const row = sourceRowOf(facts, index);
+          if (!row) return;
+          try {
+            openInNewSession(st, row);
+          } catch (e3) {
+          }
+        },
+        /** 复制：复制这张票的链接（复制成功/失败的提示由 copyText 自己弹，卡片上不另做对勾）。 */
+        onCopy: function(facts) {
+          const row = sourceRowOf(facts, index);
+          const url = urlOf(st, facts, row);
+          if (!url) return;
+          try {
+            copyText(st, url, tr("toast.copiedLink", { n: facts.number == null ? "" : facts.number }));
+          } catch (e3) {
+          }
+        },
+        /** 打开：打开方式由后端声明（openIssue），不再按地址前缀分流（#1557）。 */
+        onOpen: function(facts) {
+          const row = sourceRowOf(facts, index);
+          const url = urlOf(st, facts, row);
+          if (!url) return;
+          try {
+            openTrackerTarget(st, facts.number, typeof host !== "undefined" ? host : null, row ? effortOf(row) : void 0, "issue");
+          } catch (e3) {
+          }
+        },
+        /**
+         * 整卡点按：进这张票的详情页。
+         *
+         * 分流交给 enterSubDetail（views/subIssueRouting.ts）：这张票自己是地图或规格时压地图详情，
+         * 其余压票详情。它看的是行上的标签与 type，不是卡面（卡面只有九种样张、认不出容器），
+         * 所以必须拿原始行去问，不能拿 facts 猜。
+         */
+        onCard: function(facts) {
+          const row = sourceRowOf(facts, index);
+          if (!row) return;
+          try {
+            enterSubDetail(st, row, effortOf(row));
+          } catch (e3) {
+          }
+        }
+      };
+    }
+    const COUNT_CHIPS = [
+      { status: "ready", labelKey: "map.grpTakeable" },
+      { status: "doing", labelKey: "map.grpClaimed" },
+      { status: "blocked", labelKey: "map.grpBlocked" },
+      { status: "closed", labelKey: "map.grpClosed" }
+    ];
+    const PLACEHOLDER = "–";
+    function progressNode(h4, profile, feed, busy) {
+      const total = profile.counts ? profile.counts.total : 0;
+      const known = total > 0;
+      const percent = known ? profile.progressPercent : 0;
+      const segments = profile.feedSegments || [];
+      const feedText = segments.map(function(segment) {
+        return tr(segment.key, segment.params || {});
+      }).join(" · ");
+      return h4("div", {
+        key: "prog",
+        className: "m2v2-prog",
+        "data-busy": busy && !known ? "1" : "0"
+      }, [
+        h4("span", { key: "cap", className: "m2v2-prog-cap" }, tr("map.progressCap")),
+        h4(
+          "div",
+          { key: "track", className: "m2v2-track" },
+          h4("div", { className: "m2v2-fill", style: { width: percent + "%" } })
+        ),
+        h4("span", { key: "num", className: "m2v2-prog-num" }, known ? percent + "%" : busy ? PLACEHOLDER : "0%"),
+        h4("span", {
+          key: "feed",
+          className: "m2v2-feed",
+          "data-state": feed ? String(feed.state || "") : "",
+          title: feedText
+        }, feedText)
+      ]);
+    }
+    function titleNode(h4, profile, openable) {
+      const title = profile.title || "";
+      return h4("h1", { key: "title", className: "m2v2-title" }, [
+        h4("span", { key: "txt", className: "m2v2-title-txt" }, title),
+        openable ? h4("span", { key: "go", className: "m2v2-title-go", "aria-hidden": "1" }, tr("map.archive") + " ›") : null
+      ]);
+    }
+    function insideOwnControl(e3) {
+      const target = e3 && e3.target;
+      if (!target || typeof target.closest !== "function") return false;
+      try {
+        return !!target.closest("a,button,img");
+      } catch (err) {
+        return false;
+      }
+    }
+    function MapProfileHeader(props) {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const st = props && props.st;
+      const profile = props && props.profile;
+      const feed = props && props.feed || null;
+      const busy = !!(props && props.busy);
+      const onOpenArchive = props && typeof props.onOpenArchive === "function" ? props.onOpenArchive : null;
+      if (!profile) return null;
+      const counts = profile.counts || { total: 0, closed: 0, ready: 0, doing: 0, blocked: 0 };
+      const unknownCounts = busy && !(counts.total > 0);
+      const countsNode = h4("div", { key: "counts", className: "m2v2-counts" }, COUNT_CHIPS.map(function(chip) {
+        const n2 = counts[chip.status] || 0;
+        return h4("span", {
+          key: chip.status,
+          className: "m2v2-count",
+          "data-status": chip.status
+        }, tr(chip.labelKey, { n: unknownCounts ? PLACEHOLDER : n2 }));
+      }));
+      const quietEmpty = !busy && !!(feed && feed.state === "ready" && counts.total === 0);
+      const metaNode = h4("div", {
+        key: "meta",
+        className: "m2v2-meta",
+        "data-empty": quietEmpty ? "1" : "0",
+        "aria-busy": busy ? "true" : "false"
+      }, [
+        countsNode,
+        progressNode(h4, profile, feed, busy)
+      ]);
+      const destination = profile.hasDestination ? h4("div", { key: "dest", className: "m2v2-dest" }, [
+        h4("span", { key: "ic", className: "m2v2-dest-ic" }, Ic({ n: "target", size: 12 })),
+        h4(
+          "div",
+          { key: "txt", style: { flex: 1, minWidth: 0 } },
+          typeof mdToHtml === "function" ? mdToHtml(profile.destination, { st }) : profile.destination
+        )
+      ]) : profile.kind === "spec" ? null : h4("div", { key: "dest", className: "m2v2-dest m2v2-dest-empty" }, [
+        h4("span", { key: "ic", className: "m2v2-dest-ic" }, Ic({ n: "target", size: 12 })),
+        h4("span", { key: "txt" }, tr("list.noDest"))
+      ]);
+      const openable = !!onOpenArchive;
+      const sectionProps = {
+        className: "m2v2-profile" + (openable ? " m2v2-profile-link" : "")
+      };
+      if (openable) {
+        Object.assign(sectionProps, {
+          role: "button",
+          tabIndex: 0,
+          title: tr("map.archive"),
+          "data-press": "row",
+          "data-log": "mapv2.archive.open",
+          onClick: function(e3) {
+            if (insideOwnControl(e3)) return;
+            onOpenArchive();
+          },
+          onKeyDown: function(e3) {
+            if (!e3 || e3.target !== e3.currentTarget) return;
+            const k4 = e3 && e3.key;
+            if (k4 === "Enter" || k4 === " ") {
+              try {
+                if (e3.preventDefault) e3.preventDefault();
+              } catch (err) {
+              }
+              onOpenArchive();
+            }
+          }
+        });
+      }
+      return h4("section", sectionProps, [
+        titleNode(h4, profile, openable),
+        destination,
+        metaNode,
+        profile.errorText ? h4("div", { key: "err", className: "m2v2-err" }, [
+          h4("span", { key: "ic" }, Ic({ n: "alert", size: 12 })),
+          h4("span", { key: "txt" }, profile.errorText)
+        ]) : null
+      ]);
+    }
+    function emptyNode(h4) {
+      return h4("div", { className: "m2v2-empty" }, tr("map.subCount", { n: 0, c: 0 }));
+    }
+    function pxOf(value) {
+      const n2 = parseFloat(String(value || ""));
+      return isFinite(n2) ? n2 : 0;
+    }
+    let charMeasureCtx = null;
+    function charWidthOf(font) {
+      try {
+        if (!charMeasureCtx && typeof document !== "undefined" && document.createElement) {
+          const canvas = document.createElement("canvas");
+          charMeasureCtx = canvas && canvas.getContext ? canvas.getContext("2d") : null;
+        }
+        if (charMeasureCtx) {
+          charMeasureCtx.font = font;
+          const w4 = charMeasureCtx.measureText("字").width;
+          if (w4 > 0) return w4;
+        }
+      } catch (e3) {
+        charMeasureCtx = null;
+      }
+      const size = /([0-9]+(?:\.[0-9]+)?)px/.exec(String(font || ""));
+      return size ? parseFloat(size[1]) : 12;
+    }
+    function fitFlowLabels(root) {
+      if (!root || typeof root.querySelectorAll !== "function" || typeof window === "undefined") return;
+      const buttons = root.querySelectorAll(".cd-abtn.label");
+      for (let i3 = 0; i3 < buttons.length; i3 += 1) {
+        const btn = buttons[i3];
+        const lbl = btn.querySelector(".cd-lbl");
+        if (!lbl) continue;
+        const text2 = String(lbl.textContent || "");
+        if (!text2) continue;
+        const btnStyle = window.getComputedStyle(btn);
+        const lblStyle = window.getComputedStyle(lbl);
+        const padding = pxOf(btnStyle.paddingLeft) + pxOf(btnStyle.paddingRight);
+        const icon = btn.querySelector("svg");
+        const iconWidth = icon && icon.getBoundingClientRect ? icon.getBoundingClientRect().width : 0;
+        const gap = pxOf(btnStyle.columnGap) || pxOf(btnStyle.gap);
+        const avail = Math.max(0, btn.clientWidth - padding - iconWidth - gap);
+        const charWidth = charWidthOf(lblStyle.font || btnStyle.font);
+        const fit = Math.max(0, Math.min(text2.length, Math.floor(avail / charWidth + 1e-4)));
+        lbl.style.width = fit >= text2.length ? "" : fit * charWidth + "px";
+      }
+    }
+    function TicketCardFlow(props) {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const cards = props && props.cards || [];
+      const flowRef = React.useRef(null);
+      React.useEffect(function() {
+        const el = flowRef.current;
+        if (!el) return;
+        let timer2 = 0;
+        const run = function() {
+          fitFlowLabels(el);
+        };
+        const schedule = function() {
+          if (timer2) return;
+          timer2 = setTimeout(function() {
+            timer2 = 0;
+            run();
+          }, 0);
+        };
+        run();
+        let observer = null;
+        if (typeof ResizeObserver === "function") {
+          observer = new ResizeObserver(schedule);
+          observer.observe(el);
+        }
+        window.addEventListener("resize", schedule);
+        return function() {
+          if (observer) observer.disconnect();
+          window.removeEventListener("resize", schedule);
+          if (timer2) clearTimeout(timer2);
+        };
+      }, [cards.length]);
+      if (props && props.empty) return emptyNode(h4);
+      if (!cards.length) return null;
+      return h4("div", { className: "m2v2-flow", ref: flowRef }, cards.map(function(card, index) {
+        const id = card.cardId || card.noText || "c" + index;
+        return h4(PixelIssueCard, Object.assign({ key: id }, card));
+      }));
+    }
+    function navCrumbOf(st, m3) {
+      let arr = null;
+      try {
+        arr = st && Array.isArray(st.navStack) ? st.navStack : null;
+      } catch (e3) {
+        arr = null;
+      }
+      if (arr && arr.length >= 2) {
+        const parent = arr[arr.length - 2];
+        const head = arr.length > 2 ? "… / " : "";
+        return head + "#" + parent.n + " / #" + m3.number;
+      }
+      return tr("panel.tabList") + " / #" + m3.number;
+    }
+    function cardIdPrefixOf(mapId) {
+      return "m2-" + String(mapId).replace(/[^A-Za-z0-9_-]+/g, "-");
+    }
+    function MapDetailV2Page(props) {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const st = props && props.st;
+      const g4 = props && props.g;
+      const m3 = g4 && g4.m;
+      const bucket = useMapTicketsFeed(st, m3);
+      if (!m3) return h4("div", { className: "m2v2-page" });
+      const mId = idOf(m3);
+      const colorOf = Object.assign({}, buildColorOf(st), { implement: CONTAINER_ACCENT.spec });
+      const cardIdPrefix = cardIdPrefixOf(mId);
+      const model = mapDetailPageModelOf({
+        map: m3,
+        bucket,
+        cardIdPrefix,
+        colorOf,
+        // 主按钮的动作由内核按原始行判定（九种动作名），卡片层再映射成九种样张（model/tickets/ticketCardFacts.ts）。
+        actionOf: function(row) {
+          return rowActionKind(row);
+        },
+        textOf: tr,
+        // 四个按钮具体干什么要问宿主，交给 wiring；行由模型交回来，保证回调认的行就是画出来的那批行。
+        handlers: function(rows) {
+          return pageActionHandlersOf(st, rows);
+        }
+      });
+      const busy = !bucket || String(bucket.mode || "") === "loading";
+      const effStats = bucket && bucket.mode === "real" && bucket.stats ? bucket.stats : m3.stats || null;
+      const cKind = containerKindOf(m3) || "map";
+      const cState = containerStateOf({ stats: effStats });
+      const tri = containerTriState(cKind, cState);
+      const openArchive = function() {
+        const raw = m3 && (m3.number !== void 0 && m3.number !== null ? m3.number : m3.key);
+        if (raw === void 0 || raw === null || String(raw).trim() === "") return;
+        const n2 = Number(raw);
+        if (!isFinite(n2) || n2 < 0) return;
+        if (typeof pushNav === "function") pushNav(st, "issue", n2, effortOf(m3));
+      };
+      return h4("div", { className: "m2v2-page" }, [
+        // 顶栏：维护者要求这一行不变，所以原样复用老页的 MapDetailTop（内含逐字折叠机与 data-detail-* 标记）。
+        h4(MapDetailTop, {
+          key: "top",
+          st,
+          m: m3,
+          navCrumb: navCrumbOf(st, m3),
+          effStats,
+          goBack: function() {
+            popNav(st);
+          },
+          kind: cKind,
+          tri
+        }),
+        // 地图档案：MAP 自己的内容（替代老页的 MapDetailHead + Destination + Notes + 三段折叠）。
+        // 长正文不在这里画，点标题进这张地图的 issue 详情页看（openArchive）。
+        h4(MapProfileHeader, {
+          key: "profile",
+          st,
+          profile: model.profile,
+          feed: model.feed,
+          busy,
+          onOpenArchive: openArchive
+        }),
+        // 卡片流：一条连续的流，顺序由模型排好（在办 → 可接 → 被挡 → 已完成）。
+        h4(TicketCardFlow, { key: "flow", cards: model.cards.sequence, empty: model.feed.empty }),
+        // 图片放大浮层：与议题详情共用同一渲染函数与同一共享状态（markdown 里的图能点开）。
+        // 外面套一个 display:contents 的容器只是为了给数组子元素一个 key（浮层没打开时返回 null）。
+        h4(
+          "div",
+          { key: "overlay", style: { display: "contents" } },
+          typeof mdImgOverlay === "function" ? mdImgOverlay(st) : null
+        )
+      ]);
+    }
     const READ_PROJECTION_KEY = "dsws.readProjection";
     const READ_PROJECTION_MODES = ["snapshot", "legacy"];
     function readProjectionMode() {
@@ -38722,8 +39871,8 @@ ${formatProgressEntry(entry)}
       const cmtRes = !st.cmtSending && st.cmtResult ? st.cmtResult.kind : "";
       const doSubmit = function() {
         if (st.cmtSending) return;
-        const text = String(st.cmtDraft || "").trim();
-        if (!text) return;
+        const text2 = String(st.cmtDraft || "").trim();
+        if (!text2) return;
         if (typeof submitIssueComment !== "function") {
           st.cmtError = { kind: "env" };
           emit(st);
@@ -38734,7 +39883,7 @@ ${formatProgressEntry(entry)}
         st.cmtResult = null;
         emit(st);
         const startedAt = Date.now();
-        submitIssueComment(st, issueNumber, text, { effortId: _eff }).then(function(res) {
+        submitIssueComment(st, issueNumber, text2, { effortId: _eff }).then(function(res) {
           st.cmtSending = false;
           if (!res || res.ok !== true) {
             st.cmtError = res && res.error || { kind: "network" };
@@ -38744,7 +39893,7 @@ ${formatProgressEntry(entry)}
           }
           st.cmtDraft = "";
           st.cmtError = null;
-          st.cmtConfirm = { body: text, at: startedAt };
+          st.cmtConfirm = { body: text2, at: startedAt };
           st.cmtResult = { kind: "ok", at: startedAt };
           emit(st);
           try {
@@ -38937,8 +40086,8 @@ ${formatProgressEntry(entry)}
         const s3 = steps[i3];
         if (s3.el === "back" || s3.el === "crumb" || s3.el === "snapshot" || s3.el === "primary" || s3.el === "newSession") dropped[s3.el] = s3.n;
       }
-      const cut = function(text, drop) {
-        return String(text || "").slice(0, Math.max(0, String(text || "").length - drop));
+      const cut = function(text2, drop) {
+        return String(text2 || "").slice(0, Math.max(0, String(text2 || "").length - drop));
       };
       return {
         tier: n2,
@@ -39237,16 +40386,16 @@ ${formatProgressEntry(entry)}
         }
       }();
       const primaryInfo = function() {
-        let text = "";
+        let text2 = "";
         try {
-          text = typeof rowActionText === "function" ? rowActionText(st, fakeIssue) : "";
+          text2 = typeof rowActionText === "function" ? rowActionText(st, fakeIssue) : "";
         } catch (e3) {
-          text = "";
+          text2 = "";
         }
         if (containerInfo && typeof containerTriState === "function") {
           try {
             const tri = containerTriState(containerInfo.kind, containerInfo.state);
-            return { icon: tri.icon, label: tr(tri.labelKey), tip: tr(tri.titleKey), text };
+            return { icon: tri.icon, label: tr(tri.labelKey), tip: tr(tri.titleKey), text: text2 };
           } catch (eC) {
           }
         }
@@ -39307,7 +40456,7 @@ ${formatProgressEntry(entry)}
           else if (label === tr("act.execute")) tip = tr("tip.execute");
         } catch (e22) {
         }
-        return { icon, label, tip, text };
+        return { icon, label, tip, text: text2 };
       }();
       let actColor = typeof actionColorOf === "function" ? actionColorOf(fakeIssue, colorOf) : stateColor;
       try {
@@ -40667,9 +41816,9 @@ ${formatProgressEntry(entry)}
       const wide = code >= 11904 && code <= 40959 || code >= 63744 && code <= 64255 || code >= 65281 && code <= 65376 || code === 8230;
       return (wide ? 1 : 0.6) * MD_EFFORT_LABEL_FONT_SIZE;
     };
-    const mdEffortEstimateTextWidth = function(text) {
+    const mdEffortEstimateTextWidth = function(text2) {
       let width = 0;
-      const chars = Array.from(text);
+      const chars = Array.from(text2);
       for (let i3 = 0; i3 < chars.length; i3 += 1) width += mdEffortEstimateCharWidth(chars[i3]);
       return width;
     };
@@ -40694,21 +41843,21 @@ ${formatProgressEntry(entry)}
       }
       return mdEffortCanvasCtx;
     };
-    const mdEffortMeasureText = function(text, measureTextWidth) {
-      if (typeof measureTextWidth === "function") return Number(measureTextWidth(String(text)));
+    const mdEffortMeasureText = function(text2, measureTextWidth) {
+      if (typeof measureTextWidth === "function") return Number(measureTextWidth(String(text2)));
       const ctx2 = mdEffortMeasureWithCanvas();
       if (ctx2) {
         try {
-          return Number(ctx2.measureText(String(text)).width);
+          return Number(ctx2.measureText(String(text2)).width);
         } catch (e3) {
         }
       }
-      return mdEffortEstimateTextWidth(String(text));
+      return mdEffortEstimateTextWidth(String(text2));
     };
     const mdEffortLabelOf = function(nm, measureTextWidth) {
       const full = String(nm === void 0 || nm === null ? "" : nm);
-      const measure = function(text) {
-        return mdEffortMeasureText(text, measureTextWidth);
+      const measure = function(text2) {
+        return mdEffortMeasureText(text2, measureTextWidth);
       };
       const budget = measure(mdEffortDigitSample);
       if (!(budget > 0)) return full;
@@ -41369,8 +42518,8 @@ ${formatProgressEntry(entry)}
       const skillSet = nameSet(p3.skillNames);
       const skillRefOf = function(code) {
         if (!skillSet || typeof p3.onSkill !== "function") return null;
-        const text = String(code || "").trim();
-        const name = text.charAt(0) === "/" ? text.slice(1) : text;
+        const text2 = String(code || "").trim();
+        const name = text2.charAt(0) === "/" ? text2.slice(1) : text2;
         if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(name)) return null;
         return skillSet[name] ? name : null;
       };
@@ -41384,8 +42533,8 @@ ${formatProgressEntry(entry)}
       let skillN = 0;
       const mdRefSet = typeof p3.onMdFile === "function" ? nameSet(p3.mdRefs) : null;
       let mdN = 0;
-      const mdRefOf = function(text, isUrl) {
-        let t3 = String(text == null ? "" : text).trim();
+      const mdRefOf = function(text2, isUrl) {
+        let t3 = String(text2 == null ? "" : text2).trim();
         if (isUrl) {
           if (!t3 || /^https?:/i.test(t3) || t3.charAt(0) === "#") return null;
         } else if (t3.length > 1 && t3.charAt(0) === "`" && t3.charAt(t3.length - 1) === "`") t3 = t3.slice(1, t3.length - 1);
@@ -41406,8 +42555,8 @@ ${formatProgressEntry(entry)}
           }
         } }, label);
       };
-      const mdRefNodes = function(text) {
-        const s3 = String(text == null ? "" : text), out = [];
+      const mdRefNodes = function(text2) {
+        const s3 = String(text2 == null ? "" : text2), out = [];
         if (!mdRefSet || !s3) {
           out.push(s3);
           return out;
@@ -41452,10 +42601,10 @@ ${formatProgressEntry(entry)}
           }
         }, label);
       };
-      const pxInline = function(text, inLink) {
-        return pxInlineWith(text, inLink, []);
+      const pxInline = function(text2, inLink) {
+        return pxInlineWith(text2, inLink, []);
       };
-      const pxInlineWith = function(text, inLink, atoms) {
+      const pxInlineWith = function(text2, inLink, atoms) {
         const mark = function(node) {
           atoms.push(node);
           return "A" + (atoms.length - 1) + "";
@@ -41552,7 +42701,7 @@ ${formatProgressEntry(entry)}
           }
           return out;
         };
-        let rest = String(text == null ? "" : text);
+        let rest = String(text2 == null ? "" : text2);
         rest = rest.replace(/`([^`]+)`/g, function(all, code) {
           const fileRef = mdRefOf(code);
           if (fileRef) return mark(mdRefNode(code, fileRef));
@@ -41581,8 +42730,8 @@ ${formatProgressEntry(entry)}
           if (!/^https?:/i.test(url)) {
             const fileRef = mdRefOf(url, true);
             if (!fileRef) return label;
-            const plain = /^`([^`]*)`$/.exec(label), text2 = (plain ? plain[1] : label).indexOf("A") >= 0 ? fileRef : plain ? plain[1] : label;
-            return mark(mdRefNode(text2, fileRef));
+            const plain = /^`([^`]*)`$/.exec(label), text22 = (plain ? plain[1] : label).indexOf("A") >= 0 ? fileRef : plain ? plain[1] : label;
+            return mark(mdRefNode(text22, fileRef));
           }
           linkN += 1;
           return mark(h4("a", {
@@ -41839,7 +42988,7 @@ ${formatProgressEntry(entry)}
       } catch (e3) {
       }
     };
-    const pixelCopyDetailLink = function(s3, text) {
+    const pixelCopyDetailLink = function(s3, text2) {
       const d3 = s3 && s3.pixelDetail;
       const done = function() {
         if (!d3) return;
@@ -41858,8 +43007,8 @@ ${formatProgressEntry(entry)}
         }, SKILL_DETAIL_COPIED_FLASH_MS);
       };
       try {
-        if (text && typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(done, done);
+        if (text2 && typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text2).then(done, done);
           return;
         }
       } catch (e3) {
@@ -42427,9 +43576,9 @@ ${formatProgressEntry(entry)}
         try {
           if (typeof createActionDispatcher === "function") {
             return createActionDispatcher({
-              inject: function(text, args) {
+              inject: function(text2, args) {
                 try {
-                  inject(st, text);
+                  inject(st, text2);
                 } catch (e3) {
                 }
               },
@@ -42842,9 +43991,10 @@ ${formatProgressEntry(entry)}
             const navTop = typeof peekNav === "function" ? peekNav(st) : null;
             const topIssue = navTop && navTop.kind === "issue" ? navTop.n : st.activeIssue;
             const topMap = navTop && navTop.kind === "map" ? navTop.n : st.activeMap;
+            const topEffort = navTop ? navTop.effortId !== void 0 && navTop.effortId !== null ? String(navTop.effortId) : "" : st.activeEffortId ? String(st.activeEffortId) : "";
+            const activeMap = topMap !== null && topMap !== void 0 ? findGroupByIdentity(compute(st), topMap, topEffort) : null;
+            if (activeMap) return h3(MapDetailV2Page, { st, g: activeMap });
             if (topIssue !== null && topIssue !== void 0) return h3(IssueDetail, { st });
-            if (topMap !== null && topMap !== void 0)
-              return h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, ["地图详情页:mapV2 家族未搬(U06+ 候选)"]);
             return h3(ListTab, { st, narrow });
           }() : st.tab === "skills" ? h3(SkillsTab, { st }) : st.tab === "checks" ? h3(ChecksTab, { st }) : st.tab === "versionControl" ? h3(VersionControlTab, { st, narrow }) : h3(ListTab, { st, narrow })
         ])
@@ -42877,8 +44027,8 @@ ${formatProgressEntry(entry)}
       st.workspaceRoot = data.workspaceRoot || st.cwd;
       try {
         if (clientRef && typeof clientRef.sendMessage === "function") {
-          st.injector = function(text) {
-            clientRef.sendMessage(text);
+          st.injector = function(text2) {
+            clientRef.sendMessage(text2);
           };
         }
       } catch (eInj) {
@@ -43083,6 +44233,15 @@ ${formatProgressEntry(entry)}
       branchBoardNode: function(board, props) {
         return vcBranchBoardNode(h3, tr, Object.assign({}, props || {}, { board }));
       }
+    };
+    window.MattSkillsUpstream.map = {
+      MapDetailV2Page,
+      MapDetailTop,
+      MAP_DETAIL_V2_STYLE_TEXT,
+      mapDetailPageModelOf,
+      ticketFeedOf,
+      mapProfileOf,
+      useMapTicketsFeed
     };
   }
   var WORKSPACE_URI = "ui://zcode-mattpocock-skills-deck/workspace.json";

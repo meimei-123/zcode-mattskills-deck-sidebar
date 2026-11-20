@@ -50,3 +50,13 @@
 - **已知上游问题(只记录,未改)**:`gitPlatformCheck`/`gitPlatformRun` 的 `readScreenOf` 回 `{ok,screen}`,调用方读 `screenReply.data.screen`,形状不一致恒回 `kind=shape`(面板不调用这两条);同步域 pull 的 argv 把 `origin/main` 当仓库地址,`gitSyncWrite` 的 pull 必失败(写域 `gitPull` 走配置上游,正常快进);`prune` 的备份路径算在仓库根同级,工作区根=仓库根时备份落在工作区外;`migrate init` 只支持已存在的空目录;`git-filter-repo` 不是本仓依赖。
 - **管理页可达性(与上游一致)**:上游产品页签(`VersionControlTab` 的块模型)只挂改动/提交历史/工作树三视图;`vcShellPages` 的 16 个管理页(分支与标签/远端/子模块/维护/迁移/配置/钩子/诊断/平台/贮藏/变基/冲突/搜索等)由 `vcRenderTabAt`/`vcRenderAllPages` 渲染,但上游产品没有调用方,只被上游测试与门禁使用。本仓照搬同一结构:页面全在 bundle 里、可经测试自检面直接渲染,产品页签不出管理页导航入口;`gitChangesCheck/Write` 同理由未挂载的 13 动作面板使用,行内暂存走直接 `gitStage`(可逆动作无预检)。这不是本仓裁剪,是上游 1.9.0-beta.33 的产品现状。
 - **既有 smell 顺延**:`src/git/credential-safe.mjs` 是上游 `createCredentialSafeGit` 的人工去类型子集拷贝(升级需重拷,不可按文件 diff 同步);上游测试的假 DOM 各套一份(新增 vc 套件同模式),未做共享抽取。
+
+## 实施修订记录(m4,0.5.0,2026-11-21)
+
+- **只搬 V2,不搬老页三叶**:地图/规格容器的产品入口在上游 #1402 已切到 `MapDetailV2Page`(Dock 列表分支 `active ? MapDetailV2Page : ...`);V2 只复用老页顶栏 `MapDetailTop`,老 `mapDetailHead`/`mapDetail`/`mapDetailSpecBody` 不登记、不进闭包。共新增 13 叶:`mapV2Styles`(样式区,紧随卡片样式插入)+ `mapDetailTop`(ticketRow 与 detailActionBar 之间)+ 11 片 `mapV2*`(detailActionBar 之后、detailProjection 之前)。
+- **分发按上游口径算 active**:`active = findGroupByIdentity(compute(st), topMap, topEffort)`,渲染顺序 active → issue → list;同号地图在不同工作单元里是两张,按 (effort, 编号) 找。本地地图编号是 `"00"`、行 `number` 是 0 —— 0 是合法坐标(`findMapByIdentity` 同时比 number 与补零 key),`MapDetailV2Page` 自己也写明不拦 0。
+- **数据面:一条电话 + 两个字段**:`wf.mapTickets` 适配到新工具 `deck_map_tickets({key, effortId?})`,回包与上游宿主同形 `{ok,key,items,stats,total,fetched,capped,missing}`;子票行按 `prepareRow` 归一(大写 state、`blockedBy` 压键串、`claimedBy` 取第一个 assignee、`progress` 从 `## 进度` 首条记录解析)。`deck_issue_list` 的 map/spec 行新增 `destination`(正文 `## Destination` 段;围栏与 HTML 注释里的同名标题不算),经 `panelRowOf` 原样进快照。
+- **快照首帧不另造**:`ingest.mjs` 的 `groupDeck` 早已给开容器装 `tickets`、给所有容器算 `stats{total,closed}`(上游 `containerStateOf`/圆环读它),V2 进页即可先画快照那份;已关闭子票与关地图的子票才走按需取数。规格没有「目的地」一节时不画空态提示(上游行为)。
+- **正文不进地图页**:上游 2026-10-23 定地图页不再展示笔记/已定决策/战雾/范围外/规格七段,正文全文由点档案进这张图自己的 IssueDetail 看;本仓只补 `destination`,不解析其余区块。
+- **子票动作与跳转**:子票卡点行走上游 `enterSubDetail` → IssueDetail;地图档案区点按压导航栈进这张图的 IssueDetail(issue 详情取 `effort/00`),返回逐级弹回。
+- **测试**:`server-map` 25 条(电话契约/目的地解析/拒绝路径)、`upstream-mapdetail` 78 条(十三叶与标记序、bundle 接线、旧占位清零)、`upstream-list` 增 M4 切片 15 条(真点击进页、档案/目的地/计数、取数电话、档案跳转、逐级返回)。二十套 2015 断言全绿。

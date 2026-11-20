@@ -363,6 +363,8 @@ export const LEAVES = [
   { id: "leaf:issueCard", file: "src/client/views/cards/PixelIssueCard.ts" },
   { id: "leaf:issueMapCard", file: "src/client/views/cards/PixelIssueMapCard.ts" },
   { id: "leaf:mapCard", file: "src/client/views/cards/PixelMapCard.ts" },
+  // ---- 工单 02(M4):V2 地图详情页外壳样式(上游 index.ts 同位:PIXEL_CARDS 之后) ----
+  { id: "leaf:mapV2Styles", file: "src/client/views/mapDetailV2/view/skin/MapDetailV2Styles.ts" },
   // ---- 工单 03:环境检查页(上游 index.ts 标记序在原位:chainRenderer 在 tabs 之前) ----
   // 链渲染器通用件(ChecksTab 的标题解析 checkShowTitle 真源;整叶搬,不手写副本)
   { id: "leaf:chainRenderer", file: "src/client/views/shared/ChainRenderer.ts" },
@@ -450,10 +452,26 @@ export const LEAVES = [
   { id: "leaf:stateKind", file: "src/client/views/shared/stateKind.ts" },
   // 地图详情内的票务行(U05+ 详情视图用;先按工单点名搬入,渲染路径休眠)
   { id: "leaf:ticketRow", file: "src/client/views/TicketRow.ts" },
+  // ---- 工单 02(M4):地图详情页 V2(上游 index.ts 原位;V2 复用老页顶栏 MapDetailTop,
+  //      老页另三叶 mapDetailHead/mapDetail/mapDetailSpecBody 产品已不挂,不登记) ----
+  { id: "leaf:mapDetailTop", file: "src/client/views/MapDetailTop.ts" },
   // ---- 工单 U05:详情页全家 + 动作栏(上游 index.ts 标记序原位,次序即依赖次序) ----
   // 容器详情底部动作条(三态主按钮;上游标记序在 mapDetail 与 mapDetailSpecBody 之间,
   // 本仓跳过 mapDetail 家族后仍保序)
   { id: "leaf:detailActionBar", file: "src/client/views/DetailActionBar.ts" },
+  // ---- 工单 02(M4):V2 地图详情页全家(上游 index.ts 原位:detailActionBar/mapDetailSpecBody
+  //      之后、detailProjection 之前;次序即依赖次序:纯逻辑 → 适配层 → 页面模型 → 接线 → 视图) ----
+  { id: "leaf:mapV2TicketFacts", file: "src/client/views/mapDetailV2/model/tickets/ticketCardFacts.ts" },
+  { id: "leaf:mapV2TicketBoard", file: "src/client/views/mapDetailV2/model/tickets/ticketBoard.ts" },
+  { id: "leaf:mapV2TicketFeed", file: "src/client/views/mapDetailV2/model/tickets/ticketFeed.ts" },
+  { id: "leaf:mapV2Profile", file: "src/client/views/mapDetailV2/model/container/mapProfile.ts" },
+  { id: "leaf:mapV2CardProps", file: "src/client/views/mapDetailV2/model/assembly/cardPropsOf.ts" },
+  { id: "leaf:mapV2PageModel", file: "src/client/views/mapDetailV2/model/assembly/mapDetailPageModel.ts" },
+  { id: "leaf:mapV2UseFeed", file: "src/client/views/mapDetailV2/wiring/useMapTicketsFeed.ts" },
+  { id: "leaf:mapV2Actions", file: "src/client/views/mapDetailV2/wiring/pageActionHandlers.ts" },
+  { id: "leaf:mapV2ProfileHeader", file: "src/client/views/mapDetailV2/view/profile/MapProfileHeader.ts" },
+  { id: "leaf:mapV2CardFlow", file: "src/client/views/mapDetailV2/view/flow/TicketCardFlow.ts" },
+  { id: "leaf:mapV2Page", file: "src/client/views/mapDetailV2/view/MapDetailV2Page.ts" },
   // 详情投影(#1694:上次数据先画、失败不清空;knownBlockedNodes/detailViewFor 真源)
   { id: "leaf:detailProjection", file: "src/client/views/shared/detailProjection.ts" },
   // 详情错误视图(issueErrorViewOf:错误横幅一句话)

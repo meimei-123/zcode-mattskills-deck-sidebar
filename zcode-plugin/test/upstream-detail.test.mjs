@@ -615,12 +615,14 @@ if (U) {
     }
   }
 
-  // ---- 地图层降级:setActiveMap → 占位说明(mapV2 家族未搬) ----
+  // ---- 地图层:setActiveMap → MapDetailV2Page(占位已撤) ----
   {
     U.list.rowHelpers.setActiveMap(st, 0, "dogfood-detail");
     await tick();
     await settle();
-    check("地图详情层降级占位(mapV2 未搬)", textOf(surface).includes("mapV2"), textOf(surface).slice(0, 120));
+    const page = qsa(surface, ".m2v2-page")[0];
+    check("地图详情层渲染 V2 页面(.m2v2-page)", !!page);
+    check("地图详情页标题在", textOf(page || surface).includes("详情页验证地图"), textOf(surface).slice(0, 160));
     U.list.rowHelpers.setActiveMap(st, null, "");
     await tick();
   }

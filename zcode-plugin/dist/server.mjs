@@ -1,6 +1,7 @@
 // MattSkills MCP 服务(工单 01 骨架 + 工单 02 只读工具 + 工单 06 写工具):stdio JSON-RPC 握手
 // + panel.html 资源供给 + deck_issue_list / deck_issue_get / deck_issue_counts 三个读工具
 // (上游契约 list/get/counts 的直翻)+ deck_issue_list_labels(规范标签与内置色表,纯常量)
+// + deck_map_tickets(地图子票按需取,上游 wf.mapTickets 的等价物)
 // + create/update/setLabels/comment/close/reopen 六件写工具,
 // 返回结构化结果 + 中文人话摘要。零依赖;工作区根取宿主注入的 ZCODE_WORKSPACE_ROOT。
 import { createInterface } from "node:readline";
@@ -12,6 +13,7 @@ import { commentIssue, updateStatusIssue, closeIssue, reopenIssue, setLabelsIssu
 import { createDeckWatch, refreshFromEnv } from "./watch.mjs";
 import { buildEnvChain, summarizeEnvCheck } from "./env-check.mjs";
 import { readSkillDoc } from "./skill-doc.mjs";
+import { mapTicketsFor } from "./map-tickets.mjs";
 import { createGitBridge } from "./git-entry.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -96,6 +98,19 @@ const TOOLS = [
     description:
       "返回规范标签五枚(needs-triage、needs-info、ready-for-agent、ready-for-human、wontfix,口径见 docs/agents/triage-labels.md)与内置 11 色标签色表(hex 无 # 前缀,与面板色表同源)。纯常量查询,不读工作区;给卡打标签与配色展示都按这份。",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "deck_map_tickets",
+    description:
+      "取一张地图/规格的全部子票(含已关闭,含已关闭容器的子票),并给出总数与完成数。key 是容器编号(本地 00),同号容器在不同工作单元里是两张时用 effortId 指定;回包与面板地图详情页的取数契约同形({ok,key,items,stats,total,fetched,capped,missing})。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "地图/规格编号(本地为 00)" },
+        effortId: { type: "string", description: "工作单元目录名(.scratch/ 下);同号地图有多张时必填" },
+      },
+      required: ["key"],
+    },
   },
   {
     name: "deck_issue_create",
@@ -389,6 +404,17 @@ function handleCall(name, args) {
     }
     const sc = { workspaceRoot: root, card };
     return { content: [{ type: "text", text: summarizeGet(card) }], structuredContent: sc };
+  }
+
+  if (name === "deck_map_tickets") {
+    const res = mapTicketsFor(scan, a);
+    if (res.ok !== true) {
+      return { content: [{ type: "text", text: String((res.error && res.error.message) || "地图子票没取到") }], isError: true };
+    }
+    return {
+      content: [{ type: "text", text: `地图 ${res.key}:${res.stats.total} 张子票(已关闭 ${res.stats.closed} 张)。` }],
+      structuredContent: res,
+    };
   }
 
   if (name === "deck_issue_counts") {

@@ -397,6 +397,38 @@ const toolCalls = [];
       if (name === "deck_issue_list") return { structuredContent: { rows: scan.rows.map(thinRow), revision: 1 } };
       if (name === "deck_issue_counts") return { structuredContent: { counts: { open: openN, closed: closedN, total: tickets.length }, revision: 1 } };
       if (name === "deck_issue_list_labels") return { structuredContent: LABEL_PALETTE };
+      // M4:地图详情页进页必问的电话(按 effort 回该图全部子票,含已关闭)
+      if (name === "deck_map_tickets") {
+        const effortId = String((args && args.effortId) || "");
+        const items = scan.rows
+          .filter((r) => r && r.type !== "map" && r.type !== "spec" && String(r.effortId || "") === effortId && r.parentKey != null && String(r.parentKey) === "00")
+          .map((r) => ({
+            key: String(r.key),
+            number: Number.parseInt(String(r.key), 10),
+            type: r.type,
+            title: r.title,
+            state: String(r.state || "").toUpperCase(),
+            labels: r.labels,
+            parentKey: r.parentKey,
+            blockedBy: Array.isArray(r.blockedBy) ? r.blockedBy.map((b) => String((b && b.key) || b)) : [],
+            claimedBy: "",
+            progress: null,
+            updatedAt: r.updatedAt,
+          }));
+        const closedCount = items.filter((x) => x.state === "CLOSED").length;
+        return {
+          structuredContent: {
+            ok: true,
+            key: "00",
+            items: items,
+            stats: { total: items.length, open: items.length - closedCount, closed: closedCount },
+            total: items.length,
+            fetched: items.length,
+            capped: false,
+            missing: 0,
+          },
+        };
+      }
       throw new Error("no tool " + name);
     },
   };
@@ -610,6 +642,65 @@ if (U) {
   // ---- 样式:上游 STYLE_TEXT 仍在 head(令牌族) ----
   const styleTexts = doc.head.children.map((n) => n.textContent || "");
   check("STYLE_TEXT(--dsw-* 令牌族)仍在 head", styleTexts.some((t) => t.includes("dsws-panel")));
+
+  // ---------------------------------------------------------------------------
+  // 切片 M4:地图详情页 —— 点容器行进 MapDetailV2Page、按需取数、卡片流、返回
+  // ---------------------------------------------------------------------------
+  {
+    // dogfood-test 地图:3 张子票 1 张已关;快照只装开子票(01/02),已关闭那张靠取数补
+    const mapRow = walk(surface).find(
+      (n) => n.attributes["data-log"] === "list.row.00" && textOf(n).includes("列表页搬入地图")
+    );
+    check("地图行可点(list.row.00 且标题在)", !!mapRow);
+    if (mapRow) {
+      fireClick(mapRow);
+      await tick();
+      await new Promise((r) => setTimeout(r, 40));
+      const page = qsa(surface, ".m2v2-page")[0];
+      check("点地图行渲染 MapDetailV2Page(.m2v2-page)", !!page);
+      if (page) {
+        const pageText = textOf(page);
+        check("详情页标题在(.m2v2-title)", qsa(page, ".m2v2-title").length >= 1 && pageText.includes("列表页搬入地图"));
+        check("档案区「本图 3 张子票（已关闭 1 张）」", /本图 3 张子票（已关闭 1 张）/.test(pageText), pageText.slice(0, 160));
+        check("档案区渲染地图目的地(## Destination)", pageText.includes("把上游列表页搬进 ZCode 面板"), pageText.slice(0, 240));
+        check("卡片流存在(.m2v2-flow)", qsa(page, ".m2v2-flow").length >= 1);
+        check("快照外的已关闭子票经按需取数补进页里(面板壳上线)", pageText.includes("面板壳上线"), pageText.slice(0, 400));
+        const mtCall = toolCalls.filter((c) => c.name === "deck_map_tickets").pop();
+        check(
+          "取数电话 wf.mapTickets → deck_map_tickets(key=00, effortId=dogfood-test)",
+          !!mtCall && mtCall.args.key === "00" && mtCall.args.effortId === "dogfood-test",
+          JSON.stringify(mtCall && mtCall.args)
+        );
+        // 档案区:点整块进这张地图自己的 issue 详情页(导航栈压一层),返回回地图页
+        const archive = walk(surface).find((n) => n.attributes["data-log"] === "mapv2.archive.open");
+        check("档案区可点(mapv2.archive.open)", !!archive);
+        if (archive) {
+          fireClick(archive);
+          await tick();
+          await new Promise((r) => setTimeout(r, 40));
+          check("点档案进地图自己的详情页(issue.top.back 在)", !!walk(surface).find((n) => n.attributes["data-log"] === "issue.top.back"));
+          check("进入票详情后地图页卸掉", qsa(surface, ".m2v2-page").length === 0);
+          const issueBack = walk(surface).find((n) => n.attributes["data-log"] === "issue.top.back");
+          if (issueBack) {
+            fireClick(issueBack);
+            await tick();
+            await new Promise((r) => setTimeout(r, 40));
+            check("从票详情返回地图详情页(.m2v2-page 回)", qsa(surface, ".m2v2-page").length >= 1);
+          }
+        }
+        // 返回:顶栏返回键弹栈回列表
+        const back = walk(page).find((n) => n.attributes["data-log"] === "map.top.back");
+        check("顶栏返回键在(map.top.back)", !!back);
+        if (back) {
+          fireClick(back);
+          await tick();
+          await new Promise((r) => setTimeout(r, 40));
+          check("返回后回列表(KPI 行在)", qsa(surface, '[data-list-head="kpi"]').length >= 1);
+          check("返回后详情页卸掉", qsa(surface, ".m2v2-page").length === 0);
+        }
+      }
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // 切片 5:自检面缝 —— U.list(U05 视图层接口)

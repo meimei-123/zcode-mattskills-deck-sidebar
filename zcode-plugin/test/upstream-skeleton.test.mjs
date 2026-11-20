@@ -181,12 +181,12 @@ if (existsSync(BUNDLE)) {
   check("bundle-1 无模块级 import(资源通道只搬文本)", !/^[^\S\r\n]*import[\s{"'*]/m.test(code));
   check("bundle-1 无模块级 export", !/^[^\S\r\n]*export\s/m.test(code));
 
-  // 工单 04 收口:页签占位清零;地图层占位按规格保留(只清页签占位,不误删地图)
+  // 工单 04 收口:页签占位清零;M4 起地图层占位也清零(V2 地图详情页已接)
   const skeletonSrc = readFileSync(join(ROOT, "src", "ui", "upstream", "entry.mjs"), "utf8");
   check("bundle 无页签占位「U06+ 搬入」", !code.includes("U06+ 搬入"));
   check("骨架 src 无页签占位「U06+ 搬入」", !skeletonSrc.includes("U06+ 搬入"));
-  check("bundle 保留地图详情层占位(mapV2 家族未搬)", code.includes("地图详情页:mapV2 家族未搬"));
-  check("骨架 src 保留地图详情层占位(同上)", skeletonSrc.includes("地图详情页:mapV2 家族未搬"));
+  check("bundle 地图详情层已接(V2 占位清零)", !code.includes("mapV2 家族未搬") && code.includes("MapDetailV2Page"));
+  check("骨架 src 地图详情层已接(同上)", !skeletonSrc.includes("mapV2 家族未搬") && skeletonSrc.includes("leaf:mapV2Page"));
   // 页签分发形状:两个新页签各挂真视图,末分支(pr 无能力)回 ListTab。
   // 行为面由点页签断言看守(upstream-skills 27 行目录 / upstream-checks 6 行链快照 /
   // upstream-list 的 pr 兜底回列表),这里锁骨架里的分发次序。

@@ -37,8 +37,8 @@
 //
 // ── 如实缺口(不造假数据)─────────────────────────────────────────────────
 //   · 上游 assembleSnapshot 会解析容器正文(map 五区块 destination/notes/decisions/fog/
-//     outOfScope、spec 七段 sections);列表/详情视图搬入前用不到,本适配器不解析,U03 需要时
-//     按上游 body-parse.ts 补。
+//     outOfScope、spec 七段 sections);本适配器只随 list 薄行带 destination(M4 地图详情
+//     档案区要它),其余区块不解析 —— 正文全文由点标题进 IssueDetail 看(上游 2026-10-23 定)。
 //   · 上游快照还带 thinTickets(关容器里已关子票的瘦身行,工作路线查标题用)与 labels 色板
 //     (deck_issue_list_labels 工具的数据);本票面板壳只消费 maps/issues/deck,labels 可由
 //     调用方选择性传入,thinTickets 留空数组。

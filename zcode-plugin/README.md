@@ -17,18 +17,18 @@ MattSkills 任务看板的 ZCode 插件:侧边栏 "MattSkills" 页签(官方 `ui
 
 ## 面板(0.3.0 起:上游复刻唯一面板)
 
-页签里只有一套面板:上游原样的 dsws-panel(上游 `src/client` 的 splice 拼接 bundle + Preact,见 `build-upstream.mjs` 与 ADR-0002 修订)。旧 ms-* UI 层与「切换上游面板壳」回退开关已在 U06 删除,无逃生舱。0.4.0 起四枚页签都是活视图:列表、技能(目录 + 文档详情)、版本管理(改动/提交历史/工作树三视图,写动作与危险动作走预检签票)、环境检查(链快照 + 重检),面板随侧边栏宽度自适应。版本管理整族从上游 vc 克隆,宿主取数打进 `dist/git.mjs`,只经一条 `deck_git` 工具路由。
+页签里只有一套面板:上游原样的 dsws-panel(上游 `src/client` 的 splice 拼接 bundle + Preact,见 `build-upstream.mjs` 与 ADR-0002 修订)。旧 ms-* UI 层与「切换上游面板壳」回退开关已在 U06 删除,无逃生舱。0.4.0 起四枚页签都是活视图:列表、技能(目录 + 文档详情)、版本管理(改动/提交历史/工作树三视图,写动作与危险动作走预检签票)、环境检查(链快照 + 重检),面板随侧边栏宽度自适应。版本管理整族从上游 vc 克隆,宿主取数打进 `dist/git.mjs`,只经一条 `deck_git` 工具路由。0.5.0 起列表里的地图/规格行点开就是上游 V2 地图详情页(mapV2 十三叶):档案区(标题/目的地/进度/子票那句)、子票卡片流(在办/可接/被挡/已完成)、点档案进这张图自己的详情页;子票全集经 `deck_map_tickets` 按需取回(含已关闭)。
 
 ## 目录
 
 ```
 .zcode-plugin/plugin.json   清单(Surface + MCP)
-src/                        server/write/watch/cards/env-check/skill-doc/skill-roots(数据面)+ ui/(panel.html 面板壳;upstream/ 为上游骨架+垫片,bundle-1 源)+ git-entry.mjs(Node 服务垫片与 bridge)
+src/                        server/write/watch/cards/env-check/skill-doc/skill-roots/map-tickets(数据面)+ ui/(panel.html 面板壳;upstream/ 为上游骨架+垫片,bundle-1 源)+ git-entry.mjs(Node 服务垫片与 bridge)
 src/git/                    withGhLane 直通垫片(admission-stub)与上游子集拷贝(credential-safe)
 build-upstream.mjs          上游 client 叶子 splice 拼接构建(bundle-1.txt)
 build-git.mjs               上游 vc 家族 + Node 垫片 → dist/git.mjs
 dist/                       构建产物(server.mjs + git.mjs + ui/),安装即用
-test/                       十八套直跑测试(缝 1:工具边界;缝 2:面板 DOM/桥包络;U01:上游骨架;0.3.1:技能/检查/响应式;0.4.0:版本管理六套:versioncontrol + server-git/server-git-history/server-git-refs/server-git-admin/server-git-writes)
+test/                       二十套直跑测试(缝 1:工具边界;缝 2:面板 DOM/桥包络;U01:上游骨架;0.3.1:技能/检查/响应式;0.4.0:版本管理六套:versioncontrol + server-git/server-git-history/server-git-refs/server-git-admin/server-git-writes;0.5.0:地图详情两套:server-map + upstream-mapdetail)
 prototype/                  UI 快照原型(ui-preview 分支,一次性,见 SMOKE.md 提示)
 ```
 

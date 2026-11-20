@@ -259,11 +259,34 @@ function apply(ctx) {
       if (method === "wf.issueDetail") return issueDetailOverGet(args);
       if (method === "wf.issueComments") return issueCommentsOverGet(args);
       if (method === "wf.commentIssue") return commentIssueOverWrite(args);
+      if (method === "wf.mapTickets") return mapTicketsOverTool(args);
       if (method === "wf.chain") return envCheckOverTool(args);
       if (method === "wf.detect") return envCheckOverTool({ force: true });
       if (method === "skill.readDoc") return skillReadDocOverTool(args);
       return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U05)", raw: "" } });
     },
+  };
+
+  // 地图子票(工单 01,M4):wf.mapTickets → deck_map_tickets。回包形状就是上游宿主电话的
+  // {ok,key,items,stats,total,fetched,capped,missing}(api-io 的 fetchMapTickets 直接读);
+  // isError 转 reject,让上游按 catch 走「取数失败」那一支,cwd/backendId 这些宿主参数不用带。
+  const mapTicketsOverTool = function (args) {
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") {
+      return Promise.reject(new Error("ZCode 宿主适配:无工具桥"));
+    }
+    const o = args && typeof args === "object" ? args : {};
+    const toolArgs = { key: String(o.key === undefined || o.key === null ? "" : o.key) };
+    if (o.effortId !== undefined && o.effortId !== null && String(o.effortId) !== "") toolArgs.effortId = String(o.effortId);
+    return client.callTool("deck_map_tickets", toolArgs).then(function (res) {
+      if (res && res.isError) {
+        const text = (res.content && res.content[0] && res.content[0].text) || "map tickets failed";
+        throw new Error(text);
+      }
+      const sc = res && res.structuredContent;
+      if (sc && sc.ok === true) return sc;
+      return { ok: false, error: (sc && sc.error) || { kind: "shape", message: "" } };
+    });
   };
 
   // 环境检查(工单 03):wf.chain / wf.detect → 工具桥 deck_env_check。
@@ -497,6 +520,9 @@ function apply(ctx) {
   // ==== leaf:issueMapCard (spliced by build) ====
   // ==== leaf:mapCard (spliced by build) ====
   styles.insert(PIXEL_CARDS_STYLE_TEXT);
+  // ---- 工单 02(M4):V2 地图详情页外壳样式(上游 index.ts 同位:卡片样式之后立即插入) ----
+  // ==== leaf:mapV2Styles (spliced by build) ====
+  styles.insert(MAP_DETAIL_V2_STYLE_TEXT);
 
   // ---- 工单 01(0.3.1)/ 0.3.2 修订:响应式接缝样式(本仓自有,零上游改动) ----
   // 上游 .dsws-panel 是 460px 浮动窗的定位(STYLE_TEXT 原样保留);ZCode 的 surface 里它要随
@@ -592,7 +618,21 @@ function apply(ctx) {
   // ==== leaf:ticket (spliced by build) ====
   // ==== leaf:stateKind (spliced by build) ====
   // ==== leaf:ticketRow (spliced by build) ====
+  // ---- 工单 02(M4):地图详情页 V2(老页顶栏被 V2 复用;老页另三叶不登记) ----
+  // ==== leaf:mapDetailTop (spliced by build) ====
   // ==== leaf:detailActionBar (spliced by build) ====
+  // ---- 工单 02(M4):V2 地图详情页全家(上游同位:detailActionBar 之后、detailProjection 之前) ----
+  // ==== leaf:mapV2TicketFacts (spliced by build) ====
+  // ==== leaf:mapV2TicketBoard (spliced by build) ====
+  // ==== leaf:mapV2TicketFeed (spliced by build) ====
+  // ==== leaf:mapV2Profile (spliced by build) ====
+  // ==== leaf:mapV2CardProps (spliced by build) ====
+  // ==== leaf:mapV2PageModel (spliced by build) ====
+  // ==== leaf:mapV2UseFeed (spliced by build) ====
+  // ==== leaf:mapV2Actions (spliced by build) ====
+  // ==== leaf:mapV2ProfileHeader (spliced by build) ====
+  // ==== leaf:mapV2CardFlow (spliced by build) ====
+  // ==== leaf:mapV2Page (spliced by build) ====
   // ==== leaf:detailProjection (spliced by build) ====
   // ==== leaf:issueDetailErrorView (spliced by build) ====
   // ==== leaf:subIssueRouting (spliced by build) ====
@@ -775,13 +815,18 @@ function apply(ctx) {
           : st.tab === "list"
             ? (function () {
                 // 上游 Dock 的内容分发(#552 渲染优先级读导航栈顶):issue 层挂 IssueDetail,
-                // map 层是 mapV2 家族(本仓未搬,U06+ 候选),栈空回 ListTab。
+                // 上游 Dock 的内容分发(#552 读导航栈顶;M4 起与上游一致:容器详情优先、其次票详情、
+                // 栈空回列表)。active 按 (effort, 编号) 在 compute(st) 的分组里找 —— 同号地图在
+                // 不同工作单元里是两张,不能互相顶替。
                 const navTop = typeof peekNav === "function" ? peekNav(st) : null;
                 const topIssue = navTop && navTop.kind === "issue" ? navTop.n : st.activeIssue;
                 const topMap = navTop && navTop.kind === "map" ? navTop.n : st.activeMap;
+                const topEffort = navTop
+                  ? (navTop.effortId !== undefined && navTop.effortId !== null ? String(navTop.effortId) : "")
+                  : (st.activeEffortId ? String(st.activeEffortId) : "");
+                const activeMap = topMap !== null && topMap !== undefined ? findGroupByIdentity(compute(st), topMap, topEffort) : null;
+                if (activeMap) return h(MapDetailV2Page, { st: st, g: activeMap });
                 if (topIssue !== null && topIssue !== undefined) return h(IssueDetail, { st: st });
-                if (topMap !== null && topMap !== undefined)
-                  return h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, ["地图详情页:mapV2 家族未搬(U06+ 候选)"]);
                 return h(ListTab, { st: st, narrow: narrow });
               })()
             : st.tab === "skills"
@@ -982,6 +1027,17 @@ function apply(ctx) {
     branchBoardNode: function (board, props) {
       return vcBranchBoardNode(h, tr, Object.assign({}, props || {}, { board: board }));
     },
+  };
+  // 地图详情自检面(M4):页面组件、页面模型与取数桶入口 —— 测试直接对着模型断言,
+  // 不用把整页挂起来才看得到档案区/卡片流。
+  window.MattSkillsUpstream.map = {
+    MapDetailV2Page: MapDetailV2Page,
+    MapDetailTop: MapDetailTop,
+    MAP_DETAIL_V2_STYLE_TEXT: MAP_DETAIL_V2_STYLE_TEXT,
+    mapDetailPageModelOf: mapDetailPageModelOf,
+    ticketFeedOf: ticketFeedOf,
+    mapProfileOf: mapProfileOf,
+    useMapTicketsFeed: useMapTicketsFeed,
   };
 }
 

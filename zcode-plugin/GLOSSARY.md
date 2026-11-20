@@ -44,6 +44,10 @@ _Avoid_: 注入 prompt(prompt injection 指旧机制)、快捷指令
 面板的第四枚页签(`versionControl`),内含改动/提交历史/工作树三视图与分支、标签、贮藏、改写等能力页;整族从上游 vc 克隆,UI 叶进 bundle-1,宿主取数打成 `dist/git.mjs`。
 _Avoid_: 版本控制页、Git 页签、VC 面板(指页签时)
 
+**地图详情页(Map Detail V2)**:
+列表里点开地图/规格容器后进的那一页(`MapDetailV2Page`):档案区(标题/目的地/进度/子票计数)+ 子票卡片流(在办/可接/被挡/已完成)。子票全集经 `wf.mapTickets` → `deck_map_tickets` 按需取回;点档案进这张图自己的 IssueDetail。老页 `MapDetail` 三叶随上游保留但产品不挂。
+_Avoid_: 容器页、地图面板(与侧栏面板混指)、子票页
+
 **电话(Phone)**:
 上游 vc 家族对宿主能力的调用名(`wf.gitStatus`、`wf.gitDiff` 等);本仓经 `deck_git({method,args})` 一条工具路由,方法名取 `handleGit*` 的驼峰后缀。不是网络电话。
 _Avoid_: API 调用、宿主方法(泛指时)
