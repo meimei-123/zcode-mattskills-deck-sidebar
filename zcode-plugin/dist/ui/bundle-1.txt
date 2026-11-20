@@ -1384,8 +1384,56 @@
         if (method === "wf.issueDetail") return issueDetailOverGet(args);
         if (method === "wf.issueComments") return issueCommentsOverGet(args);
         if (method === "wf.commentIssue") return commentIssueOverWrite(args);
+        if (method === "wf.chain") return envCheckOverTool(args);
+        if (method === "wf.detect") return envCheckOverTool({ force: true });
         return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U05)", raw: "" } });
       }
+    };
+    const envCheckOverTool = function(args) {
+      const o3 = args || {};
+      const client = clientRef;
+      if (!client || typeof client.callTool !== "function") {
+        return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
+      }
+      const toolArgs = o3.force === true ? { force: true } : {};
+      return client.callTool("deck_env_check", toolArgs).then(function(res) {
+        if (res && res.isError) {
+          const text = res.content && res.content[0] && res.content[0].text || "env check failed";
+          return { ok: false, error: { kind: "internal", message: text, raw: text } };
+        }
+        const sc = res && res.structuredContent;
+        if (!sc || sc.ok !== true || !sc.snapshot || !Array.isArray(sc.snapshot.steps)) {
+          return { ok: false, error: { kind: "parse", message: "env check snapshot missing", raw: "" } };
+        }
+        return { ok: true, snapshot: sc.snapshot, checkedAt: sc.checkedAt };
+      }).catch(function(e3) {
+        return { ok: false, error: { kind: "network", message: String(e3 && e3.message || e3), raw: "" } };
+      });
+    };
+    const nowStr = () => {
+      try {
+        const d3 = /* @__PURE__ */ new Date();
+        return d3.getFullYear() + "-" + String(d3.getMonth() + 1).padStart(2, "0") + "-" + String(d3.getDate()).padStart(2, "0") + " " + String(d3.getHours()).padStart(2, "0") + ":" + String(d3.getMinutes()).padStart(2, "0");
+      } catch (e3) {
+        return "";
+      }
+    };
+    const refreshAll = function(st) {
+      if (!st) return;
+      st.refreshing = true;
+      try {
+        emit(st);
+      } catch (eR1) {
+      }
+      const p3 = typeof chainEventRefresh === "function" ? chainEventRefresh(st, "user-recheck") : loadChain(st, true, "user-recheck");
+      Promise.resolve(p3).catch(function() {
+      }).then(function() {
+        st.refreshing = false;
+        try {
+          emit(st);
+        } catch (eR2) {
+        }
+      });
     };
     const snapFresh = function(st) {
       return true;
@@ -17514,6 +17562,321 @@ ${formatProgressEntry(entry)}
       ]);
     };
     styles.insert(PIXEL_CARDS_STYLE_TEXT);
+    const CHAIN_RENDERER_VERSION = 1;
+    const checkShowTitle = function(show, fallbackId) {
+      try {
+        const key = show && show.i18nKey;
+        if (key && typeof tr === "function") {
+          const v3 = tr(key);
+          if (typeof v3 === "string" && v3 && v3 !== key) return v3;
+        }
+      } catch (e3) {
+      }
+      try {
+        if (show && typeof show.fallback === "string" && show.fallback) return show.fallback;
+        if (show && typeof show.title === "string" && show.title) return show.title;
+      } catch (e22) {
+      }
+      return fallbackId || "";
+    };
+    function levelToClass(level) {
+      const s3 = String(level || "").trim().toLowerCase();
+      if (s3 === "bad" || s3 === "error") return "bad";
+      if (s3 === "warn" || s3 === "warning") return "warn";
+      return "info";
+    }
+    function levelToStyle(level) {
+      const k4 = levelToClass(level);
+      if (k4 === "warn") return { background: "rgba(245,158,11,.12)", borderColor: "rgba(245,158,11,.45)", color: "#f59e0b" };
+      if (k4 === "bad") return { background: "rgba(248,113,113,.12)", border: "1px solid rgba(248,113,113,.45)", color: "#f87171" };
+      return { background: "rgba(56,139,253,.10)", border: "1px solid rgba(56,139,253,.35)", color: "#58a6ff" };
+    }
+    function ActionButton({ action, dispatcher, st, logId }) {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const t3 = action && action.type;
+      const labelMap = {
+        "inject-prompt": action.label || tr("env.actInjectGuide"),
+        "open-url": tr("env.actOpenUrl"),
+        "rpc": action.method || action.endpoint || tr("env.actRun"),
+        "form": action.label || tr("env.actFillForm"),
+        "refresh": tr("env.actRefresh")
+      };
+      const label = labelMap[t3] || "unsupported: " + String(t3 || "unknown");
+      const isUnsupported = !labelMap[t3];
+      const onClick = async function() {
+        if (isUnsupported) {
+          try {
+            flash(st, tr("env.actUnknown", { t: String(t3) }), "warn");
+          } catch (e3) {
+          }
+          return;
+        }
+        try {
+          const res = await dispatcher.dispatch(action);
+          if (!res.ok) {
+            const kind = res.error && res.error.kind;
+            if (kind === "unsupported") {
+              try {
+                flash(st, tr("env.actUnsupported", { t: String(t3) }), "warn");
+              } catch (e3) {
+              }
+            } else {
+              try {
+                flash(st, String(res.error && res.error.message || tr("env.actFailed")), "warn");
+              } catch (e3) {
+              }
+            }
+          } else {
+          }
+        } catch (e3) {
+          try {
+            flash(st, String(e3 && e3.message || e3).slice(0, 200), "warn");
+          } catch (_3) {
+          }
+        }
+      };
+      if (isUnsupported) {
+        return h4(Tip, { content: tr("tip.unsupportedAction") }, h4("span", { className: "dsws-chain-unsupported", style: { fontSize: 10, color: "#8b8b95", border: "1px dashed rgba(139,139,149,.45)", borderRadius: 4, padding: "1px 6px", display: "inline-flex", alignItems: "center" } }, label));
+      }
+      return h4("button", { className: "dsws-btn dsws-hov", tabIndex: 0, "data-press": "button", "data-log": "chain.action." + String(logId || "x"), onClick, onKeyDown: function(e3) {
+        if (e3.key === "Enter" || e3.key === " ") {
+          e3.preventDefault();
+          onClick();
+        }
+      }, style: { fontSize: 11, padding: "2px 8px", display: "inline-flex", alignItems: "center", gap: 4, flex: "none" } }, label);
+    }
+    function ChainForm({ action, dispatcher, st }) {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const schema = action.schema || action.fields || action.form && action.form.fields || [];
+      const [vals, setVals] = React.useState(function() {
+        const init = {};
+        for (let i3 = 0; i3 < schema.length; i3++) {
+          const f3 = schema[i3];
+          if (f3.defaultValue != null) init[f3.name] = String(f3.defaultValue);
+        }
+        return init;
+      });
+      const submitAction = action.submitAction || action.submit || action.form && action.form.submit;
+      const onSubmit = async function() {
+        for (let i3 = 0; i3 < schema.length; i3++) {
+          const f3 = schema[i3];
+          if (f3.required && !String(vals[f3.name] || "").trim()) {
+            try {
+              flash(st, tr("env.formRequired", { label: String(f3.label || f3.name) }), "warn");
+            } catch (e3) {
+            }
+            ;
+            return;
+          }
+          if (f3.pattern) {
+            try {
+              const re = new RegExp(f3.pattern);
+              if (!re.test(String(vals[f3.name] || ""))) {
+                try {
+                  flash(st, tr("env.formPattern", { label: String(f3.label || f3.name) }), "warn");
+                } catch (e3) {
+                }
+                ;
+                return;
+              }
+            } catch (e3) {
+            }
+          }
+        }
+        if (!submitAction) {
+          try {
+            flash(st, tr("env.formNoSubmit"), "warn");
+          } catch (e3) {
+          }
+          ;
+          return;
+        }
+        const merged = Object.assign({}, submitAction);
+        const base = merged.params !== void 0 ? merged.params : merged.args;
+        if (merged.type === "inject-prompt") {
+          merged.args = Object.assign({}, merged.args || merged.params || {}, vals);
+        } else {
+          merged.params = Object.assign({}, base || {}, vals);
+          if (submitAction.args) merged.args = merged.params;
+        }
+        try {
+          const res = await dispatcher.dispatch(merged);
+          if (!res.ok) {
+            try {
+              flash(st, String(res.error && res.error.message || tr("env.formSubmitFail")), "warn");
+            } catch (e3) {
+            }
+          } else {
+            try {
+              flash(st, tr("env.formSubmitted"), "ok");
+            } catch (e3) {
+            }
+            try {
+              if (dispatcher && dispatcher._refresh) await dispatcher._refresh();
+              else if (typeof host !== "undefined" && host.call) {
+                await host.call("wf.detect", { cwd: st.cwd || "", force: true, backendId: (typeof userHintOf === "function" ? userHintOf(st.selection) : void 0) || void 0 });
+                if (st.cwd) {
+                  try {
+                    loadSnapshot(st, true, true);
+                  } catch (e3) {
+                  }
+                  ;
+                  try {
+                    loadChain(st, true);
+                  } catch (e3) {
+                  }
+                }
+              }
+            } catch (e3) {
+            }
+          }
+        } catch (e3) {
+          try {
+            flash(st, String(e3 && e3.message || e3).slice(0, 200), "warn");
+          } catch (_3) {
+          }
+        }
+      };
+      const fields = schema.map(function(f3, idx) {
+        const id = "chain-form-" + String(action.type || "form") + "-" + String(f3.name || idx);
+        const label = f3.label || f3.labelKey || f3.name;
+        const placeholder = f3.placeholder || f3.placeholderKey || "";
+        const isSingle = f3.type === "single";
+        const isMulti = f3.type === "multi";
+        return h4("div", { key: f3.name || idx, style: { display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 } }, [
+          h4("label", { htmlFor: id, style: { fontSize: 11, color: "#a1a1aa", display: "flex", alignItems: "center", gap: 4 } }, [h4("span", null, label), f3.required ? h4("span", { style: { color: "#f87171" } }, "*") : null]),
+          isSingle ? h4("select", { id, value: String(vals[f3.name] || ""), onChange: function(e3) {
+            const nxt = Object.assign({}, vals);
+            nxt[f3.name] = e3.target.value;
+            setVals(nxt);
+          }, style: { fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2d35", background: "#10131a", color: "#e6edf3" } }, [
+            h4("option", { value: "" }, placeholder || tr("env.formPick")),
+            ...(f3.options || []).map(function(opt) {
+              return h4("option", { key: opt, value: opt }, opt);
+            })
+          ]) : isMulti ? h4("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 } }, (f3.options || []).map(function(opt) {
+            const checked = Array.isArray(vals[f3.name]) ? vals[f3.name].indexOf(opt) >= 0 : false;
+            return h4("label", { key: opt, style: { display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, border: "1px solid #2a2d35", borderRadius: 6, padding: "2px 6px", cursor: "pointer", background: checked ? "rgba(88,166,255,.12)" : "transparent" } }, [
+              h4("input", { type: "checkbox", checked, onChange: function(e3) {
+                const arr = Array.isArray(vals[f3.name]) ? vals[f3.name].slice() : [];
+                if (e3.target.checked) {
+                  if (arr.indexOf(opt) < 0) arr.push(opt);
+                } else {
+                  const p3 = arr.indexOf(opt);
+                  if (p3 >= 0) arr.splice(p3, 1);
+                }
+                const nxt = Object.assign({}, vals);
+                nxt[f3.name] = arr;
+                setVals(nxt);
+              } }),
+              h4("span", null, opt)
+            ]);
+          })) : h4("input", { id, type: f3.type === "number" ? "number" : f3.type === "date" ? "date" : "text", value: String(vals[f3.name] || ""), placeholder, onChange: function(e3) {
+            const nxt = Object.assign({}, vals);
+            nxt[f3.name] = e3.target.value;
+            setVals(nxt);
+          }, style: { fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2d35", background: "#10131a", color: "#e6edf3" } })
+        ]);
+      });
+      return h4("div", { className: "dsws-chain-form", style: { border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, padding: "10px 12px", background: "rgba(255,255,255,.02)", marginTop: 8 } }, [
+        ...fields,
+        h4("div", { style: { display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 6 } }, [
+          // 接线（#1335 界面反馈）：表单底下两颗（重置、提交）是两种动作，各接一组定位名。
+          h4("button", { className: "dsws-btn dsws-hov", "data-press": "button", "data-log": "chain.form.reset", onClick: function() {
+            const init = {};
+            for (let i3 = 0; i3 < schema.length; i3++) {
+              const f3 = schema[i3];
+              if (f3.defaultValue != null) init[f3.name] = String(f3.defaultValue);
+              else init[f3.name] = "";
+            }
+            setVals(init);
+          }, style: { fontSize: 11, padding: "2px 8px" } }, tr("env.formReset")),
+          h4("button", { className: "dsws-btn primary dsws-hov", "data-press": "button", "data-log": "chain.form.submit", onClick: onSubmit, style: { fontSize: 11, padding: "2px 10px", background: "#58a6ff", borderColor: "#58a6ff", color: "#0b1220", fontWeight: 600 } }, tr("env.formSubmit"))
+        ])
+      ]);
+    }
+    function ChainSteps({ snapshot }) {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      if (!snapshot || !Array.isArray(snapshot.steps) || !snapshot.steps.length) return null;
+      const steps = snapshot.steps;
+      return h4("div", { className: "dsws-chain-steps", style: { display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", overflowX: "auto", borderBottom: "1px solid rgba(255,255,255,.06)", marginBottom: 6 } }, steps.map(function(s3, idx) {
+        const status = s3.status;
+        const isDone = status === "done";
+        const isCurrent = s3.isCurrent || status === "current";
+        const isFail = status === "fail";
+        const isPending = status === "pending";
+        const bg = isDone ? "#16a34a" : isCurrent ? "#f59e0b" : isFail ? "#ef4444" : "#6b7280";
+        const border = isCurrent ? "2px solid #f59e0b" : "1px solid transparent";
+        const title = checkShowTitle(s3.show, s3.id);
+        const detail = s3.show && (s3.show.desc || "") || "";
+        return h4(Tip, { content: h4("div", { style: { display: "flex", flexDirection: "column", gap: 2 } }, [h4("div", { style: { fontSize: 10, color: "#8b8b95", lineHeight: "14px" } }, tr("tip.header.milestone", { idx: idx + 1 })), h4("div", { style: { fontSize: 11, color: "#e6edf3", lineHeight: "16px", wordBreak: "break-word", whiteSpace: "normal" } }, title + (detail ? " — " + detail : "")), h4("div", { style: { fontSize: 10, color: "#8b8b95", lineHeight: "14px", marginTop: 2 } }, tr("tip.milestoneLocate"))]) }, h4("div", { key: s3.id || idx, tabIndex: 0, style: { display: "flex", alignItems: "center", gap: 6, flex: "none", border, borderRadius: 20, padding: "2px 8px 2px 4px", background: isCurrent ? "rgba(245,158,11,.12)" : "rgba(255,255,255,.04)", minHeight: 24 } }, [
+          h4("span", { style: { width: 18, height: 18, borderRadius: "50%", background: bg, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, flex: "none" } }, isDone ? "✓" : String(idx + 1)),
+          h4("span", { style: { fontSize: 11, color: isDone ? "#4ade80" : isFail ? "#f87171" : isCurrent ? "#f59e0b" : "#a1a1aa", whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" } }, title)
+        ]));
+      }));
+    }
+    const ChainBanner = function({ snapshot, dispatcher, st }) {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      if (!snapshot || !Array.isArray(snapshot.steps)) return null;
+      const curIdx = snapshot.currentIndex;
+      const curStep = curIdx != null && snapshot.steps[curIdx] ? snapshot.steps[curIdx] : null;
+      let step = curStep;
+      if (!step) {
+        if (!snapshot.steps.length || snapshot.chainState === "allDone") return null;
+        step = snapshot.steps.find(function(s3) {
+          return s3.status === "fail";
+        }) || null;
+        if (!step) return null;
+      }
+      const show = step.show || {};
+      const title = checkShowTitle(show, step.id || "");
+      const desc = show.desc || "";
+      const level = show.level || (step.status === "fail" ? "bad" : step.status === "pending" ? "warn" : "info");
+      const styleBase = levelToStyle(level);
+      const actions = Array.isArray(step.actions) ? step.actions : [];
+      const formActions = actions.filter(function(a3) {
+        return a3 && a3.type === "form";
+      });
+      const otherActions = actions.filter(function(a3) {
+        return !a3 || a3.type !== "form";
+      });
+      const unsupported = actions.filter(function(a3) {
+        return a3 && ["inject-prompt", "open-url", "rpc", "form", "refresh"].indexOf(String(a3.type)) < 0;
+      });
+      return h4("div", { className: "dsws-banner dsws-chain-banner dsws-chain-banner--" + levelToClass(level), tabIndex: 0, role: "status", "aria-live": "polite", "aria-label": title, style: Object.assign({}, styleBase, { display: "flex", alignItems: "center", gap: 8, borderRadius: 8, padding: "6px 10px", minHeight: 42, maxHeight: 42, height: 42, margin: "6px 0", cursor: "default", flex: "none", overflow: "hidden" }) }, [
+        h4("span", { style: { width: 8, height: 8, borderRadius: "50%", background: levelToClass(level) === "bad" ? "#ef4444" : levelToClass(level) === "warn" ? "#f59e0b" : "#58a6ff", display: "inline-block", flex: "none" } }),
+        h4("span", { style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 600 } }, title + (desc ? " — " + String(desc).slice(0, 120) : "")),
+        ...otherActions.map(function(a3, i3) {
+          return h4(ActionButton, { key: "act-" + i3, action: a3, dispatcher, st, logId: String(i3) });
+        }),
+        ...unsupported.length ? unsupported.map(function(a3, i3) {
+          return h4(ActionButton, { key: "unsup-" + i3, action: a3, dispatcher, st, logId: "unsup." + i3 });
+        }) : [],
+        // 表单动作内嵌（fail+form 场景）
+        ...formActions.length ? [h4("span", { key: "chain-form-hint", style: { fontSize: 10, color: "#8b8b95" } }, "↘")] : []
+      ].concat(formActions.length ? [h4("div", { key: "chain-form-slot", style: { position: "absolute" } }, [])] : []));
+    };
+    const ChainRenderer = function({ snapshot, dispatcher, st, showSteps = true }) {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      if (!snapshot) return null;
+      const hasSteps = Array.isArray(snapshot.steps) && snapshot.steps.length > 0;
+      if (!hasSteps) return null;
+      return h4("div", { className: "dsws-chain-renderer", style: { display: "flex", flexDirection: "column" } }, [
+        // #296 实机反馈：水平步进条与下方垂直明细信息重复，检查页隐藏（组件保留，其他宿主按需开启）
+        showSteps ? h4(ChainSteps, { snapshot }) : null,
+        h4(ChainBanner, { snapshot, dispatcher, st }),
+        // chainState 调试用（仅开发时可见，生产可隐藏；暂展示 small）
+        snapshot.chainState === "allDone" ? h4("div", { style: { fontSize: 10, color: "#4ade80", padding: "2px 6px" } }, tr("env.chainDone")) : null
+      ]);
+    };
+    function isSupportedActionType(type) {
+      return ["inject-prompt", "open-url", "rpc", "form", "refresh"].indexOf(String(type)) >= 0;
+    }
     const useTabsRow = function(s3, tabsRef) {
       const [tabTip, setTabTip] = React.useState(null);
       const tabsTip = function(e3, text, priority) {
@@ -21546,6 +21909,303 @@ ${formatProgressEntry(entry)}
         ]) : null
       ]);
     };
+    const ChecksTab = ({ st }) => {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const whyEnter = typeof CHAIN_EVENT_REASONS !== "undefined" ? CHAIN_EVENT_REASONS.enterWorkspace : "enter-workspace";
+      const whyRecheck = typeof CHAIN_EVENT_REASONS !== "undefined" ? CHAIN_EVENT_REASONS.userRecheck : "user-recheck";
+      React.useEffect(function() {
+        try {
+          typeof chainEventRefresh === "function" ? chainEventRefresh(st, whyEnter, false) : loadChain(st, false, whyEnter);
+        } catch (e3) {
+        }
+      }, []);
+      const curLang = typeof promptLang === "function" ? promptLang() : "zh";
+      React.useEffect(function() {
+        try {
+          if (st.chainSnapshot && st.chainLangLoaded && st.chainLangLoaded !== curLang) loadChain(st, true, "action-done");
+        } catch (e3) {
+        }
+      }, [curLang]);
+      const steps = chainSteps(st);
+      const chainSnapshot = st.chainSnapshot || null;
+      const remoteStep = chainStep(st, "gh:remote");
+      const remoteBad = !!(remoteStep && remoteStep.status === "fail");
+      const resolveSetupRunText = function(st2) {
+        try {
+          return typeof setupRunTextForClick === "function" ? setupRunTextForClick(st2) : "";
+        } catch (e3) {
+          return null;
+        }
+      };
+      const chainDispatcher = function() {
+        try {
+          if (typeof createActionDispatcher === "function") {
+            return createActionDispatcher({
+              inject: function(text, args) {
+                try {
+                  inject(st, text);
+                } catch (e3) {
+                }
+              },
+              openUrl: function(url) {
+                try {
+                  openUrl(url);
+                } catch (e3) {
+                }
+              },
+              hostCall: function(method, params) {
+                if (typeof host !== "undefined" && host.call) return host.call(method, params);
+                return Promise.reject(new Error("hostCall unavailable"));
+              },
+              renderForm: function(schema, onSubmit) {
+                try {
+                  const isWizardPayload = schema && typeof schema === "object" && !Array.isArray(schema) && Array.isArray(schema.steps);
+                  if (typeof openFormModal === "function") {
+                    if (isWizardPayload) {
+                      openFormModal(st, { type: "wizard", steps: schema.steps, label: schema.label || "", submitAction: schema.submitAction || null }, onSubmit);
+                    } else {
+                      openFormModal(st, { type: "form", schema, label: tr("env.actFillForm") }, onSubmit);
+                    }
+                  } else if (typeof ensureFormModal === "function") {
+                    const m3 = ensureFormModal(st);
+                    if (isWizardPayload) {
+                      const firstSchema = Array.isArray(schema.steps[0] && schema.steps[0].schema) ? schema.steps[0].schema : Array.isArray(schema.steps[0] && schema.steps[0].fields) ? schema.steps[0].fields : [];
+                      m3.open = true;
+                      m3.schema = firstSchema;
+                      m3.onSubmit = typeof onSubmit === "function" ? onSubmit : null;
+                      m3.label = schema.label || "";
+                      m3.pending = false;
+                    } else {
+                      m3.open = true;
+                      m3.schema = Array.isArray(schema) ? schema : [];
+                      m3.onSubmit = typeof onSubmit === "function" ? onSubmit : null;
+                      m3.label = tr("env.actFillForm");
+                      m3.pending = false;
+                    }
+                    try {
+                      if (typeof emit === "function") emit(st);
+                    } catch (e22) {
+                      try {
+                        st.tick = (st.tick || 0) + 1;
+                      } catch (_3) {
+                      }
+                    }
+                  } else {
+                    try {
+                      onSubmit({});
+                    } catch (e22) {
+                    }
+                  }
+                } catch (e3) {
+                }
+              },
+              refresh: async function(target) {
+                try {
+                  if (typeof host !== "undefined" && host.call) {
+                    await host.call("wf.detect", { cwd: st.cwd || "", force: true, backendId: (typeof userHintOf === "function" ? userHintOf(st.selection) : void 0) || void 0 });
+                  }
+                } catch (e3) {
+                }
+                try {
+                  typeof chainEventRefresh === "function" ? chainEventRefresh(st, whyRecheck) : loadChain(st, true, whyRecheck);
+                } catch (e3) {
+                }
+                try {
+                  loadSnapshot(st, true, true);
+                } catch (e3) {
+                }
+              },
+              tr,
+              resolvePrompt: function(id, params) {
+                try {
+                  if (id === "setupRun") return resolveSetupRunText(st);
+                  return promptTextFor(st, id, params);
+                } catch (e3) {
+                  return "";
+                }
+              }
+            });
+          }
+        } catch (e3) {
+        }
+        return null;
+      }();
+      const statusMeta = function(s3) {
+        const sts = s3.status;
+        if (sts === "done") return { state: "done", dot: "#16a34a", color: "#4ade80", label: "✓" };
+        if (sts === "current") return { state: "current", dot: "#f59e0b", color: "#f59e0b", label: "!" };
+        if (sts === "fail") return { state: "fail", dot: "#ef4444", color: "#f87171", label: "✕" };
+        return { state: "pending", dot: "#6b7280", color: "#a1a1aa", label: "…" };
+      };
+      const miniActionLabel = function(a3) {
+        const t3 = a3 && a3.type;
+        if (t3 === "inject-prompt") return a3 && a3.label || tr("env.actRun");
+        if (t3 === "open-url") return tr("env.actOpenUrl");
+        if (t3 === "rpc") return a3 && (a3.method || a3.endpoint) || tr("env.actRun");
+        if (t3 === "form") return a3 && a3.label || tr("env.actFillForm");
+        if (t3 === "wizard") return a3 && a3.label || "Wizard";
+        if (t3 === "refresh") return tr("env.actRefresh");
+        return "unsupported: " + String(t3 || "unknown");
+      };
+      const runAction = async function(a3) {
+        if (!chainDispatcher) return;
+        try {
+          const res = await chainDispatcher.dispatch(a3);
+          if (!res || !res.ok) {
+            try {
+              flash(st, String(res && res.error && res.error.message || tr("env.actFailed")), "warn");
+            } catch (e3) {
+            }
+          }
+        } catch (e3) {
+          try {
+            flash(st, String(e3 && e3.message || e3).slice(0, 200), "warn");
+          } catch (e22) {
+          }
+        }
+      };
+      const hintTextOf = function(s3) {
+        const raw = s3 && s3.show && (s3.show.hint || "") || "";
+        if (!raw) return "";
+        if (typeof raw === "string" && raw.indexOf("prompt:") === 0) {
+          const pk = raw.slice(7);
+          if (chainDispatcher && typeof chainDispatcher.resolvePrompt === "function") {
+            try {
+              const r3 = chainDispatcher.resolvePrompt(pk, {});
+              if (typeof r3 === "string" && r3) return r3;
+            } catch (e3) {
+            }
+          }
+        }
+        return typeof raw === "string" ? raw : "";
+      };
+      const stepRows = steps.length ? steps.map(function(s3, i3) {
+        const meta = statusMeta(s3);
+        const label = checkShowTitle(s3.show, s3.id);
+        const desc = s3.show && (s3.show.desc || "") || "";
+        let blockedNote = "";
+        if (s3.status === "pending" && s3.blockedBy) {
+          const blocker = steps.find(function(x4) {
+            return String(x4.id) === String(s3.blockedBy);
+          }) || null;
+          const blockerName = checkShowTitle(blocker && blocker.show, s3.blockedBy);
+          blockedNote = tr("env.waitingBlocked", { by: String(blockerName) });
+        }
+        const finalDesc = blockedNote ? desc ? desc + " · " + blockedNote : blockedNote : desc;
+        const hintText = hintTextOf(s3);
+        const fixActions = s3.status === "fail" || s3.status === "current" ? Array.isArray(s3.actions) ? s3.actions : [] : [];
+        const primaryAction = chainDispatcher && fixActions.length ? fixActions.find(function(a3) {
+          return a3 && (a3.type === "form" || a3.type === "wizard");
+        }) || fixActions.find(function(a3) {
+          return a3 && (a3.type === "inject-prompt" || a3.type === "rpc");
+        }) || null : null;
+        const repoSync = st.repoSync || null;
+        const primaryBtn = primaryAction ? function() {
+          const alabel = miniActionLabel(primaryAction);
+          return h4("button", { key: "fix-primary", className: "dsws-btn primary dsws-hov", "data-press": "button", "data-log": "check.fix." + i3, tabIndex: 0, disabled: !!repoSync, onClick: function() {
+            runAction(primaryAction);
+          }, style: { fontSize: 12, padding: "6px 14px", flex: "none", whiteSpace: "nowrap" } }, alabel);
+        }() : null;
+        return h4("div", { key: s3.id || i3, className: "dsws-ccard", "data-state": meta.state, style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 6, padding: primaryBtn ? "10px 12px" : void 0, border: primaryBtn ? "1px solid var(--dsw-alias-border-l1,#2a2d35)" : void 0, borderRadius: 10, background: primaryBtn ? "var(--dsw-alias-bg-layer-1,#10131a)" : void 0 } }, [
+          h4("span", { className: "dsws-ccard-dot", style: { width: 16, height: 16, borderRadius: "50%", background: meta.dot, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, flex: "none" } }, meta.label),
+          h4("span", { style: { flex: 1, minWidth: 0 } }, [
+            h4("span", { className: "nm", style: { color: meta.color, fontWeight: primaryBtn ? 600 : 400 } }, String(label)),
+            finalDesc ? h4(Tip, { className: "dsws-tip", content: h4("div", { style: { display: "flex", flexDirection: "column", gap: 2 } }, [h4("div", { style: { fontSize: 10, color: "#8b8b95", lineHeight: "14px" } }, tr("tip.header.desc")), h4("div", { style: { fontSize: 11, color: "#e6edf3", lineHeight: "16px", wordBreak: "break-word", whiteSpace: "normal" } }, finalDesc)]) }, h4("div", { className: "dt dsws-ellip", style: { color: "#8b8b95" } }, finalDesc)) : null,
+            hintText ? h4("div", { className: "dt", style: { color: "#d97706", lineHeight: 1.5, marginTop: 2, whiteSpace: "pre-wrap" } }, hintText) : null
+          ]),
+          primaryBtn
+        ]);
+      }) : null;
+      return h4("div", null, [
+        h4("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 12 } }, [
+          h4("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, [Ic({ n: "gear", size: 12 }), h4("span", null, tr("env.title", { n: envLabel(st) }))]),
+          function() {
+            const selTop = st.selection || st.snapshot && st.snapshot.selection || null;
+            if (selTop && selTop.backendId) return h4(Tip, { content: tr("banner.setupPickHint") }, h4("span", { className: "dsws-env-badge", style: { fontSize: 10, lineHeight: "16px", padding: "1px 8px", borderRadius: 99, border: "1px solid rgba(139,140,255,.45)", color: "#9a9aff" } }, String(selTop.backendId)));
+            if (selTop && selTop.pending) return h4("span", { className: "dsws-env-detecting", style: { fontSize: 10, color: "#8b8b95" } }, tr("env.detecting"));
+            return null;
+          }(),
+          h4("span", { style: { flex: 1 } }),
+          // 本次界面反馈需求：顶部「重新检查」带按压态、悬停反馈与点击日志。
+          h4("button", { className: "dsws-btn dsws-hov", "data-press": "button", "data-log": "check.recheck", disabled: st.refreshing, onClick: function() {
+            refreshAll(st);
+          }, style: { fontSize: 11, padding: "2px 8px", display: "inline-flex", alignItems: "center", gap: 4 } }, [
+            h4("span", { className: "dsws-rficon" + (st.refreshing ? " dsws-spin" : "") }, [Ic({ n: "refresh", size: 11 })]),
+            h4("span", null, tr("env.recheck"))
+          ])
+        ]),
+        // B Timeline 定版（2026-08-28）：无 no-repo 弱化卡/恢复卡——远端未关联由行内红卡（gh:remote FAIL 行）表达；
+        //   dismiss 状态机保留在 store（向后兼容），不再在检查页顶部占用空间
+        // #419/#425 同步过渡态与 30s 超时未确认态（含「点此重新检查」；此态下不恢复创建按钮）
+        function() {
+          const rs = st.repoSync || null;
+          if (!rs) return null;
+          if (rs.phase === "syncing") return h4("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", border: "1px solid #2b3a2b", background: "rgba(74,222,128,.06)", borderRadius: 8, fontSize: 12, color: "var(--dsw-alias-state-success-primary,#4ade80)", marginBottom: 6 } }, [
+            h4("span", { className: "dsws-rficon dsws-spin" }, [Ic({ n: "refresh", size: 11 })]),
+            h4("span", null, tr("panel.repoSync.syncing")),
+            h4("span", { style: { fontSize: 10, color: "var(--dsw-alias-label-caption,#8b8b95)", marginLeft: 2 } }, "（" + tr("panel.repoSync.guardHint") + "）")
+          ]);
+          return h4("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", border: "1px solid #5a4a1f", background: "rgba(251,191,36,.07)", borderRadius: 8, fontSize: 12, color: "var(--dsw-alias-state-warning-primary,#fbbf24)", marginBottom: 6, flexWrap: "wrap" } }, [
+            h4("span", null, tr("panel.repoSync.timeout")),
+            h4("button", { className: "dsws-btn dsws-hov", "data-press": "button", "data-log": "check.recheck.sync", onClick: function() {
+              try {
+                if (typeof retryRepoSync === "function") retryRepoSync(st);
+              } catch (e3) {
+              }
+            }, style: { fontSize: 11, padding: "2px 8px" } }, tr("env.recheck"))
+          ]);
+        }(),
+        stepRows,
+        // #155 Q7：能力诊断折叠卡（默认收起，不进渲染分支；G5 能力视图仅诊断不驱动隐藏）
+        function() {
+          const snap = st.snapshot;
+          const issues = snap && Array.isArray(snap.issues) ? snap.issues : [];
+          if (!issues.length && !snap) return null;
+          const caps = snap && snap.capabilities ? snap.capabilities : null;
+          let counts = caps;
+          if (!counts) {
+            const fields = ["author", "assignees", "labels", "milestone", "customFields", "reason", "blockedBy", "comments", "closedAt"];
+            let present = 0, empty = 0, missing = 0;
+            issues.forEach(function(it) {
+              fields.forEach(function(f3) {
+                if (it[f3] === void 0) missing++;
+                else if (Array.isArray(it[f3]) && it[f3].length === 0) empty++;
+                else if (it[f3] === null || it[f3] === "") empty++;
+                else present++;
+              });
+            });
+            counts = { present, empty, missing };
+          }
+          const sel = st.selection || snap && snap.selection || null;
+          const repoRef = st.repository || snap && snap.repository || null;
+          return h4("details", { style: { marginTop: 8, border: "1px solid var(--dsw-alias-border-l1,#2a2d35)", borderRadius: 6, padding: "6px 8px", background: "rgba(255,255,255,.02)" } }, [
+            // 本次界面反馈需求：能力诊断折叠条能点，给它悬停反馈、按压态与点击日志。
+            h4("summary", { className: "dsws-hov", "data-press": "button", "data-log": "check.diag.toggle", style: { fontSize: 11, fontWeight: 600, color: "var(--dsw-alias-label-secondary,#a1a1aa)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 } }, [
+              Ic({ n: "note", size: 11 }),
+              h4("span", null, tr("env.diagTitle")),
+              h4("span", { style: { fontSize: 10, color: "#8b8b95", marginLeft: 6 } }, "present " + counts.present + " / empty " + counts.empty + " / missing " + counts.missing)
+            ]),
+            h4("div", { style: { fontSize: 11, color: "#8b8b95", marginTop: 6, lineHeight: 1.6 } }, [
+              h4("div", null, tr("env.diagBackend") + ": " + (sel && sel.backendId ? sel.backendId : "—") + (sel && sel.source ? " (" + sel.source + ")" : "") + (sel && sel.pending ? " ⏳ pending" : "") + (sel && sel.multiHit ? " ⚠ multiHit:" + sel.multiHit.join(",") : "")),
+              repoRef ? h4("div", null, tr("env.diagRepo") + ": " + repoRef.name + (repoRef.url ? " — " + repoRef.url : " " + tr("env.diagLocal"))) : null,
+              h4("div", null, tr("env.diagFields") + ": present=" + counts.present + " · empty=" + counts.empty + " · missing=" + counts.missing),
+              h4("div", { style: { fontSize: 10, color: "#6b7280", marginTop: 4 } }, tr("env.diagNote")),
+              h4("div", { style: { marginTop: 6 } }, [
+                h4("button", { className: "dsws-btn ghost dsws-hov", "data-press": "button", "data-log": "check.diag.viewlog", onClick: function() {
+                  try {
+                    console.log("[dsws] capabilities", counts, "selection", sel, "repo", repoRef);
+                  } catch {
+                  }
+                  ;
+                  flash(st, tr("env.diagLogged"), "info");
+                }, style: { fontSize: 10, padding: "2px 6px" } }, tr("env.diagViewLog"))
+              ])
+            ])
+          ]);
+        }()
+      ]);
+    };
     const cx = createCx({
       ctx,
       h: h3,
@@ -21593,7 +22253,7 @@ ${formatProgressEntry(entry)}
             if (topMap !== null && topMap !== void 0)
               return h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, ["地图详情页:mapV2 家族未搬(U06+ 候选)"]);
             return h3(ListTab, { st, narrow });
-          }() : h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tab" + (st.tab === "skills" ? "Skills" : st.tab === "checks" ? "Checks" : "Pr")) + " 页:U06+ 搬入"])
+          }() : st.tab === "checks" ? h3(ChecksTab, { st }) : h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tab" + (st.tab === "skills" ? "Skills" : "Pr")) + " 页:U06+ 搬入"])
         ])
       ]);
     };

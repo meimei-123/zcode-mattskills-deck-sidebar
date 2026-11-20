@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { scanWorkspace, computeCounts, findCardByScan, thinRow } from "./cards.mjs";
 import { commentIssue, updateStatusIssue, closeIssue, reopenIssue, setLabelsIssue, createIssue } from "./write.mjs";
 import { createDeckWatch, refreshFromEnv } from "./watch.mjs";
+import { buildEnvChain, summarizeEnvCheck } from "./env-check.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_NAME = "zcode-mattpocock-skills-deck";
@@ -180,6 +181,17 @@ const TOOLS = [
       required: ["key"],
     },
   },
+  {
+    name: "deck_env_check",
+    description:
+      "环境检查:按本地真实事实组装检查链快照(工作区有无 .scratch/、卡片可读、监听在线、工具桥通、技能根可读、是否 git 仓),返回链步骤(状态/标题/原因/修复动作)与计数。只读,不写盘;每次调用都按当前状态重新扫描。force=true 表示用户亲手重检(语义标记,不回错)。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        force: { type: "boolean", description: "true = 用户亲手点「重新检查」;工具每次都真扫,本字段只表达调用意图" },
+      },
+    },
+  },
 ];
 
 /** 卡的显示标签:#effort/编号(根级无目录前缀);退化身份的 key 已带目录前缀,不重复拼。 */
@@ -290,6 +302,19 @@ function handleCall(name, args) {
     return {
       content: [{ type: "text", text: `规范标签 ${CANONICAL_LABELS.length} 枚:${CANONICAL_LABELS.join("、")};内置标签色 ${Object.keys(LABEL_COLORS).length} 枚(与面板色表同源,hex 无 # 前缀)。` }],
       structuredContent: sc,
+    };
+  }
+
+  // ---- 工单 03:环境检查链(链快照唯一渲染;按本地真实事实组装,不造假) ----
+  if (name === "deck_env_check") {
+    // scan 是 handleCall 顶部现扫的这一次(每个请求都重扫 —— 「真重扫」不是 force 才有的分支);
+    // force 只表达调用意图(用户亲手点「重新检查」),非布尔按未传处理,容错不报错。
+    const force = a.force === true;
+    const snapshot = buildEnvChain(root, { scan, watchOnline: deckWatch.state().online });
+    const summary = summarizeEnvCheck(snapshot);
+    return {
+      content: [{ type: "text", text: force ? `已按当前状态重扫。${summary}` : summary }],
+      structuredContent: { ok: true, snapshot, checkedAt: new Date().toISOString() },
     };
   }
 
