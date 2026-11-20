@@ -26,3 +26,11 @@ try {
   console.error("[build] 上游 bundle 构建失败:" + ((e && e.message) || e) + "(先在 zcode-plugin/ 跑 npm install?)");
   throw e;
 }
+// 工单 01:版本管理宿主底座 bundle(上游 vc 家族 + Node 垫片;机制见 build-git.mjs)。
+// 放在上游 bundle 之后:时间参数生成器镜像由 buildUpstreamBundle 先就位(缺失时 build-git 会自己补跑)。
+try {
+  await import("./build-git.mjs").then((m) => m.buildGitBundle());
+} catch (e) {
+  console.error("[build] git bundle 构建失败:" + ((e && e.message) || e));
+  throw e;
+}
