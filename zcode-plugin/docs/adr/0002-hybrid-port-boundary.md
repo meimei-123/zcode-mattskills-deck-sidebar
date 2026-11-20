@@ -31,7 +31,7 @@
 
 ## 实施修订记录(m2,0.3.1,2026-11-20)
 
-- **容器形态**:由上游原样的固定 460px 浮动窗改为填满 surface —— `.dsws-panel` 改 `position:static` + 宽高 100%,内容按 460px 上限(行/KPI/正文根),窄档判据仍是 380px;字号与间距不随宽度缩放(用户裁定)。
+- **容器形态**:由上游原样的固定 460px 浮动窗改为填满 surface —— `.dsws-panel` 改 `position:static` + 宽高 100%,0.3.1 曾按 460px 给行/KPI/正文根设内容上限;0.3.2 按真机反馈(内容锁窄、不跟侧边栏拉伸)撤掉内容级上限,行/KPI/正文根随容器铺满;窄档判据仍是 380px;字号与间距不随宽度缩放(用户裁定)。
 - **装配段两个本仓补件**:`nowStr`(上游真源 `src/refresh/rooms/client/snapshot-sync.ts`,纯日期串)与 `refreshAll`(上游真源 `refresh-timer.ts`,本仓只做 refreshing→emit→chainEventRefresh→收尾,不搬快照并发与同工作区组扇出);两者所在 refresh rooms 家族不搬,补件只为让整叶搬入的 loadChain/ChecksTab 不崩。
 - **检查页刷新通路**:上游靠宿主事件源驱动重算(界面无自续定时器);本仓无宿主推送通道,检查页可见时用上游活跃探测拍同一节奏(5 秒)自问一次 `chainEventRefresh(..., force=true)`,页面隐藏跳过,离页即停。
 - **标签重排**:上游 ListTab 的指纹(snapshot/tab/stateFilter/lblFilters)不含宽度,靠宿主重挂/重渲触发;本仓面板不重挂,在宽度 ResizeObserver 回调里补一次 `fitAllTags()`(页面隐藏时跳过测量)。
