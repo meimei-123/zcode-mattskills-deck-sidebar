@@ -19173,8 +19173,10 @@ var init_versionControlClone = __esm({
 
 // src/git-entry.mjs
 import { spawn } from "node:child_process";
+import { createHash as createHash6 } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import { promises as fsp } from "node:fs";
+import os from "node:os";
 import path2 from "node:path";
 
 // ../src/host/versionControl.ts
@@ -21838,6 +21840,7 @@ function createGitBridge(opts) {
   const options = opts || {};
   const root = path2.resolve(String(options.workspaceRoot || process.cwd()));
   const debugOn = String(options.env && options.env.ZCODE_GIT_DEBUG || process.env.ZCODE_GIT_DEBUG || "") === "1";
+  const cacheDir = options.cacheDir ? path2.resolve(String(options.cacheDir)) : path2.join(os.tmpdir(), "zcode-deck-git-cache", createHash6("sha256").update(root, "utf8").digest("hex").slice(0, 12));
   const deps = {
     subprocess: makeSubprocess(options.env || process.env),
     timer: makeTimer(),
@@ -21848,7 +21851,8 @@ function createGitBridge(opts) {
     gate: { noteOutbound() {
     } },
     logCtx: makeLogCtx(debugOn),
-    now: Date.now
+    now: Date.now,
+    getCacheDir: () => cacheDir
   };
   const vc = createVersionControl(deps);
   const methods = /* @__PURE__ */ new Map();

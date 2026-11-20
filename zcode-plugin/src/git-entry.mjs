@@ -11,13 +11,17 @@
 //     resolve 把相对路径按工作区根归一,其余方法都吃 resolve 的产物或路径)。
 //   - gate.noteOutbound() 空操作;logCtx.fire() 默认静默(ZCODE_GIT_DEBUG=1 时 console.debug)。
 //   - getPlatform() → { resolveExecutable(name) → name };DEFAULT_CWD = 工作区根;
-//     TIMEOUT_MS = VC_RUN_TIMEOUT_MS(生成器产物,值源 config/timeouts.yaml);now = Date.now。
+//     TIMEOUT_MS = VC_RUN_TIMEOUT_MS(生成器产物,值源 config/timeouts.yaml);now = Date.now;
+//     getCacheDir() → 长任务记录目录(系统临时目录下按工作区根散列;options.cacheDir 可覆盖);
+//     不提供这一项时上游会把任务记录写成相对路径,被 fs 垫片按工作区根归一后落进用户工作区。
 //
 // createGitBridge 只暴露 createVersionControl() 回包里 handleGit* 派生的方法(handleGitStatus → gitStatus),
 // tickets 表与 runGitCommand 一律不暴露。路径边界(args.cwd 与真正的目标路径)必须落在工作区根内。
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import { promises as fsp } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createVersionControl } from "../../src/host/versionControl.js";
 import { VC_RUN_TIMEOUT_MS } from "../../src/shared/time-config/src/values.js";
@@ -257,6 +261,12 @@ export function createGitBridge(opts) {
   const options = opts || {};
   const root = path.resolve(String(options.workspaceRoot || process.cwd()));
   const debugOn = String((options.env && options.env.ZCODE_GIT_DEBUG) || process.env.ZCODE_GIT_DEBUG || "") === "1";
+  // 长任务库要一个缓存目录(上游 versionControl.ts 的 taskPhone 读 deps.getCacheDir)。
+  // 不传时上游拿 null → 任务记录写成相对路径,会被 fs 垫片按工作区根归一,落进用户工作区;
+  // 这里默认落到系统临时目录下按工作区根散列的一格,测试可用 options.cacheDir 指定一次性目录。
+  const cacheDir = options.cacheDir
+    ? path.resolve(String(options.cacheDir))
+    : path.join(os.tmpdir(), "zcode-deck-git-cache", createHash("sha256").update(root, "utf8").digest("hex").slice(0, 12));
   const deps = {
     subprocess: makeSubprocess(options.env || process.env),
     timer: makeTimer(),
@@ -267,6 +277,7 @@ export function createGitBridge(opts) {
     gate: { noteOutbound() {} },
     logCtx: makeLogCtx(debugOn),
     now: Date.now,
+    getCacheDir: () => cacheDir,
   };
   const vc = createVersionControl(deps);
   const methods = new Map();
