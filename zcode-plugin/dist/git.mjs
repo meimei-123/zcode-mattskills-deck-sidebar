@@ -21755,6 +21755,7 @@ function makeTimer() {
         id = setTimeout(resolve, wait);
         if (id && typeof id.unref === "function") id.unref();
       });
+      if (id && typeof id.unref === "function") id.unref();
       promise.timer = id;
       return promise;
     },
