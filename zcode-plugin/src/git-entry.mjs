@@ -12,8 +12,10 @@
 //     resolve 把相对路径按工作区根归一,其余方法都吃 resolve 的产物或路径)。
 //   - gate.noteOutbound() 空操作;logCtx.fire() 默认静默(ZCODE_GIT_DEBUG=1 时 console.debug)。
 //   - getPlatform() → { resolveExecutable(name) → name };DEFAULT_CWD = 工作区根;
-//     TIMEOUT_MS = VC_RUN_TIMEOUT_MS(生成器产物,值源 config/timeouts.yaml);now = Date.now;
-//     getCacheDir() = 系统临时目录下按工作区根散列分桶的目录(长任务记录不落仓库工作区)。
+//     TIMEOUT_MS = VC_RUN_TIMEOUT_MS(生成器产物,值源 config/timeouts.yaml);now = Date.now。
+//     另补一项可选依赖 getCacheDir(上游长任务记录要用):默认 os.tmpdir()/zcode-mattpocock-skills-deck/vc-tasks,
+//     可用环境变量 ZCODE_VC_TASK_CACHE 指到别处;测试也可用 createGitBridge({cacheDir}) 注入隔离目录。
+//     不给它会落进工作区根,测试与用户仓库都不该收这份文件。
 //
 // createGitBridge 只暴露 createVersionControl() 回包里 handleGit* 派生的方法(handleGitStatus → gitStatus),
 // tickets 表与 runGitCommand 一律不暴露。路径边界(args.cwd 与真正的目标路径)必须落在工作区根内。
@@ -21,7 +23,6 @@
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 import { promises as fsp } from "node:fs";
-import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { createVersionControl } from "../../src/host/versionControl.js";
@@ -164,7 +165,9 @@ function makeSubprocess(baseEnv) {
   };
 }
 
-/** 计时服务:promise 到点 resolve;句柄上挂真实 timer id 供 clearTimeout 用。 */
+/** 计时服务:promise 到点 resolve;句柄上挂真实 timer id 供 clearTimeout 用。
+ *  timer 一律 unref:它只是「命令超时看门狗」,不该把进程钉住(否则每条 git 命令都会留一个
+ *  最长 VC_RUN_TIMEOUT_MS 的未清计时器,命令行跑完还要空等两分钟才退)。 */
 function makeTimer() {
   return {
     timeout(ms) {
@@ -172,6 +175,7 @@ function makeTimer() {
       let id;
       const promise = new Promise((resolve) => {
         id = setTimeout(resolve, wait);
+        if (id && typeof id.unref === "function") id.unref();
       });
       // 上游把这一条 promise 放进 Promise.race 后不 clearTimeout(成功路径也一样):
       // 不 unref 的话,每条成功命令都会留下一个到点才醒的定时器,把 Node 进程(含测试)无谓地拖住。
@@ -242,7 +246,8 @@ function boundaryReply(field, value, root) {
   };
 }
 
-// 真正的目标路径字段(逐条按电话入参实查):克隆目标目录、迁移产物路径、工作树目标路径、平台输出目录。
+// 真正的目标路径字段(逐条按电话入参实查):克隆目标目录、迁移产物路径、工作树目标路径、平台输出目录、
+// 补丁输出目录(gitPatchFiles 的 dir),以及长任务 fast-import 的输入文件(stdinFile.path,内容会进仓库对象)。
 // 文件内相对路径类参数(改动页/冲突页的 path、配置 check-attr 的 path)由上游自己的仓库内路径守卫负责,
 // 这里不重复拦截,避免误伤普通字符串。
 const BOUNDARY_FIELDS = {
@@ -255,6 +260,7 @@ const BOUNDARY_FIELDS = {
   gitPlatformCheck: ["dir"],
   gitPlatformRun: ["dir"],
   gitPlatformRead: ["dir"],
+  gitPatchFiles: ["dir"],
 };
 
 /**
@@ -264,14 +270,20 @@ const BOUNDARY_FIELDS = {
 export function createGitBridge(opts) {
   const options = opts || {};
   const root = path.resolve(String(options.workspaceRoot || process.cwd()));
-  const debugOn = String((options.env && options.env.ZCODE_GIT_DEBUG) || process.env.ZCODE_GIT_DEBUG || "") === "1";
-  // 长任务库要一个缓存目录(上游 deps.getCacheDir)。缺省放到系统临时目录、按工作区根散列分桶,
-  // 避免任务记录落进仓库工作区变成未跟踪文件;测试可传 cacheDir 指到自己的临时目录。
-  const cacheDir = path.resolve(
-    String(options.cacheDir || path.join(os.tmpdir(), "zcode-mattskills-deck-vc", createHash("sha256").update(root).digest("hex").slice(0, 12)))
-  );
+  const baseEnv = options.env || process.env;
+  const debugOn = String(baseEnv.ZCODE_GIT_DEBUG || process.env.ZCODE_GIT_DEBUG || "") === "1";
+  // 长任务记录只落缓存目录(上游 taskStore 按 getCacheDir 写盘);不给这个口时文件会落进工作区根。
+  // 优先级:createGitBridge({cacheDir}) 显式注入 > 环境变量 ZCODE_VC_TASK_CACHE > 系统临时目录固定子目录。
+  const cacheIn = String(baseEnv.ZCODE_VC_TASK_CACHE || process.env.ZCODE_VC_TASK_CACHE || "");
+  const cacheDir = options.cacheDir
+    ? path.resolve(String(options.cacheDir))
+    : cacheIn
+      ? path.resolve(root, cacheIn)
+      : path.join(os.tmpdir(), "zcode-mattpocock-skills-deck", "vc-tasks");
+  // 时钟与上游 deps.now 同口径:默认 Date.now;测试可注入可控时钟,以便按真实 120 秒票期验证过期拒绝。
+  const now = typeof options.now === "function" ? options.now : Date.now;
   const deps = {
-    subprocess: makeSubprocess(options.env || process.env),
+    subprocess: makeSubprocess(baseEnv),
     timer: makeTimer(),
     fs: makeFs(root),
     getPlatform: async () => ({ resolveExecutable: async (name) => name }),
@@ -279,8 +291,8 @@ export function createGitBridge(opts) {
     TIMEOUT_MS: VC_RUN_TIMEOUT_MS,
     gate: { noteOutbound() {} },
     logCtx: makeLogCtx(debugOn),
-    now: typeof options.now === "function" ? options.now : Date.now,
-    getCacheDir: async () => cacheDir,
+    getCacheDir: () => cacheDir,
+    now,
   };
   const vc = createVersionControl(deps);
   const methods = new Map();
@@ -291,14 +303,19 @@ export function createGitBridge(opts) {
     if (typeof vc[key] === "function") methods.set(method, vc[key]);
   }
 
+  function resolveTarget(field, value, baseCwd) {
+    if (typeof value !== "string" || value.trim() === "") return null;
+    const resolved = path.isAbsolute(value) ? path.normalize(value) : path.resolve(baseCwd, value);
+    return insideRoot(root, resolved) ? null : boundaryReply(field, value, root);
+  }
+
   function checkTarget(fields, args, baseCwd) {
     for (const field of fields) {
       const value = args[field];
       const values = Array.isArray(value) ? value : [value];
       for (const one of values) {
-        if (typeof one !== "string" || one.trim() === "") continue;
-        const resolved = path.isAbsolute(one) ? path.normalize(one) : path.resolve(baseCwd, one);
-        if (!insideRoot(root, resolved)) return boundaryReply(field, one, root);
+        const bad = resolveTarget(field, one, baseCwd);
+        if (bad) return bad;
       }
     }
     return null;
@@ -326,6 +343,11 @@ export function createGitBridge(opts) {
     }
     const badTarget = checkTarget(BOUNDARY_FIELDS[name] || [], input, baseCwd);
     if (badTarget) return badTarget;
+    // fast-import 的输入文件是真实路径(内容会进仓库对象):越过工作区根就是一条读盘通道,同样拦住。
+    if (input.stdinFile && typeof input.stdinFile === "object") {
+      const badStdin = resolveTarget("stdinFile.path", input.stdinFile.path, baseCwd);
+      if (badStdin) return badStdin;
+    }
     try {
       const result = await fn(input);
       if (result && typeof result === "object") return result;
