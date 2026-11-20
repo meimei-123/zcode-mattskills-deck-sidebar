@@ -11,13 +11,16 @@
 //     resolve 把相对路径按工作区根归一,其余方法都吃 resolve 的产物或路径)。
 //   - gate.noteOutbound() 空操作;logCtx.fire() 默认静默(ZCODE_GIT_DEBUG=1 时 console.debug)。
 //   - getPlatform() → { resolveExecutable(name) → name };DEFAULT_CWD = 工作区根;
-//     TIMEOUT_MS = VC_RUN_TIMEOUT_MS(生成器产物,值源 config/timeouts.yaml);now = Date.now。
-//     另补一项可选依赖 getCacheDir(上游长任务记录要用):默认 os.tmpdir()/zcode-mattpocock-skills-deck/vc-tasks,
-//     可用环境变量 ZCODE_VC_TASK_CACHE 指到别处;不给它会落进工作区根,测试与用户仓库都不该收这份文件。
+//     TIMEOUT_MS = VC_RUN_TIMEOUT_MS(生成器产物,值源 config/timeouts.yaml);
+//     now = Date.now(options.now 可注入可控时钟);getCacheDir() → 长任务记录目录
+//     (默认系统临时目录下按工作区根散列;options.cacheDir 或环境变量 ZCODE_VC_TASK_CACHE 可覆盖)。
+//     不提供 getCacheDir 时上游会把任务记录写成相对路径,被 fs 垫片按工作区根归一后落进用户工作区。
+//     getCacheDir 的两种覆盖口分别来自 03(options.cacheDir)与 06(环境变量),合并时都保留。
 //
 // createGitBridge 只暴露 createVersionControl() 回包里 handleGit* 派生的方法(handleGitStatus → gitStatus),
 // tickets 表与 runGitCommand 一律不暴露。路径边界(args.cwd 与真正的目标路径)必须落在工作区根内。
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
@@ -266,12 +269,17 @@ export function createGitBridge(opts) {
   const root = path.resolve(String(options.workspaceRoot || process.cwd()));
   const baseEnv = options.env || process.env;
   const debugOn = String(baseEnv.ZCODE_GIT_DEBUG || process.env.ZCODE_GIT_DEBUG || "") === "1";
-  // 长任务记录只落缓存目录(上游 taskStore 按 getCacheDir 写盘);不给这个口时文件会落进工作区根,
-  // 所以垫片补一个:环境变量 ZCODE_VC_TASK_CACHE 优先,否则系统临时目录下的固定子目录。
+  // 长任务库要一个缓存目录(上游 versionControl.ts 的 taskPhone 读 deps.getCacheDir)。
+  // 不传时上游拿 null → 任务记录写成相对路径,会被 fs 垫片按工作区根归一,落进用户工作区。
+  // 合并两版覆盖口:显式 options.cacheDir 优先(03 测试用一次性目录),其次环境变量
+  // ZCODE_VC_TASK_CACHE(06 的 server 子进程只传得了 env);默认落到系统临时目录下
+  // 按工作区根散列的一格,不同工作区互不串档。
   const cacheIn = String(baseEnv.ZCODE_VC_TASK_CACHE || process.env.ZCODE_VC_TASK_CACHE || "");
-  const cacheDir = cacheIn
-    ? path.resolve(root, cacheIn)
-    : path.join(os.tmpdir(), "zcode-mattpocock-skills-deck", "vc-tasks");
+  const cacheDir = options.cacheDir
+    ? path.resolve(String(options.cacheDir))
+    : cacheIn
+      ? path.resolve(root, cacheIn)
+      : path.join(os.tmpdir(), "zcode-deck-git-cache", createHash("sha256").update(root, "utf8").digest("hex").slice(0, 12));
   // 时钟与上游 deps.now 同口径:默认 Date.now;测试可注入可控时钟,以便按真实 120 秒票期验证过期拒绝。
   const now = typeof options.now === "function" ? options.now : Date.now;
   const deps = {

@@ -19173,6 +19173,7 @@ var init_versionControlClone = __esm({
 
 // src/git-entry.mjs
 import { spawn } from "node:child_process";
+import { createHash as createHash6 } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
@@ -21843,7 +21844,7 @@ function createGitBridge(opts) {
   const baseEnv = options.env || process.env;
   const debugOn = String(baseEnv.ZCODE_GIT_DEBUG || process.env.ZCODE_GIT_DEBUG || "") === "1";
   const cacheIn = String(baseEnv.ZCODE_VC_TASK_CACHE || process.env.ZCODE_VC_TASK_CACHE || "");
-  const cacheDir = cacheIn ? path2.resolve(root, cacheIn) : path2.join(os.tmpdir(), "zcode-mattpocock-skills-deck", "vc-tasks");
+  const cacheDir = options.cacheDir ? path2.resolve(String(options.cacheDir)) : cacheIn ? path2.resolve(root, cacheIn) : path2.join(os.tmpdir(), "zcode-deck-git-cache", createHash6("sha256").update(root, "utf8").digest("hex").slice(0, 12));
   const now = typeof options.now === "function" ? options.now : Date.now;
   const deps = {
     subprocess: makeSubprocess(baseEnv),
