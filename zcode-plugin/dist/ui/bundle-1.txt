@@ -1155,8 +1155,76 @@
     }
     return out;
   }
+  function bodySectionOf(card) {
+    let raw = String(card && card.body || "");
+    const cm = /^\s*##\s*Comments\s*$/im.exec(raw);
+    if (cm) raw = raw.slice(0, cm.index);
+    const metaLine = /^\s*(?:\*\*)?(?:Status|Labels?|Assignees|Blocked\s+by|Type|Close\s+reason)(?:\*\*)?\s*[:\uFF1A]/i;
+    const out = [];
+    let started = false;
+    for (const line of raw.split("\n")) {
+      if (!started) {
+        if (!line.trim()) continue;
+        if (/^\s*<!--/.test(line)) continue;
+        if (/^#\s/.test(line)) continue;
+        if (metaLine.test(line)) continue;
+        started = true;
+      }
+      out.push(line);
+    }
+    return out.join("\n").trim();
+  }
+  function detailIssueOf(card, pool) {
+    const c3 = card || {};
+    const rows = Array.isArray(pool) ? pool : [];
+    const effortId = String(c3.effortId || "");
+    const key = String(c3.key || "");
+    const rowOf = (k4) => rows.find(
+      (r3) => r3 && String(r3.effortId || "") === effortId && (String(r3.key || "") === k4 || String(r3.key || "") === `${effortId}/${k4}`)
+    ) || null;
+    const children = rows.filter(
+      (r3) => r3 && r3.type !== "map" && r3.type !== "spec" && String(r3.effortId || "") === effortId && r3.parentKey != null && String(r3.parentKey) === key
+    );
+    const blockers = (Array.isArray(c3.blockedBy) ? c3.blockedBy : []).map((ref) => ref && ref.key != null ? rowOf(String(ref.key)) : null).filter(Boolean);
+    const comments = Array.isArray(c3.comments) ? c3.comments : [];
+    const claimed = Array.isArray(c3.assignees) && c3.assignees.length ? c3.assignees[0] : null;
+    return {
+      number: parseInt(key, 10) || 0,
+      key,
+      effortId,
+      type: c3.type || "issue",
+      title: c3.title || "",
+      state: c3.state === "closed" ? "closed" : "open",
+      labels: Array.isArray(c3.labels) ? c3.labels : [],
+      assignees: Array.isArray(c3.assignees) ? c3.assignees : [],
+      author: claimed && claimed.login ? { login: claimed.login } : { login: "local" },
+      body: bodySectionOf(c3),
+      url: typeof c3.url === "string" ? c3.url : key,
+      createdAt: c3.createdAt || "",
+      updatedAt: c3.updatedAt || c3.createdAt || "",
+      closedAt: c3.closedAt || null,
+      subIssues: { nodes: children.map(panelRowOf), totalCount: children.length },
+      blockedBy: blockers.map(panelRowOf),
+      comments: { nodes: comments, pageInfo: { hasNextPage: false, endCursor: String(comments.length) } }
+    };
+  }
+  function commentsPageOf(card, after) {
+    const all = Array.isArray(card && card.comments) ? card.comments : [];
+    const PAGE = 50;
+    const off = Math.max(0, parseInt(after, 10) || 0);
+    const nodes = all.slice(off, off + PAGE);
+    return { nodes, pageInfo: { hasNextPage: off + nodes.length < all.length, endCursor: String(off + nodes.length) } };
+  }
 
   // .tmp/upstream-entry.spliced.mjs
+  try {
+    if (typeof l === "object" && l !== null && !l.requestAnimationFrame) {
+      l.requestAnimationFrame = function(fn2) {
+        return setTimeout(fn2, 0);
+      };
+    }
+  } catch (eOpts) {
+  }
   var React = compat_module_exports;
   var ReactDOM = compat_module_exports;
   var styles = {
@@ -1206,6 +1274,10 @@
         delete this._m[k4];
       }
     };
+    try {
+      localStorage.setItem("dsws.readProjection", "legacy");
+    } catch (eProj) {
+    }
     const issuesPageOverList = function(args) {
       const o3 = args || {};
       const client = clientRef;
@@ -1232,11 +1304,87 @@
         return { ok: false, error: { kind: "network", message: String(e3 && e3.message || e3), raw: "" } };
       });
     };
+    const issueDetailOverGet = function(args) {
+      const o3 = args || {};
+      const client = clientRef;
+      if (!client || typeof client.callTool !== "function") {
+        return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
+      }
+      const num = Number(o3.number);
+      if (isNaN(num) || num < 0) {
+        return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
+      }
+      const nn2 = String(num).padStart(2, "0");
+      const key = o3.effortId ? String(o3.effortId) + "/" + nn2 : nn2;
+      return Promise.all([
+        client.callTool("deck_issue_get", { key }),
+        client.callTool("deck_issue_list", { state: "all" }).catch(function() {
+          return { structuredContent: { rows: [] } };
+        })
+      ]).then(function(pair) {
+        const sc = pair[0] && pair[0].structuredContent;
+        const card = sc && sc.card;
+        if (!card) {
+          return { ok: false, error: { kind: "parse", message: "issue missing", raw: "" } };
+        }
+        const rows = pair[1] && pair[1].structuredContent && pair[1].structuredContent.rows || [];
+        return { ok: true, issue: detailIssueOf(card, rows) };
+      }).catch(function(e3) {
+        return { ok: false, error: { kind: "network", message: String(e3 && e3.message || e3), raw: "" } };
+      });
+    };
+    const issueCommentsOverGet = function(args) {
+      const o3 = args || {};
+      const client = clientRef;
+      if (!client || typeof client.callTool !== "function") {
+        return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
+      }
+      const num = Number(o3.number);
+      if (isNaN(num) || num < 0) {
+        return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
+      }
+      const nn2 = String(num).padStart(2, "0");
+      const key = o3.effortId ? String(o3.effortId) + "/" + nn2 : nn2;
+      return client.callTool("deck_issue_get", { key }).then(function(res) {
+        const sc = res && res.structuredContent;
+        const card = sc && sc.card;
+        if (!card) return { ok: false, error: { kind: "parse", message: "issue missing", raw: "" } };
+        const page = commentsPageOf(card, o3.after);
+        return { ok: true, nodes: page.nodes, pageInfo: page.pageInfo };
+      }).catch(function(e3) {
+        return { ok: false, error: { kind: "network", message: String(e3 && e3.message || e3), raw: "" } };
+      });
+    };
+    const commentIssueOverWrite = function(args) {
+      const o3 = args || {};
+      const client = clientRef;
+      if (!client || typeof client.callTool !== "function") {
+        return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
+      }
+      const num = Number(o3.number);
+      if (isNaN(num) || num < 0) {
+        return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
+      }
+      const nn2 = String(num).padStart(2, "0");
+      const key = o3.effortId ? String(o3.effortId) + "/" + nn2 : nn2;
+      return client.callTool("deck_issue_comment", { key, body: String(o3.body || ""), actor: "panel" }).then(function(res) {
+        if (res && res.isError) {
+          const text = res.content && res.content[0] && res.content[0].text || "comment failed";
+          return { ok: false, error: { kind: "network", message: text, raw: text } };
+        }
+        return { ok: true, data: res && res.structuredContent || null };
+      }).catch(function(e3) {
+        return { ok: false, error: { kind: "network", message: String(e3 && e3.message || e3), raw: "" } };
+      });
+    };
     const host = {
       // ZCode 宿主适配(wf.* → 工具桥;未接的电话一律 unsupported,不抛)
       call: function(method, args) {
         if (method === "wf.issuesPage") return issuesPageOverList(args);
-        return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U04)", raw: "" } });
+        if (method === "wf.issueDetail") return issueDetailOverGet(args);
+        if (method === "wf.issueComments") return issueCommentsOverGet(args);
+        if (method === "wf.commentIssue") return commentIssueOverWrite(args);
+        return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U05)", raw: "" } });
       }
     };
     const snapFresh = function(st) {
@@ -12468,6 +12616,35 @@ New tickets must carry the bug label; if not yet triaged, also carry needs-triag
       if (kind === "implement") return mk("hammer", tr("act.implement"), rowActionText(st, x4), CONTAINER_ACCENT.spec);
       return mk("play", tr("act.execute"), rowActionText(st, x4), CONTAINER_ACCENT.map);
     };
+    function isExplicitlyUnfinished(node) {
+      if (!node || typeof node !== "object") return false;
+      if (node.mergedAt) return false;
+      const state = node.state == null ? "" : String(node.state).trim().toLowerCase();
+      return state === "open";
+    }
+    function usableTicketNumber(node) {
+      const raw = node && node.number;
+      if (typeof raw !== "number" || !Number.isInteger(raw) || raw <= 0) return null;
+      return raw;
+    }
+    function detailTopGate(issue, blockedNodes) {
+      const kind = typeof prStateKind === "function" ? prStateKind(issue) : "open";
+      if (kind !== "open") return { clickable: false, reason: "closed", blockedNumbers: [] };
+      const list = Array.isArray(blockedNodes) ? blockedNodes : [];
+      const numbers = [];
+      for (let i3 = 0; i3 < list.length; i3++) {
+        const node = list[i3];
+        if (!isExplicitlyUnfinished(node)) continue;
+        const n2 = usableTicketNumber(node);
+        if (n2 === null) continue;
+        if (numbers.indexOf(n2) < 0) numbers.push(n2);
+      }
+      numbers.sort(function(a3, b3) {
+        return a3 - b3;
+      });
+      if (numbers.length) return { clickable: false, reason: "blocked", blockedNumbers: numbers };
+      return { clickable: true, reason: "none", blockedNumbers: [] };
+    }
     const _chainInflightByCwd = /* @__PURE__ */ new Map();
     let _chainSeqN = 0;
     const _chainLatestByKey = /* @__PURE__ */ new Map();
@@ -18562,6 +18739,1059 @@ ${formatProgressEntry(entry)}
         }()
       ]);
     });
+    const DetailActionBar = ({ st, m: m3, kind, cState, effStats, tri }) => {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const cKind = kind || "map";
+      const state = cState || "open";
+      const triEmptyColor = function() {
+        return typeof CONTAINER_EMPTY_COLOR === "string" && CONTAINER_EMPTY_COLOR ? CONTAINER_EMPTY_COLOR : "";
+      };
+      const triDoneColor = function() {
+        return typeof CONTAINER_DONE_COLOR === "string" && CONTAINER_DONE_COLOR ? CONTAINER_DONE_COLOR : "";
+      };
+      const t3 = tri || (typeof containerTriState === "function" ? containerTriState(cKind, state) : state === "empty" ? { labelKey: "act.inspect", color: triEmptyColor(), icon: "search", titleKey: "map.inspectTitle" } : state === "done" ? { labelKey: "act.done", color: triDoneColor(), icon: "check", titleKey: "map.doneTitle" } : { labelKey: "act.execute", color: typeof CONTAINER_ACCENT === "object" && CONTAINER_ACCENT ? CONTAINER_ACCENT.map : "", icon: "play", titleKey: "map.executeTitle" });
+      const url = typeof issueUrlFor === "function" ? function() {
+        try {
+          return issueUrlFor(st, m3.number, typeof effortOf === "function" ? effortOf(m3) : void 0);
+        } catch (e3) {
+          return "";
+        }
+      }() : "";
+      const promptText2 = function() {
+        if (typeof containerPromptText === "function") {
+          try {
+            return containerPromptText(st, Object.assign({}, m3, { stats: effStats || m3.stats }), cKind, state, url);
+          } catch (e3) {
+          }
+        }
+        if (state === "empty") {
+          if (cKind === "spec") return "/to-tickets " + url;
+          let t22 = "";
+          try {
+            t22 = inspectPrompt(st, m3.number, m3.title, typeof effortOf === "function" ? effortOf(m3) : void 0);
+          } catch (e3) {
+            try {
+              t22 = promptTextFor(st, "mapInspect", { n: m3.number === void 0 || m3.number === null ? "" : String(m3.number), ["title"]: String(m3.title || ""), url });
+              if (t22) t22 = "/wayfinder " + url + "\n\n" + t22;
+            } catch (_3) {
+              t22 = startText(st, m3);
+            }
+          }
+          return t22;
+        }
+        if (state === "done") return completePrompt(st, m3.number, m3.title, effStats ? effStats.total : 0, effStats ? effStats.closed : 0, typeof effortOf === "function" ? effortOf(m3) : void 0);
+        if (cKind === "spec") return "/implement-spec " + url;
+        return startText(st, m3);
+      };
+      const textColor = state === "done" ? "#0c1a10" : typeof isLightHex === "function" && isLightHex(t3.color) ? "#140a1e" : "#ffffff";
+      return h4("div", { className: "acts" }, [
+        h4(Tip, { content: tr(t3.titleKey) }, h4("button", { className: "dsws-btn primary", "data-press": "button", "data-log": "map.dest.exec", onClick: function() {
+          inject(st, promptText2());
+        }, style: { display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 12px", fontSize: 11, background: t3.color, borderColor: "transparent", color: textColor, fontWeight: 700 } }, [
+          Ic({ n: t3.icon, size: 11 }),
+          h4("span", null, tr(t3.labelKey))
+        ])),
+        function() {
+          const archiveEff = typeof effortOf === "function" ? effortOf(m3) : void 0;
+          const archiveUrl = issueUrlFor(st, m3.number, archiveEff);
+          const archiveIsUrl = openModeFor(st, "container", archiveUrl) === "url";
+          const openArchive = function(e3) {
+            e3.stopPropagation();
+            try {
+              openTrackerTarget(st, m3.number, typeof host !== "undefined" ? host : null, archiveEff, "container");
+            } catch (err2) {
+            }
+          };
+          const archiveBtnStyle = { textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", fontSize: 11 };
+          return archiveIsUrl ? h4("a", { className: "dsws-btn ghost", href: archiveUrl, target: "_blank", rel: "noreferrer", "data-press": "button", "data-log": "map.dest.archive", style: archiveBtnStyle }, [Ic({ n: "link", size: 11 }), h4("span", null, tr("map.archive"))]) : h4("button", { className: "dsws-btn ghost", onClick: openArchive, "data-press": "button", "data-log": "map.dest.archive", style: archiveBtnStyle }, [Ic({ n: "link", size: 11 }), h4("span", null, tr("map.archive"))]);
+        }()
+      ]);
+    };
+    const READ_PROJECTION_KEY = "dsws.readProjection";
+    const READ_PROJECTION_MODES = ["snapshot", "legacy"];
+    function readProjectionMode() {
+      try {
+        const v3 = localStorage.getItem(READ_PROJECTION_KEY);
+        return v3 === "legacy" ? "legacy" : "snapshot";
+      } catch (e3) {
+        return "snapshot";
+      }
+    }
+    function setReadProjectionMode(mode) {
+      const next = mode === "legacy" ? "legacy" : "snapshot";
+      try {
+        localStorage.setItem(READ_PROJECTION_KEY, next);
+      } catch (e3) {
+        try {
+          log("warn", "storage.fail", { key: READ_PROJECTION_KEY, op: "write" });
+        } catch (eL) {
+        }
+      }
+      return next;
+    }
+    function projectionUsesSnapshot() {
+      return readProjectionMode() !== "legacy";
+    }
+    function hhmmOf(ms) {
+      const n2 = Number(ms);
+      if (!isFinite(n2) || n2 <= 0) return "";
+      const d3 = new Date(n2);
+      const hh = (d3.getHours() < 10 ? "0" : "") + String(d3.getHours());
+      const mm = (d3.getMinutes() < 10 ? "0" : "") + String(d3.getMinutes());
+      return hh + ":" + mm;
+    }
+    function snapshotRowFor(st, n2, effortId) {
+      const issues = st && st.snapshot && Array.isArray(st.snapshot.issues) ? st.snapshot.issues : [];
+      const num = Number(n2);
+      const eff = effortId === void 0 || effortId === null ? "" : String(effortId);
+      let byNumber = null;
+      for (let i3 = 0; i3 < issues.length; i3 += 1) {
+        const row = issues[i3];
+        if (!row || Number(row.number) !== num) continue;
+        if (byNumber === null) byNumber = row;
+        const rowEff = row.effortId === void 0 || row.effortId === null ? "" : String(row.effortId);
+        if (rowEff === eff) return row;
+      }
+      return byNumber;
+    }
+    function lastKnownDetailAtMs(st) {
+      let at = 0;
+      const groups = st && st.snapshot && st.snapshot.merge && st.snapshot.merge.groups;
+      const names = ["body", "comments", "review", "parents", "dependencies", "subIssues", "mergeInfo"];
+      for (let i3 = 0; i3 < names.length; i3 += 1) {
+        const stamp = groups && groups[names[i3]];
+        const t3 = stamp && typeof stamp.atMs === "number" ? stamp.atMs : 0;
+        if (t3 > at) at = t3;
+      }
+      return at;
+    }
+    function detailFromRow(row) {
+      const comments = Array.isArray(row && row.comments) ? row.comments : [];
+      const nodes = comments.map(function(c3) {
+        return {
+          author: { login: c3 && c3.author && c3.author.login || "" },
+          authorAssociation: c3 && c3.authorAssociation || "",
+          body: c3 && c3.body || "",
+          createdAt: c3 && c3.createdAt,
+          updatedAt: c3 && c3.updatedAt
+        };
+      });
+      const sub2 = row && row.subIssueCounts;
+      return {
+        number: Number(row.number),
+        effortId: row.effortId === void 0 || row.effortId === null ? "" : String(row.effortId),
+        title: row.title || "",
+        state: row.state === "CLOSED" ? "CLOSED" : "OPEN",
+        body: typeof row.body === "string" ? row.body : "",
+        url: row.url || "",
+        updatedAt: row.updatedAt || "",
+        createdAt: row.createdAt || "",
+        closedAt: row.closedAt || null,
+        author: row.author,
+        labels: { nodes: Array.isArray(row.labels) ? row.labels : [] },
+        assignees: { nodes: (Array.isArray(row.assignees) ? row.assignees : []).map(function(a3) {
+          return typeof a3 === "string" ? { login: a3 } : a3;
+        }) },
+        comments: { nodes, pageInfo: { hasNextPage: false, endCursor: String(nodes.length) } },
+        subIssues: { totalCount: sub2 && typeof sub2.total === "number" ? sub2.total : 0, nodes: [] },
+        blockedBy: { nodes: Array.isArray(row.blockedBy) ? row.blockedBy : [] },
+        blocking: { nodes: [] },
+        isPullRequest: row.isPullRequest === true,
+        mergedAt: row.mergedAt === void 0 ? null : row.mergedAt,
+        reviews: Array.isArray(row.reviews) ? row.reviews : [],
+        fromSnapshot: true
+      };
+    }
+    function knownBlockedNodes(src) {
+      if (!src) return [];
+      const edges = src.blockedBy;
+      if (Array.isArray(edges)) return edges;
+      return edges && Array.isArray(edges.nodes) ? edges.nodes : [];
+    }
+    function rowHasDetail(row) {
+      if (!row) return false;
+      if (typeof row.body === "string" && row.body.length > 0) return true;
+      return Array.isArray(row.comments) && row.comments.length > 0;
+    }
+    function detailViewFor(st, n2, effortId) {
+      const eff = effortId === void 0 || effortId === null ? "" : String(effortId);
+      if (projectionUsesSnapshot()) {
+        const row = snapshotRowFor(st, n2, effortId);
+        if (rowHasDetail(row)) {
+          let at = lastKnownDetailAtMs(st);
+          const seen = st && st.detailSeenAt && st.detailSeenAt[idOfParts(eff, Number(n2))];
+          if (typeof seen === "number" && seen > at) at = seen;
+          return { issue: detailFromRow(row), source: "snapshot", lastKnownAtMs: at, noticeKey: "detail.lastKnownData", notice: at > 0 ? tr("detail.lastKnownData", { time: hhmmOf(at) }) : "" };
+        }
+      }
+      const live = st && st.issueDetail;
+      const liveEff = live && live.effortId !== void 0 && live.effortId !== null ? String(live.effortId) : "";
+      const liveMatches = !!live && Number(live.number) === Number(n2) && liveEff === eff;
+      if (liveMatches) {
+        const keptAfterFail = st.issueMode === "err";
+        const seen = st && st.detailSeenAt && st.detailSeenAt[idOfParts(eff, Number(n2))];
+        const entry = st.issueCache && st.issueCache[idOfParts(eff, Number(n2))];
+        const at = keptAfterFail ? typeof seen === "number" && seen > 0 ? seen : entry && typeof entry.ts === "number" ? entry.ts : 0 : 0;
+        return { issue: live, source: "live", lastKnownAtMs: at, noticeKey: "", notice: keptAfterFail && at > 0 ? tr("detail.lastKnownData", { time: hhmmOf(at) }) : "" };
+      }
+      return { issue: null, source: "none", lastKnownAtMs: 0, noticeKey: "", notice: "" };
+    }
+    const issueErrorViewOf = function(h4, e3) {
+      const said = String(e3 && e3.message || "").trim();
+      const direct = String(e3 && e3.raw || "").trim();
+      const kind = String(e3 && e3.kind || "").trim();
+      const longNetwork = kind === "network" && said.length >= 48;
+      const say = longNetwork ? tr("detail.err.networkShort") : said || tr("list.loadFail");
+      const rawText = longNetwork ? direct ? said + "\n\n" + direct : said : direct || (e3 && typeof e3.error === "string" ? String(e3.error).trim() : "");
+      const rawSummary = longNetwork ? direct || tr("detail.err.networkShort") : rawText;
+      const rawBlock = rawText ? h4("details", { style: { width: "100%", marginTop: 2, paddingTop: 4, borderTop: "1px solid rgba(248,113,113,.25)" } }, [
+        // 本次界面反馈需求：错误原文的折叠条能点，给它悬停反馈、按压态与自己的点击日志。
+        //   原文是自由文本，不进定位串。
+        h4("summary", { className: "dsws-hov", "data-press": "button", "data-log": "detail.err.raw.toggle", style: { fontSize: 11, color: "var(--dsw-alias-label-secondary,#a1a1aa)", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, tr("vc.fail.raw", { msg: rawSummary })),
+        h4("div", { style: { marginTop: 4, padding: "6px 8px", background: "rgba(0,0,0,.18)", border: "1px solid rgba(248,113,113,.25)", borderRadius: 6, fontSize: 11, lineHeight: 1.6, color: "var(--dsw-alias-label-secondary,#a1a1aa)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 200, overflow: "auto" } }, rawText)
+      ]) : null;
+      return { say, kind, rawBlock };
+    };
+    const subLabelsOf = function(x4) {
+      if (!x4 || x4.labels == null) return [];
+      if (Array.isArray(x4.labels)) return x4.labels;
+      if (typeof x4.labels === "object" && Array.isArray(x4.labels.nodes)) return x4.labels.nodes;
+      return [];
+    };
+    const subHasRoutingInfo = function(x4) {
+      if (!x4) return false;
+      if (subLabelsOf(x4).length > 0) return true;
+      return typeof x4.type === "string" && x4.type !== "";
+    };
+    const subHasMapTag = function(x4) {
+      const ls = subLabelsOf(x4);
+      for (let i3 = 0; i3 < ls.length; i3++) {
+        const n2 = typeof ls[i3] === "string" ? ls[i3] : ls[i3].name;
+        if (n2 === "wayfinder:map") return true;
+      }
+      return x4 && (x4.type === "map" || x4.type === "spec");
+    };
+    const enterSubDetail = function(st, x4, issueEffort) {
+      if (!x4 || x4.number == null) return;
+      const eid = x4.effortId !== void 0 && x4.effortId !== null ? String(x4.effortId) : issueEffort;
+      if (subHasRoutingInfo(x4)) {
+        if (subHasMapTag(x4) && findMapByIdentity(st.snapshot && st.snapshot.maps, x4.number, eid)) pushNav(st, "map", x4.number, eid);
+        else pushNav(st, "issue", x4.number, eid);
+      } else {
+        if (findMapByIdentity(st.snapshot && st.snapshot.maps, x4.number, eid)) pushNav(st, "map", x4.number, eid);
+        else pushNav(st, "issue", x4.number, eid);
+      }
+    };
+    const renderIssueDetailComments = function(h4, st, issueNumber, detail, mode, commentsNodes, canComment, issueEffort) {
+      const COMMENTS_PAGE_SIZE = 50;
+      const _eff = issueEffort === void 0 || issueEffort === null ? "" : String(issueEffort);
+      let confirmedIdx = -1;
+      if (st.cmtConfirm && st.cmtConfirm.body) {
+        const __cb = String(st.cmtConfirm.body);
+        const __cap = Math.min(commentsNodes.length, COMMENTS_PAGE_SIZE);
+        for (let __ci = __cap - 1; __ci >= 0; __ci--) {
+          if (String(commentsNodes[__ci] && commentsNodes[__ci].body || "") === __cb) {
+            confirmedIdx = __ci;
+            break;
+          }
+        }
+      }
+      const cmtErrTextOf = function(er) {
+        const k4 = er && er.kind || "";
+        if (k4 === "auth") return tr("detail.cmtAuthFail");
+        if (k4 === "rate-limit") return tr("detail.cmtRateLimit");
+        return tr("detail.cmtGeneric", { msg: String(er && er.message || "").slice(0, 120) });
+      };
+      const cmtRes = !st.cmtSending && st.cmtResult ? st.cmtResult.kind : "";
+      const doSubmit = function() {
+        if (st.cmtSending) return;
+        const text = String(st.cmtDraft || "").trim();
+        if (!text) return;
+        if (typeof submitIssueComment !== "function") {
+          st.cmtError = { kind: "env" };
+          emit(st);
+          return;
+        }
+        st.cmtSending = true;
+        st.cmtError = null;
+        st.cmtResult = null;
+        emit(st);
+        const startedAt = Date.now();
+        submitIssueComment(st, issueNumber, text, { effortId: _eff }).then(function(res) {
+          st.cmtSending = false;
+          if (!res || res.ok !== true) {
+            st.cmtError = res && res.error || { kind: "network" };
+            st.cmtResult = { kind: "fail", at: Date.now() };
+            emit(st);
+            return;
+          }
+          st.cmtDraft = "";
+          st.cmtError = null;
+          st.cmtConfirm = { body: text, at: startedAt };
+          st.cmtResult = { kind: "ok", at: startedAt };
+          emit(st);
+          try {
+            setTimeout(function() {
+              if (st.cmtResult && st.cmtResult.kind === "ok" && st.cmtResult.at === startedAt) {
+                st.cmtResult = null;
+                try {
+                  emit(st);
+                } catch (eR) {
+                }
+              }
+            }, COMMENT_RESULT_FLASH_MS);
+          } catch (eT) {
+          }
+          if (typeof fetchIssueDetail === "function") fetchIssueDetail(st, issueNumber, { force: true, effortId: _eff });
+          try {
+            if (typeof probeNow === "function") probeNow(false);
+          } catch (ePn) {
+          }
+        }).catch(function(eSub) {
+          st.cmtSending = false;
+          st.cmtError = { kind: "network", message: String(eSub && eSub.message || eSub) };
+          st.cmtResult = { kind: "fail", at: Date.now() };
+          emit(st);
+        });
+      };
+      return [
+        // #693：详情还没回来时不许报「评论 (0)」—— 那是把「还没拿到」说成「没有」。
+        h4("div", { style: { fontSize: 11, fontWeight: 600, color: "var(--dsw-alias-label-secondary,#a1a1aa)", marginBottom: 6 } }, detail ? "评论 " + (commentsNodes.length ? "(" + commentsNodes.length + ")" : "(0)") : "评论 · " + (mode === "err" ? tr("detail.notYet") : tr("list.loading"))),
+        commentsNodes.length ? h4("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, commentsNodes.slice(0, COMMENTS_PAGE_SIZE).map(function(c3, i3) {
+          const login = c3.author && c3.author.login || "ghost";
+          const t3 = c3.createdAt ? String(c3.createdAt).slice(0, 10) : "";
+          const itemCls = typeof confirmedIdx === "number" && confirmedIdx === i3 ? " dsws-row-added" : "";
+          return h4("div", { key: i3, className: "dsws-cmt-item" + itemCls, style: { padding: "6px 8px", background: "rgba(255,255,255,.02)", border: "1px solid var(--dsw-alias-border-l1,#2a2d35)", borderRadius: 6 } }, [
+            h4("div", { style: { display: "flex", alignItems: "center", gap: 6, marginBottom: 4, fontSize: 11, color: "var(--dsw-alias-label-secondary,#a1a1aa)" } }, [
+              Ic({ n: "person", size: 10 }),
+              h4("span", { style: { fontWeight: 600, color: "#58a6ff" } }, "@" + login),
+              c3.authorAssociation ? h4("span", { className: "dsws-chip", style: { fontSize: 9, padding: "0 4px", background: "rgba(88,166,255,.08)", color: "#8b8b95", border: "1px solid rgba(88,166,255,.2)" } }, c3.authorAssociation) : null,
+              h4("span", { style: { flex: 1 } }),
+              h4("span", { style: { fontSize: 10, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, t3)
+            ]),
+            h4("div", { style: { fontSize: 12, lineHeight: 1.5 } }, typeof mdToHtml === "function" ? mdToHtml(c3.body || "", { st }) : c3.body || "")
+          ]);
+        })) : h4("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "8px", background: "rgba(255,255,255,.03)", borderRadius: 6, border: "1px dashed rgba(255,255,255,.1)" } }, detail ? tr("detail.noComments") : mode === "loading" ? tr("list.loading") : tr("detail.notYet")),
+        // 加载更多按钮（T5 反向分页 cursor，节流 600ms，失败重试与 3 次兜底）
+        commentsNodes.length ? function() {
+          const fail = st.issueCommentsFailCount || 0;
+          if (fail >= 3) {
+            return h4("div", { style: { marginTop: 8, padding: "8px 10px", background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.2)", borderRadius: 6, fontSize: 11, color: "#f87171", display: "flex", alignItems: "center", gap: 6, justifyContent: "center" } }, [
+              Ic({ n: "alert", size: 11 }),
+              h4("span", null, tr("detail.commentsNotLoaded")),
+              // 本地票的 url 是文件路径不是网址：https 走新页，本地走宿主打开（裸 href 点了没反应，#1145）
+              function() {
+                const _u = issueUrlFor(st, issueNumber, _eff);
+                const _isUrl = openModeFor(st, "issue", _u) === "url";
+                const _openLocal = function(e3) {
+                  e3.stopPropagation();
+                  openTrackerTarget(st, issueNumber, typeof host !== "undefined" ? host : void 0, _eff, "issue");
+                };
+                const _textStyle = { color: "#58a6ff", textDecoration: "underline" };
+                return _isUrl ? h4("a", { href: _u, target: "_blank", rel: "noreferrer", className: "dsws-hov", "data-press": "link", "data-log": "detail.cmt.tracker", style: _textStyle }, tr("detail.viewOnTrackerHint")) : h4("button", { type: "button", onClick: _openLocal, className: "dsws-hov", "data-press": "button", "data-log": "detail.cmt.tracker.local", style: Object.assign({ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "inherit" }, _textStyle) }, tr("detail.viewOnTrackerHint"));
+              }()
+            ]);
+          }
+          const hasMore = detail.comments && detail.comments.pageInfo ? detail.comments.pageInfo.hasNextPage : commentsNodes.length >= COMMENTS_PAGE_SIZE;
+          if (!hasMore && fail === 0) return null;
+          const label = st.issueCommentsMoreLoading ? tr("detail.commentsLoading") : fail > 0 ? tr("pr.retry") : tr("detail.commentsMore", { count: COMMENTS_PAGE_SIZE });
+          return h4("div", { style: { display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 8 } }, [
+            h4("button", {
+              // #952：分页加载中用呼吸备用（无转圈的文字按钮，永不与转圈同开）。
+              // 本次界面反馈需求：「加载下 50 / 重试」带按压态、悬停反馈与自己的点击日志。
+              className: "dsws-btn" + (st.issueCommentsMoreLoading ? " loading dsws-fb-breath" : "") + " dsws-hov",
+              "data-press": "button",
+              "data-log": "detail.cmt.more",
+              disabled: !!st.issueCommentsMoreLoading,
+              onClick: function() {
+                if (st.issueCommentsMoreLoading) return;
+                const after = detail.comments && detail.comments.pageInfo && detail.comments.pageInfo.endCursor ? detail.comments.pageInfo.endCursor : String(commentsNodes.length);
+                if (typeof fetchIssueComments === "function") fetchIssueComments(st, issueNumber, after, { effortId: _eff });
+                else {
+                  st.issueCommentsMoreLoading = true;
+                  emit(st);
+                  setTimeout(function() {
+                    st.issueCommentsMoreLoading = false;
+                    emit(st);
+                  }, COMMENTS_MORE_LOADING_MIN_MS);
+                }
+              },
+              style: { padding: "2px 10px", fontSize: 11, opacity: st.issueCommentsMoreLoading ? 0.5 : 1 }
+            }, label),
+            fail > 0 && fail < 3 ? h4(Tip, { content: tr("detail.commentsLoadFailed") }, h4("span", { style: { fontSize: 11, color: "#8b8b95", cursor: "help" } }, "ⓘ")) : null
+          ]);
+        }() : null,
+        // 超一页的静默提示（T5 前占位，T5 后由 hasMore 驱动）
+        commentsNodes.length > COMMENTS_PAGE_SIZE ? h4("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", textAlign: "center", marginTop: 6 } }, st.issueCommentsHasMore === false ? tr("detail.commentsShownAll", { shown: Math.min(COMMENTS_PAGE_SIZE, commentsNodes.length), total: commentsNodes.length }) : tr("detail.commentsShownMore", { shown: Math.min(COMMENTS_PAGE_SIZE, commentsNodes.length), total: commentsNodes.length })) : null,
+        // #255 评论输入区：位于评论列表后、原只读提示处；MISSING 不渲染、EMPTY 渲染（零分支判据见谓词）。
+        canComment ? h4("div", { style: { padding: "2px 0 6px" } }, [
+          st.cmtError ? h4("div", { style: {
+            marginBottom: 6,
+            padding: "7px 9px",
+            borderRadius: 6,
+            fontSize: 11,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flexWrap: "wrap",
+            background: st.cmtError.kind === "rate-limit" ? "rgba(245,158,11,.08)" : "rgba(248,113,113,.08)",
+            border: st.cmtError.kind === "rate-limit" ? "1px solid rgba(245,158,11,.3)" : "1px solid rgba(248,113,113,.25)",
+            color: st.cmtError.kind === "rate-limit" ? "#f59e0b" : "#f87171"
+          } }, [
+            Ic({ n: "alert", size: 11 }),
+            h4("span", null, cmtErrTextOf(st.cmtError)),
+            // 本地票的 url 是文件路径不是网址：https 走新页，本地走宿主打开（裸 href 点了没反应，#1145）
+            st.cmtError.kind === "auth" ? function() {
+              const _u = issueUrlFor(st, issueNumber, _eff);
+              const _isUrl = openModeFor(st, "issue", _u) === "url";
+              const _openLocal = function(e3) {
+                e3.stopPropagation();
+                openTrackerTarget(st, issueNumber, typeof host !== "undefined" ? host : void 0, _eff, "issue");
+              };
+              const _textStyle = { color: "#58a6ff", textDecoration: "underline" };
+              return _isUrl ? h4("a", { href: _u, target: "_blank", rel: "noreferrer", className: "dsws-hov", "data-press": "link", "data-log": "detail.cmt.authlink", style: _textStyle }, tr("detail.authFailCta")) : h4("button", { type: "button", onClick: _openLocal, className: "dsws-hov", "data-press": "button", "data-log": "detail.cmt.authlink.local", style: Object.assign({ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "inherit" }, _textStyle) }, tr("detail.authFailCta"));
+            }() : null
+          ]) : null,
+          h4("textarea", {
+            value: st.cmtDraft || "",
+            placeholder: tr("detail.cmtPlaceholder"),
+            disabled: !!st.cmtSending,
+            rows: 3,
+            onKeyDown: function(ev) {
+              if ((ev.metaKey || ev.ctrlKey) && ev.key === "Enter") {
+                try {
+                  ev.preventDefault();
+                } catch (ePd) {
+                }
+                doSubmit();
+              }
+            },
+            onChange: function(ev) {
+              st.cmtDraft = ev.target.value;
+              st.cmtResult = null;
+              emit(st);
+            },
+            style: { width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 56, fontSize: 12, lineHeight: 1.5, padding: "7px 9px", borderRadius: 6, border: "1px solid var(--dsw-alias-border-l1,#2a2d35)", background: "rgba(255,255,255,.03)", color: "var(--dsw-alias-label-primary,#e6edf3)" }
+            // 焦点环走全局宿主环（#1387 第五条）：行内隐藏会盖住键盘焦点，删掉后落到宿主蓝内环。
+          }),
+          h4("div", { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 5 } }, [
+            h4("span", { style: { fontSize: 10, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, "Markdown · ⌘+Enter / Ctrl+Enter 发送"),
+            h4("span", { style: { flex: 1 } }),
+            h4(Tip, { content: st.cmtSending ? tr("tip.sendingComment") : tr("tip.sendComment") }, h4("button", {
+              className: "dsws-btn primary" + (st.cmtSending ? " dsws-fb-busy" : "") + (cmtRes === "ok" ? " dsws-fb-okflash" : "") + (cmtRes === "fail" ? " dsws-fb-errflash dsws-fb-shake" : ""),
+              "data-press": "button",
+              "data-log": "issue.comment.send",
+              disabled: !(st.cmtDraft || "").trim() || !!st.cmtSending,
+              onClick: function() {
+                doSubmit();
+              },
+              style: { padding: "2px 12px", fontSize: 11, opacity: !(st.cmtDraft || "").trim() || !!st.cmtSending ? 0.5 : 1, cursor: !(st.cmtDraft || "").trim() || !!st.cmtSending ? "not-allowed" : "pointer" }
+            }, st.cmtSending ? [h4("span", { className: "fb-t", "aria-hidden": "true" }, tr("detail.cmtSending")), h4("span", { className: "fb-spin", "aria-hidden": "true" }, h4("span", { className: "dsws-spinner", style: { width: 11, height: 11, borderWidth: 2 } }))] : cmtRes === "ok" ? Ic({ n: "check", size: 11 }) : cmtRes === "fail" ? Ic({ n: "x", size: 11 }) : tr("detail.cmtSend")))
+          ])
+        ]) : null
+      ];
+    };
+    const issueDetailFoldLadderOf = function(data) {
+      const d3 = data || {};
+      const ladder = {
+        back: String(d3.back || ""),
+        crumb: String(d3.crumb || ""),
+        snapshot: String(d3.snapshot || ""),
+        primary: String(d3.primary || ""),
+        newSession: String(d3.newSession || ""),
+        steps: []
+      };
+      const push = function(el, n2) {
+        for (let i3 = 1; i3 <= n2; i3++) ladder.steps.push({ el, n: i3 });
+      };
+      push("back", ladder.back.length);
+      push("crumb", ladder.crumb.length);
+      push("snapshot", ladder.snapshot.length);
+      push("primary", ladder.primary.length);
+      push("newSession", ladder.newSession.length);
+      return ladder;
+    };
+    const issueDetailFoldStateAt = function(ladder, tier) {
+      const l3 = ladder || { back: "", crumb: "", snapshot: "", primary: "", newSession: "", steps: [] };
+      const steps = Array.isArray(l3.steps) ? l3.steps : [];
+      const n2 = Math.max(0, Math.min(Math.floor(Number(tier) || 0), steps.length));
+      const dropped = { back: 0, crumb: 0, snapshot: 0, primary: 0, newSession: 0 };
+      for (let i3 = 0; i3 < n2; i3++) {
+        const s3 = steps[i3];
+        if (s3.el === "back" || s3.el === "crumb" || s3.el === "snapshot" || s3.el === "primary" || s3.el === "newSession") dropped[s3.el] = s3.n;
+      }
+      const cut = function(text, drop) {
+        return String(text || "").slice(0, Math.max(0, String(text || "").length - drop));
+      };
+      return {
+        tier: n2,
+        back: cut(l3.back, dropped.back),
+        crumb: cut(l3.crumb, dropped.crumb),
+        snapshot: cut(l3.snapshot, dropped.snapshot),
+        primary: cut(l3.primary, dropped.primary),
+        newSession: cut(l3.newSession, dropped.newSession)
+      };
+    };
+    const useIssueDetailFold = function(st, issueNumber, issueEffort) {
+      const topBarRef = React.useRef(null);
+      React.useEffect(function() {
+        const applyDetailFold = function() {
+          const bar = topBarRef.current;
+          if (!bar || typeof document === "undefined") return;
+          const q4 = function(sel) {
+            try {
+              return bar.querySelector(sel);
+            } catch (e3) {
+              return null;
+            }
+          };
+          const backEl = q4("[data-detail-back-text]");
+          const crumbEl = q4("[data-detail-crumb]");
+          const snapEl = q4("[data-detail-snapshot]");
+          const primEl = q4("[data-detail-primary-text]");
+          const newEl = q4("[data-detail-new-text]");
+          const items = [backEl, crumbEl, snapEl, primEl, newEl].filter(function(x4) {
+            return !!x4;
+          });
+          if (!items.length) return;
+          items.forEach(function(el) {
+            try {
+              const full = el.getAttribute("data-full");
+              if (full !== null && full !== void 0) el.textContent = full;
+            } catch (e3) {
+            }
+          });
+          let ladder = null;
+          try {
+            if (typeof issueDetailFoldLadderOf === "function") {
+              ladder = issueDetailFoldLadderOf({
+                back: backEl ? backEl.getAttribute("data-full") || "" : "",
+                crumb: crumbEl ? crumbEl.getAttribute("data-full") || "" : "",
+                snapshot: snapEl ? snapEl.getAttribute("data-full") || "" : "",
+                primary: primEl ? primEl.getAttribute("data-full") || "" : "",
+                newSession: newEl ? newEl.getAttribute("data-full") || "" : ""
+              });
+            }
+          } catch (e3) {
+            ladder = null;
+          }
+          const fits = function() {
+            try {
+              return bar.scrollWidth <= bar.clientWidth + 1;
+            } catch (e3) {
+              return true;
+            }
+          };
+          if (fits()) return;
+          if (ladder && typeof issueDetailFoldStateAt === "function") {
+            for (let t3 = 1; t3 <= ladder.steps.length; t3++) {
+              let cur = null;
+              try {
+                cur = issueDetailFoldStateAt(ladder, t3);
+              } catch (e3) {
+                break;
+              }
+              try {
+                if (backEl) backEl.textContent = cur.back;
+                if (crumbEl) crumbEl.textContent = cur.crumb;
+                if (snapEl) snapEl.textContent = cur.snapshot;
+                if (primEl) primEl.textContent = cur.primary;
+                if (newEl) newEl.textContent = cur.newSession;
+              } catch (e22) {
+                break;
+              }
+              try {
+                void bar.offsetWidth;
+              } catch (e3) {
+              }
+              if (fits()) return;
+            }
+            return;
+          }
+          const els = [backEl, crumbEl, snapEl, primEl, newEl].filter(function(x4) {
+            return !!x4;
+          });
+          for (let i3 = 0; i3 < els.length; i3++) {
+            while (els[i3] && els[i3].textContent && !fits()) {
+              try {
+                els[i3].textContent = els[i3].textContent.slice(0, -1);
+              } catch (e3) {
+                break;
+              }
+            }
+            if (fits()) return;
+          }
+        };
+        applyDetailFold();
+        let ro = null;
+        try {
+          ro = new ResizeObserver(function() {
+            applyDetailFold();
+          });
+          if (topBarRef.current) ro.observe(topBarRef.current);
+        } catch (e3) {
+        }
+        const onWin = function() {
+          applyDetailFold();
+        };
+        if (typeof window !== "undefined") window.addEventListener("resize", onWin);
+        if (typeof document !== "undefined" && document.fonts && document.fonts.ready) document.fonts.ready.then(function() {
+          applyDetailFold();
+        });
+        return function() {
+          if (ro) try {
+            ro.disconnect();
+          } catch (e3) {
+          }
+          ;
+          if (typeof window !== "undefined") window.removeEventListener("resize", onWin);
+        };
+      }, [issueNumber, issueEffort, st.cwd, st.snapshot, st.issueDetail, st.issueMode, st.navStack]);
+      return topBarRef;
+    };
+    const IssueDetail = function(props) {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const st = props.st;
+      const navTop0 = typeof peekNav === "function" ? peekNav(st) : null;
+      const issueNumber = navTop0 && navTop0.kind === "issue" ? navTop0.n : st.activeIssue;
+      const issueEffort = navTop0 && navTop0.kind === "issue" ? navTop0.effortId !== void 0 && navTop0.effortId !== null ? String(navTop0.effortId) : "" : st.activeEffortId ? String(st.activeEffortId) : "";
+      const repoStrLocal = repoStr(st);
+      const colorOf = typeof buildColorOf === "function" ? buildColorOf(st) : {};
+      if (issueNumber === void 0 || issueNumber === null || issueNumber === "" || Number.isNaN(Number(issueNumber))) return null;
+      React.useEffect(function() {
+        if (issueNumber === void 0 || issueNumber === null || issueNumber === "" || Number.isNaN(Number(issueNumber))) return;
+        if (typeof fetchIssueDetail === "function") fetchIssueDetail(st, issueNumber, { effortId: issueEffort });
+      }, [issueNumber, issueEffort, st.cwd]);
+      React.useEffect(function() {
+        if (!st.cmtConfirm) return void 0;
+        const t3 = setTimeout(function() {
+          st.cmtConfirm = null;
+          emit(st);
+        }, ISSUE_DETAIL_CONFIRM_MS);
+        return function() {
+          clearTimeout(t3);
+        };
+      }, [st.cmtConfirm]);
+      const topBarRef = useIssueDetailFold(st, issueNumber, issueEffort);
+      const proj = detailViewFor(st, issueNumber, issueEffort);
+      const detail = proj.issue;
+      const issues = st.snapshot && Array.isArray(st.snapshot.issues) ? st.snapshot.issues : [];
+      const snapIssue = issues.find(function(x4) {
+        return x4.number === issueNumber && effortOf(x4) === issueEffort;
+      }) || issues.find(function(x4) {
+        return x4.number === issueNumber;
+      });
+      const src = detail || snapIssue;
+      const mode = st.issueMode || "idle";
+      const err = st.issueError;
+      const errView = err ? issueErrorViewOf(h4, err) : null;
+      const goBack = function() {
+        popNav(st);
+      };
+      const doRetry = function() {
+        if (typeof fetchIssueDetail === "function") fetchIssueDetail(st, issueNumber, { force: true, effortId: issueEffort });
+      };
+      const copyUrl = function(n2) {
+        const url = issueUrlFor(st, n2, issueEffort);
+        copyText(st, url, tr("toast.copiedLink", { n: n2 }));
+      };
+      const parentMap = function() {
+        const maps = st.snapshot && st.snapshot.maps || [];
+        for (let mi = 0; mi < maps.length; mi++) {
+          const m3 = maps[mi];
+          const hits = (m3.tickets || []).some(function(t3) {
+            return t3.number === issueNumber && effortOf(t3) === issueEffort;
+          });
+          if (hits) return m3;
+        }
+        return null;
+      }();
+      const navCrumb = function() {
+        let arr = null;
+        try {
+          arr = st && Array.isArray(st.navStack) ? st.navStack : null;
+        } catch (e3) {
+          arr = null;
+        }
+        if (arr && arr.length >= 2) {
+          const parent = arr[arr.length - 2];
+          const head = arr.length > 2 ? "… / " : "";
+          return head + "#" + parent.n + " / #" + issueNumber;
+        }
+        return "#" + issueNumber;
+      }();
+      if (mode === "loading" && !src) {
+        return h4("div", null, [
+          h4("div", { ref: topBarRef, style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "nowrap", minWidth: 0, overflow: "hidden" } }, [
+            h4("button", { className: "dsws-btn", "data-press": "button", "data-log": "issue.top.back", onClick: goBack, style: { display: "inline-flex", alignItems: "center", gap: 4, flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } }, [Ic({ n: "back", size: 12 }), h4("span", { "data-detail-back-text": 1, "data-full": tr("list.back"), style: { overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 } }, tr("list.back"))]),
+            h4("span", { "data-detail-crumb": 1, "data-full": navCrumb, style: { color: "var(--dsw-alias-label-secondary,#a1a1aa)", fontSize: 11, flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } }, navCrumb),
+            h4("span", { style: { flex: 1 } })
+          ]),
+          h4("div", { style: { padding: "24px 0", textAlign: "center", color: "var(--dsw-alias-label-secondary,#a1a1aa)", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 } }, [h4("div", { className: "dsws-spinner", style: { width: 14, height: 14, border: "2px solid rgba(255,255,255,.15)", borderTopColor: typeof CONTAINER_ACCENT === "object" && CONTAINER_ACCENT ? CONTAINER_ACCENT.map : "", borderRadius: "50%", animation: "dsws-spin " + MOTION.inlineSpinnerMs + "ms linear infinite" } }), h4("span", null, tr("list.loading"))])
+        ]);
+      }
+      if (mode === "err" && !src) {
+        return h4("div", null, [
+          h4("div", { ref: topBarRef, style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "nowrap", minWidth: 0, overflow: "hidden" } }, [
+            h4("button", { className: "dsws-btn", "data-press": "button", "data-log": "issue.top.back", onClick: goBack, style: { display: "inline-flex", alignItems: "center", gap: 4, flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } }, [Ic({ n: "back", size: 12 }), h4("span", { "data-detail-back-text": 1, "data-full": tr("list.back"), style: { overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 } }, tr("list.back"))]),
+            h4("span", { "data-detail-crumb": 1, "data-full": navCrumb, style: { color: "var(--dsw-alias-label-secondary,#a1a1aa)", fontSize: 11, flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } }, navCrumb),
+            h4("span", { style: { flex: 1 } })
+          ]),
+          h4("div", { style: { padding: "12px", background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.3)", borderRadius: 8, fontSize: 12, color: "#f87171", display: "flex", flexDirection: "column", gap: 6 } }, [
+            h4("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, [
+              Ic({ n: "alert", size: 13 }),
+              h4("span", { style: { wordBreak: "break-word" } }, errView ? errView.say : ""),
+              (errView ? errView.kind : "") ? h4("span", { style: { fontSize: 10, padding: "0 6px", border: "1px solid rgba(248,113,113,.45)", borderRadius: 10, flex: "none" } }, errView ? errView.kind : "") : null,
+              h4("span", { style: { flex: 1 } }),
+              // 本次界面反馈需求：错误态里「重试」与「在追踪器中查看」是用户此时仅有的两个出口，
+              //   各自带按压态、悬停反馈与点击日志；附近没有带 data-log 的祖先，不接就完全没有日志。
+              h4("button", { className: "dsws-btn primary dsws-hov", "data-press": "button", "data-log": "detail.err.retry", onClick: doRetry, style: { padding: "1px 8px", fontSize: 11, background: "#f87171", borderColor: "transparent", color: "#fff" } }, "重试"),
+              // 本地票的 url 是文件路径不是网址：https 走新页，本地走宿主打开（裸 href 点了没反应，#1145）
+              function() {
+                const _u = issueUrlFor(st, issueNumber, issueEffort);
+                const _isUrl = openModeFor(st, "issue", _u) === "url";
+                const _openLocal = function(e3) {
+                  e3.stopPropagation();
+                  openTrackerTarget(st, issueNumber, typeof host !== "undefined" ? host : void 0, issueEffort, "issue");
+                };
+                const _props = { className: "dsws-btn ghost dsws-hov", style: { padding: "1px 8px", fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4 } };
+                const _kids = [Ic({ n: "link", size: 11 }), h4("span", null, tr("detail.viewOnTracker"))];
+                return _isUrl ? h4("a", Object.assign({ href: _u, target: "_blank", rel: "noreferrer", "data-press": "link", "data-log": "detail.err.open" }, _props), _kids) : h4("button", Object.assign({ type: "button", onClick: _openLocal, "data-press": "button", "data-log": "detail.err.open.local" }, _props), _kids);
+              }()
+            ]),
+            errView ? errView.rawBlock : null
+          ])
+        ]);
+      }
+      if (!src) {
+        return h4("div", null, [
+          h4("div", { ref: topBarRef, style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "nowrap", minWidth: 0, overflow: "hidden" } }, [
+            h4("button", { className: "dsws-btn", "data-press": "button", "data-log": "issue.top.back", onClick: goBack, style: { display: "inline-flex", alignItems: "center", gap: 4, flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } }, [Ic({ n: "back", size: 12 }), h4("span", { "data-detail-back-text": 1, "data-full": tr("list.back"), style: { overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 } }, tr("list.back"))]),
+            h4("span", { "data-detail-crumb": 1, "data-full": navCrumb, style: { color: "var(--dsw-alias-label-secondary,#a1a1aa)", fontSize: 11, flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } }, navCrumb)
+          ]),
+          h4("div", { style: { padding: "24px 0", textAlign: "center", color: "var(--dsw-alias-label-caption,#8b8b95)", fontSize: 12 } }, tr("detail.bodyNotYet"))
+        ]);
+      }
+      const labels = src.labels && src.labels.nodes ? src.labels.nodes : src.labels || [];
+      const labelArr = Array.isArray(labels) ? labels : [];
+      const assigneesRaw = src.assignees && src.assignees.nodes ? src.assignees.nodes : src.assignees || [];
+      const assignees = Array.isArray(assigneesRaw) ? assigneesRaw : [];
+      const stateRaw = src.state || "OPEN";
+      const stateKind = prStateKind(src);
+      const isOpen = stateKind === "open";
+      const isMerged = stateKind === "merged";
+      const stateColor = isOpen ? "#3fb950" : isMerged ? typeof CONTAINER_ACCENT === "object" && CONTAINER_ACCENT ? CONTAINER_ACCENT.map : "" : "#8b949e";
+      const stateLabel = isOpen ? tr("list.state.open") : isMerged ? tr("list.state.merged") : tr("list.state.closed");
+      const title = src.title || "#" + issueNumber;
+      const SHOW_EFFORT_BADGE = false;
+      const effortChip = SHOW_EFFORT_BADGE && issueEffort && effortNamesOf(st).length > 1 ? h4(Tip, { content: issueEffort }, h4("span", { className: "dsws-chip dsws-eff", "aria-label": issueEffort, style: { fontSize: 10, lineHeight: 1.6, padding: "0 6px", flex: "none", maxWidth: 140, overflow: "hidden", whiteSpace: "nowrap", background: "rgba(88,166,255,.14)", color: "#58a6ff", border: "1px solid rgba(88,166,255,.45)" } }, issueEffort)) : null;
+      const evictedAtMs = !detail && snapIssue && snapIssue.detailEvicted && typeof snapIssue.detailEvicted.lastKnownAtMs === "number" && snapIssue.detailEvicted.lastKnownAtMs > 0 ? snapIssue.detailEvicted.lastKnownAtMs : 0;
+      const evictedTime = evictedAtMs ? function() {
+        const ed = new Date(evictedAtMs);
+        const epad = function(n2) {
+          return (n2 < 10 ? "0" : "") + n2;
+        };
+        return epad(ed.getHours()) + ":" + epad(ed.getMinutes());
+      }() : "";
+      const bodySlot = detail ? detail.body && String(detail.body).trim() ? h4("div", { style: { fontSize: 12, lineHeight: 1.6, color: "var(--dsw-alias-label-primary,#e6edf3)" } }, typeof mdToHtml === "function" ? mdToHtml(detail.body, { st }) : String(detail.body)) : h4("div", { style: { fontSize: 12, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, tr("detail.noBody")) : evictedTime ? h4("div", { style: { fontSize: 12, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, tr("detail.evictedAt", { time: evictedTime })) : h4("div", { style: { fontSize: 12, color: "var(--dsw-alias-label-caption,#8b8b95)", display: "flex", alignItems: "center", gap: 6 } }, [
+        mode === "err" ? null : h4("div", { className: "dsws-spinner", style: { width: 11, height: 11, border: "2px solid rgba(255,255,255,.15)", borderTopColor: typeof CONTAINER_ACCENT === "object" && CONTAINER_ACCENT ? CONTAINER_ACCENT.map : "", borderRadius: "50%", animation: "dsws-spin " + MOTION.inlineSpinnerMs + "ms linear infinite" } }),
+        h4("span", null, mode === "err" ? tr("detail.bodyNotYet") : tr("list.loading"))
+      ]);
+      const has = function(nm) {
+        return labelArr.some(function(l3) {
+          return (l3.name || l3) === nm;
+        });
+      };
+      const _isTriageLikeLocal = !labelArr.length || has("needs-triage");
+      const fakeIssue = { number: issueNumber, ["title"]: title, labels: labelArr.map(function(l3) {
+        return typeof l3 === "string" ? { name: l3 } : l3;
+      }), state: stateRaw, effortId: issueEffort };
+      const containerInfo = function() {
+        try {
+          if (typeof findMapByIdentity !== "function" || typeof containerKindOf !== "function") return null;
+          const c3 = findMapByIdentity(st.snapshot && st.snapshot.maps, issueNumber, issueEffort);
+          if (!c3) return null;
+          const k4 = containerKindOf(c3);
+          if (!k4) return null;
+          return { kind: k4, state: typeof containerStateOf === "function" ? containerStateOf(c3) : "open", c: c3 };
+        } catch (e3) {
+          return null;
+        }
+      }();
+      const primaryInfo = function() {
+        let text = "";
+        try {
+          text = typeof rowActionText === "function" ? rowActionText(st, fakeIssue) : "";
+        } catch (e3) {
+          text = "";
+        }
+        if (containerInfo && typeof containerTriState === "function") {
+          try {
+            const tri = containerTriState(containerInfo.kind, containerInfo.state);
+            return { icon: tri.icon, label: tr(tri.labelKey), tip: tr(tri.titleKey), text };
+          } catch (eC) {
+          }
+        }
+        let kind = "";
+        try {
+          kind = typeof rowActionKind === "function" ? rowActionKind(fakeIssue) : "";
+        } catch (eK) {
+          kind = "";
+        }
+        let icon = "play", label = "";
+        try {
+          if (!kind) {
+            if (_isTriageLikeLocal) kind = "diagnose";
+            else if (has("ready-for-human")) kind = "takeover";
+            else if (has("needs-info")) kind = "supplement";
+            else if (has("bug")) kind = "fix";
+            else if (has("wayfinder:grilling")) kind = "discuss";
+            else if (has("wayfinder:research")) kind = "research";
+            else if (has("wayfinder:prototype")) kind = "prototype";
+            else kind = "execute";
+          }
+          if (kind === "diagnose") {
+            icon = "chat";
+            label = tr("act.diagnose");
+          } else if (kind === "takeover") {
+            icon = "play";
+            label = tr("act.takeover");
+          } else if (kind === "supplement") {
+            icon = "play";
+            label = tr("act.supplement");
+          } else if (kind === "fix") {
+            icon = "hammer";
+            label = tr("act.fix");
+          } else if (kind === "discuss") {
+            icon = "chat";
+            label = tr("act.discuss");
+          } else if (kind === "research") {
+            icon = "search";
+            label = tr("act.research");
+          } else if (kind === "prototype") {
+            icon = "prototype";
+            label = tr("act.prototype");
+          } else {
+            icon = "play";
+            label = tr("act.execute");
+          }
+        } catch (e3) {
+        }
+        let tip = label;
+        try {
+          if (label === tr("act.diagnose")) tip = tr("tip.diagnose");
+          else if (label === tr("act.takeover")) tip = tr("tip.takeover");
+          else if (label === tr("act.supplement")) tip = tr("tip.supplement");
+          else if (label === tr("act.fix")) tip = tr("tip.fix");
+          else if (label === tr("act.discuss")) tip = tr("tip.discuss");
+          else if (label === tr("act.research")) tip = tr("tip.research");
+          else if (label === tr("act.prototype")) tip = tr("tip.prototype");
+          else if (label === tr("act.execute")) tip = tr("tip.execute");
+        } catch (e22) {
+        }
+        return { icon, label, tip, text };
+      }();
+      let actColor = typeof actionColorOf === "function" ? actionColorOf(fakeIssue, colorOf) : stateColor;
+      try {
+        if (containerInfo && typeof containerTriState === "function") {
+          const _tri = containerTriState(containerInfo.kind, containerInfo.state);
+          if (_tri && _tri.color) actColor = _tri.color;
+        }
+      } catch (eAC) {
+      }
+      const actTextColor = typeof isLightHex === "function" && isLightHex(actColor) ? "#140a1e" : "#ffffff";
+      const subNodes = src.subIssues && src.subIssues.nodes ? src.subIssues.nodes : [];
+      const subTotal = src.subIssues && typeof src.subIssues.totalCount === "number" ? src.subIssues.totalCount : subNodes.length;
+      const blockedNodes = knownBlockedNodes(src);
+      const topGate = detailTopGate(src, blockedNodes);
+      const gateTip = topGate.clickable ? "" : topGate.reason === "blocked" ? tr("tip.detailBlockedBy", { n: topGate.blockedNumbers.map(function(x4) {
+        return "#" + x4;
+      }).join(tr("tip.detailBlockedByJoin")) }) : tr("tip.detailClosedReadonly");
+      const gateDisabled = !topGate.clickable;
+      const actionStyle = { display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 6px", fontSize: 11, background: gateDisabled ? void 0 : actColor, borderColor: "transparent", color: gateDisabled ? void 0 : actTextColor, flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" };
+      const gateAttrs = { "aria-disabled": gateDisabled ? "true" : void 0, tabIndex: gateDisabled ? -1 : void 0 };
+      const rawComments = detail ? detail.comments : void 0;
+      let canComment = !!rawComments && Array.isArray(rawComments.nodes);
+      if (proj.source !== "live") canComment = false;
+      const commentsNodes = proj.source !== "none" && !!rawComments && Array.isArray(rawComments.nodes) ? rawComments.nodes : [];
+      const isStale = proj.source === "snapshot";
+      const fromPullRequest = src && src.isPullRequest === true || snapIssue && snapIssue.isPullRequest === true;
+      if (fromPullRequest) canComment = false;
+      const readOnlyKnown = fromPullRequest || !!detail && !canComment;
+      return h4("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, [
+        // 顶部固定行（#565 粘性固定，随滚动保持可见；#763 单行逐字折叠：越窄越收，只剩图标，不放省略号）
+        // 折叠顺序：返回按钮的字先收（返回列表→返回→只剩图标），再收面包屑，再收快照提示，
+        // 再收主动作按钮的字，最后收新会话按钮的字；一次只折一个控件，直至只剩图标再折下一个。
+        // 宽度只由阶梯改字数决定，CSS 不并行收缩（除中间空隙外全 flex:none），所以不会多按钮同时半截。
+        // 图标永不消失；看不见的字直接裁掉，不补省略号；完整串留悬停。
+        h4("div", { ref: topBarRef, className: "dsws-stickybar", "data-detail-topbar": 1, style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap", minWidth: 0, overflow: "hidden" } }, [
+          // 返回按钮的悬停提示走 Tip（T2/T3 纪律），不再用原生 title
+          h4(Tip, { content: tr("list.back") }, h4("button", { className: "dsws-btn", "data-press": "button", "data-log": "issue.top.back", onClick: goBack, style: { display: "inline-flex", alignItems: "center", gap: 4, flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } }, [Ic({ n: "back", size: 12 }), h4("span", { "data-detail-back-text": 1, "data-full": tr("list.back"), style: { overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 } }, tr("list.back"))])),
+          h4(Tip, { content: navCrumb }, h4("span", { "data-detail-crumb": 1, "data-full": navCrumb, style: { fontSize: 11, color: "var(--dsw-alias-label-secondary,#a1a1aa)", whiteSpace: "nowrap", flex: "none", minWidth: 0, overflow: "hidden" } }, navCrumb)),
+          effortChip,
+          h4("span", { style: { flex: 1, minWidth: 8 } }),
+          h4("div", { style: { display: "flex", alignItems: "center", gap: 3, flex: "none", minWidth: 0, overflow: "hidden", flexWrap: "nowrap" } }, [
+            proj.notice ? h4("span", { "data-detail-last-known": 1, "data-full": proj.notice, style: { fontSize: 10, color: "#f59e0b", flex: "none", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } }, proj.notice) : mode === "loading" ? h4("span", { "data-detail-snapshot": 1, style: { fontSize: 10, color: "#8b8b95", flex: "none" } }, tr("list.loading")) : null,
+            // 这两颗动作按钮共用上面的 gateAttrs / actionStyle，各自只留自己的 data-log、onClick 与内容。
+            h4(Tip, { content: topGate.clickable ? primaryInfo.tip : gateTip }, h4("button", Object.assign({ className: "dsws-btn primary", "data-press": "button", "data-log": gateDisabled ? void 0 : "issue.top.exec", onClick: function(e3) {
+              e3.stopPropagation();
+              if (gateDisabled) return;
+              try {
+                inject(st, primaryInfo.text);
+              } catch (err2) {
+              }
+            }, style: actionStyle }, gateAttrs), [Ic({ n: primaryInfo.icon, size: primaryInfo.icon === "prototype" ? 12 : 10 }), h4("span", { "data-detail-primary-text": 1, "data-full": primaryInfo.label, style: { overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 } }, primaryInfo.label)])),
+            h4(Tip, { content: topGate.clickable ? tr("tip.newSession", { n: issueNumber }) : gateTip }, h4("button", Object.assign({ className: "dsws-btn primary", "data-press": "button", "data-log": gateDisabled ? void 0 : "issue.top.newsession", onClick: function(e3) {
+              e3.stopPropagation();
+              if (gateDisabled) return;
+              openInNewSession(st, { number: issueNumber, ["title"]: title, labels: labelArr, effortId: issueEffort });
+            }, style: actionStyle }, gateAttrs), [Ic({ n: "external-link", size: 10 }), h4("span", { "data-detail-new-text": 1, "data-full": tr("list.newSessionLabel"), style: { overflow: "hidden", whiteSpace: "nowrap", minWidth: 0 } }, tr("list.newSessionLabel"))])),
+            h4(Tip, { content: tr("tip.copyLink") }, h4("button", { className: "dsws-btn ghost", "data-press": "icon", "data-log": "issue.top.copy", onClick: function(e3) {
+              e3.stopPropagation();
+              copyUrl(issueNumber);
+            }, style: { display: "inline-flex", alignItems: "center", padding: "2px 4px", flex: "none" } }, Ic({ n: "clipboard", size: 13 }))),
+            // 本地票的 url 是文件路径不是网址：https 走新页，本地走宿主打开（裸 href 点了没反应，#1145）
+            h4(Tip, { content: tr("tip.openInTracker", { n: issueNumber }) }, function() {
+              const _u = issueUrlFor(st, issueNumber, issueEffort);
+              const _isUrl = openModeFor(st, "issue", _u) === "url";
+              const _openLocal = function(e3) {
+                e3.stopPropagation();
+                openTrackerTarget(st, issueNumber, typeof host !== "undefined" ? host : void 0, issueEffort, "issue");
+              };
+              const _props = { className: "dsws-btn ghost", "data-press": "icon", "data-log": "issue.top.link", style: { display: "inline-flex", alignItems: "center", padding: "2px 4px", flex: "none" } };
+              return _isUrl ? h4("a", Object.assign({ href: _u, target: "_blank", rel: "noreferrer" }, _props), Ic({ n: "link", size: 13 })) : h4("button", Object.assign({ type: "button", onClick: _openLocal }, _props), Ic({ n: "link", size: 13 }));
+            }())
+          ])
+        ]),
+        // 顶部 err 横幅（有 src 时可重试，不遮挡主体）：主行给人看的一句话，档位作可选小标签，原文可展开
+        // #1379 收口：横幅挂稳定类名，浅色层才有选择器可命中（颜色字面量不动，深色照旧走内联色）。
+        mode === "err" && err ? h4("div", { className: "dsws-detail-err", style: { padding: "8px 10px", background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.25)", borderRadius: 6, fontSize: 11, color: "#f87171", display: "flex", flexDirection: "column", gap: 6 } }, [
+          h4("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, [
+            Ic({ n: "alert", size: 11 }),
+            h4("span", { style: { wordBreak: "break-word" } }, errView ? errView.say : ""),
+            (errView ? errView.kind : "") ? h4("span", { style: { fontSize: 10, padding: "0 6px", border: "1px solid rgba(248,113,113,.45)", borderRadius: 10, flex: "none" } }, errView ? errView.kind : "") : null,
+            h4("span", { style: { flex: 1 } }),
+            // 本次界面反馈需求：顶部错误横幅的「重试」与详情页错误态的「重试」会出现在同一屏，
+            //   两处定位串必须不同，否则日志分不出是哪一颗被点了。
+            h4("button", { className: "dsws-btn dsws-hov", "data-press": "button", "data-log": "detail.err.retry.banner", onClick: doRetry, style: { padding: "1px 6px", fontSize: 11 } }, "重试"),
+            // #1379 收口：这句「显示快照降级」也压在 8% 红底上（原色是写死的警告橙，只有约 2:1），同样挂类名走浅色层。
+            !detail && snapIssue ? h4("span", { className: "dsws-detail-err-degraded", style: { fontSize: 10, color: "#f59e0b" } }, "（显示快照降级）") : null
+          ]),
+          errView ? errView.rawBlock : null
+        ]) : null,
+        // header
+        h4("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 2 } }, [
+          // header（#1564：上限宽度、两段布局与悬停都走共用徽标组件，本处只给票身份与状态色）
+          ticketBadgeOf(h4, { key: src.key != null ? src.key : issueNumber, effortId: issueEffort, surface: "badge", color: actColor }),
+          h4(Tip, { className: "dsws-tip", content: h4("div", { style: { display: "flex", flexDirection: "column", gap: 2 } }, [h4("div", { style: { fontSize: 10, color: "#8b8b95", lineHeight: "14px" } }, tr("tip.header.fullTitle")), h4("div", { style: { fontSize: 11, color: "#e6edf3", lineHeight: "16px", wordBreak: "break-word", whiteSpace: "normal" } }, title)]) }, h4("span", { className: "dsws-tt-wrap", style: { flex: 1, fontSize: 14, fontWeight: 600 } }, title)),
+          h4("span", { className: "dsws-chip", style: { fontSize: 10, background: isOpen ? "rgba(63,185,80,.15)" : "rgba(139,148,158,.15)", color: stateColor, border: "1px solid " + stateColor, flex: "none" } }, [Ic({ n: isOpen ? "dot" : "check", size: 9 }), h4("span", { style: { marginLeft: 3 } }, stateLabel)])
+        ]),
+        h4("div", { style: { display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" } }, [
+          labelArr.map(function(l3, i3) {
+            const nm = l3.name || l3;
+            const col = l3.color || "";
+            return h4("span", { key: i3, className: "dsws-chip", style: { fontSize: 10, background: hexA ? hexA(col, 0.18) : "#" + col, color: col ? "#" + col : "#bc8cff", border: "1px solid " + (darken ? darken(col, 0.16) : "rgba(188,140,255,.6)") } }, nm);
+          }),
+          assignees.map(function(a3, i3) {
+            const login = typeof a3 === "string" ? a3 : a3.login || "";
+            return h4("span", { key: "a" + i3, className: "dsws-chip", style: { fontSize: 10, background: "rgba(88,166,255,.12)", color: "#58a6ff", border: "1px solid rgba(88,166,255,.4)" } }, [Ic({ n: "person", size: 9 }), h4("span", { style: { marginLeft: 3 } }, "@" + login)]);
+          }),
+          src.updatedAt ? h4("span", { style: { fontSize: 10, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, "· 更新 " + String(src.updatedAt).slice(0, 10)) : null,
+          src.createdAt ? h4("span", { style: { fontSize: 10, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, "· 创建 " + String(src.createdAt).slice(0, 10)) : null,
+          // #155 Q6 2🟡新增：author + closedAt（仅当字段存在时显示，undefined → 不渲染；符合 §2 不新增隐藏逻辑）
+          src.author && src.author.login ? h4("span", { style: { fontSize: 10, color: "#8b8b95", display: "inline-flex", alignItems: "center", gap: 3 } }, [
+            src.author.avatarUrl ? h4("img", { src: src.author.avatarUrl, style: { width: 12, height: 12, borderRadius: "50%" } }) : Ic({ n: "person", size: 10 }),
+            h4("span", null, "@" + src.author.login)
+          ]) : null,
+          !isOpen && src.closedAt ? h4("span", { style: { fontSize: 10, color: "#8b8b95" } }, "· 关闭 " + String(src.closedAt).slice(0, 10)) : null
+        ]),
+        parentMap ? h4("div", { style: { display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", background: "rgba(188,140,255,.06)", border: "1px solid rgba(188,140,255,.2)", borderRadius: 6, fontSize: 11 } }, [
+          Ic({ n: "map", size: 11, color: typeof CONTAINER_ACCENT === "object" && CONTAINER_ACCENT ? CONTAINER_ACCENT.map : "" }),
+          h4("span", { style: { color: "var(--dsw-alias-label-secondary,#a1a1aa)" } }, "属于"),
+          // T4 #554：所属地图链接压栈进下一层（保留返回路径，不断掉上一级）。
+          h4("a", { href: "#", className: "dsws-hov", "data-press": "row", "data-log": "issue.parent." + parentMap.number, onClick: function(e3) {
+            e3.preventDefault();
+            pushNav(st, "map", parentMap.number, effortOf(parentMap));
+          }, style: { color: typeof CONTAINER_ACCENT === "object" && CONTAINER_ACCENT ? CONTAINER_ACCENT.map : "", textDecoration: "underline", fontWeight: 600, display: "inline-block", borderRadius: 3 } }, "#" + parentMap.number + " " + parentMap.title)
+        ]) : null,
+        // body
+        h4("div", { style: { padding: "8px 0", borderTop: "1px solid var(--dsw-alias-border-l1,#2a2d35)", borderBottom: "1px solid var(--dsw-alias-border-l1,#2a2d35)" } }, [
+          h4("div", { style: { fontSize: 11, fontWeight: 600, color: "var(--dsw-alias-label-secondary,#a1a1aa)", marginBottom: 4 } }, "描述"),
+          bodySlot
+        ]),
+        // sub-issues
+        subNodes.length || subTotal ? h4("div", { style: { padding: "6px 0" } }, [
+          h4("div", { style: { fontSize: 11, fontWeight: 600, color: "var(--dsw-alias-label-secondary,#a1a1aa)", marginBottom: 6 } }, "子票 " + subTotal + (subNodes.length ? "" : "（无加载）")),
+          h4("div", { style: { display: "flex", flexDirection: "column", gap: 4 } }, subNodes.map(function(s3) {
+            const sc = s3.state === "CLOSED" ? "#3fb950" : "#8b8b95";
+            return h4("div", { key: idOfParts(s3.effortId !== void 0 && s3.effortId !== null ? s3.effortId : issueEffort, s3.number), className: "dsws-aggrow", tabIndex: 0, role: "button", "aria-label": "#" + s3.number + " " + (s3.title || ""), "data-press": "row", "data-log": "issue.sub." + s3.number, onClick: function() {
+              enterSubDetail(st, s3, issueEffort);
+            }, onKeyDown: function(e3) {
+              if (!e3 || e3.target !== e3.currentTarget) return;
+              const k4 = e3 && e3.key;
+              if (k4 === "Enter" || k4 === " ") {
+                try {
+                  if (e3.preventDefault) e3.preventDefault();
+                } catch (_3) {
+                }
+                try {
+                  if (e3.currentTarget) e3.currentTarget.click();
+                } catch (_3) {
+                }
+              }
+            }, style: { cursor: "pointer", padding: "6px 8px" } }, [
+              h4("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, [
+                h4("span", { className: "dsws-idnum", style: { color: sc, borderColor: sc, fontSize: 11 } }, "#" + s3.number),
+                h4(Tip, { className: "dsws-tip", content: h4("div", { style: { display: "flex", flexDirection: "column", gap: 2 } }, [h4("div", { style: { fontSize: 10, color: "#8b8b95", lineHeight: "14px" } }, tr("tip.header.fullTitle")), h4("div", { style: { fontSize: 11, color: "#e6edf3", lineHeight: "16px", wordBreak: "break-word", whiteSpace: "normal" } }, s3.title)]) }, h4("span", { className: "dsws-tt-wrap", style: { flex: 1, fontSize: 12 } }, s3.title)),
+                h4("span", { className: "dsws-chip", style: { fontSize: 10, background: s3.state === "CLOSED" ? "rgba(63,185,80,.12)" : "rgba(139,148,158,.12)", color: sc, border: "1px solid " + sc } }, s3.state === "CLOSED" ? "已关闭" : "Open")
+              ])
+            ]);
+          }))
+        ]) : null,
+        // blockers
+        blockedNodes.length ? h4("div", { style: { padding: "6px 0" } }, [
+          h4("div", { style: { fontSize: 11, fontWeight: 600, color: "var(--dsw-alias-label-secondary,#a1a1aa)", marginBottom: 6 } }, tr("detail.blockedPrefix") + blockedNodes.length),
+          h4("div", { style: { display: "flex", flexDirection: "column", gap: 4 } }, blockedNodes.map(function(b3) {
+            return h4("div", { key: idOfParts(b3.effortId !== void 0 && b3.effortId !== null ? b3.effortId : issueEffort, b3.number), className: "dsws-aggrow", tabIndex: 0, role: "button", "aria-label": "#" + b3.number + " " + (b3.title || ""), "data-press": "row", "data-log": "issue.blocked." + b3.number, onClick: function() {
+              enterSubDetail(st, b3, issueEffort);
+            }, onKeyDown: function(e3) {
+              if (!e3 || e3.target !== e3.currentTarget) return;
+              const k4 = e3 && e3.key;
+              if (k4 === "Enter" || k4 === " ") {
+                try {
+                  if (e3.preventDefault) e3.preventDefault();
+                } catch (_3) {
+                }
+                try {
+                  if (e3.currentTarget) e3.currentTarget.click();
+                } catch (_3) {
+                }
+              }
+            }, style: { cursor: "pointer", padding: "6px 8px" } }, [
+              h4("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, [
+                // #1286：被阻塞统一红 #f87171（与地图详情页、列表行同一个红；这个红在本仓原本专指
+                //   错误与失败，这里被重载为「被阻塞」——读代码时别当成同一个语义）
+                Ic({ n: "lock", size: 10, color: "#f87171" }),
+                h4("span", { className: "dsws-idnum", style: { color: "#f87171", borderColor: "#f87171", fontSize: 11 } }, "#" + b3.number),
+                h4(Tip, { className: "dsws-tip", content: h4("div", { style: { display: "flex", flexDirection: "column", gap: 2 } }, [h4("div", { style: { fontSize: 10, color: "#8b8b95", lineHeight: "14px" } }, tr("tip.header.fullTitle")), h4("div", { style: { fontSize: 11, color: "#e6edf3", lineHeight: "16px", wordBreak: "break-word", whiteSpace: "normal" } }, b3.title || "#" + b3.number)]) }, h4("span", { style: { flex: 1, fontSize: 12 } }, b3.title || "#" + b3.number))
+              ])
+            ]);
+          }))
+        ]) : null,
+        // comments（列表 + 输入区收进 views/IssueDetailComments.js，纯结构搬移，行为零变化）
+        // #693：评论区也只喂详情那一份（快照那一行可能不带评论，喂进去会把「没拿到」画成「没有」）。
+        h4("div", { style: { padding: "8px 0 4px" } }, renderIssueDetailComments(h4, st, issueNumber, detail, mode, commentsNodes, canComment, issueEffort)),
+        // 底部动作（#763 主动作已搬到顶栏新会话左侧，底部只留只读提示；无提示时不占一行）
+        readOnlyKnown ? h4("div", { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 4 } }, [
+          h4("span", { style: { flex: 1 } }),
+          h4("span", { style: { fontSize: 10, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, tr("detail.readOnlyHint"))
+        ]) : null,
+        // 图片放大浮层（渲染函数共用，状态放共享 store，点缩略图打开，点空白与关闭与退出键关闭）
+        typeof mdImgOverlay === "function" ? mdImgOverlay(st) : null
+      ]);
+    };
     const _tagsFpOf = typeof WeakMap !== "undefined" ? /* @__PURE__ */ new WeakMap() : { get: function() {
       return void 0;
     }, set: function() {
@@ -20355,21 +21585,35 @@ ${formatProgressEntry(entry)}
           [tabs.inkEl].concat(tabs.items)
         ),
         h3("div", { className: "dsws-body" }, [
-          !st ? h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, ["U04:等待工具数据(deck_issue_list / deck_issue_counts)…"]) : st.tab === "list" ? h3(ListTab, { st, narrow }) : h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tab" + (st.tab === "skills" ? "Skills" : st.tab === "checks" ? "Checks" : "Pr")) + " 页:U06+ 搬入"])
+          !st ? h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, ["U04:等待工具数据(deck_issue_list / deck_issue_counts)…"]) : st.tab === "list" ? function() {
+            const navTop = typeof peekNav === "function" ? peekNav(st) : null;
+            const topIssue = navTop && navTop.kind === "issue" ? navTop.n : st.activeIssue;
+            const topMap = navTop && navTop.kind === "map" ? navTop.n : st.activeMap;
+            if (topIssue !== null && topIssue !== void 0) return h3(IssueDetail, { st });
+            if (topMap !== null && topMap !== void 0)
+              return h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, ["地图详情页:mapV2 家族未搬(U06+ 候选)"]);
+            return h3(ListTab, { st, narrow });
+          }() : h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tab" + (st.tab === "skills" ? "Skills" : st.tab === "checks" ? "Checks" : "Pr")) + " 页:U06+ 搬入"])
         ])
       ]);
     };
     slots.inject("sidebar.right.pane.tab", function() {
       return slots.register({ name: "sidebar.right.pane.tab", key: "zcode-mattpocock-skills-deck/deck:map" }, withCx(DeckShell));
     });
+    let rerenderQueued = false;
     const rerenderPanels = function() {
-      try {
-        for (const rec of slots.registered()) {
-          if (rec.container) R(h3(rec.Component), rec.container);
+      if (rerenderQueued) return;
+      rerenderQueued = true;
+      Promise.resolve().then(function() {
+        rerenderQueued = false;
+        try {
+          for (const rec of slots.registered()) {
+            if (rec.container) R(h3(rec.Component), rec.container);
+          }
+        } catch (e3) {
+          if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 面板重画失败:", e3);
         }
-      } catch (e3) {
-        if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 面板重画失败:", e3);
-      }
+      });
     };
     showDeckDataRef = function(data) {
       const st = Object.assign(makeStore(), ingestSnapshot(
@@ -20378,6 +21622,14 @@ ${formatProgressEntry(entry)}
       ));
       st.snapMode = "real";
       st.workspaceRoot = data.workspaceRoot || st.cwd;
+      try {
+        if (clientRef && typeof clientRef.sendMessage === "function") {
+          st.injector = function(text) {
+            clientRef.sendMessage(text);
+          };
+        }
+      } catch (eInj) {
+      }
       deckPanelState.st = st;
       try {
         sub(st, rerenderPanels);
@@ -20541,6 +21793,17 @@ ${formatProgressEntry(entry)}
       renderInto: function(Component, container, props) {
         R(h3(withCx(Component), props || {}), container);
       }
+    };
+    window.MattSkillsUpstream.detail = {
+      IssueDetail,
+      DetailActionBar,
+      detailTopGate,
+      detailViewFor,
+      knownBlockedNodes,
+      issueDetailFoldLadderOf,
+      issueDetailFoldStateAt,
+      enterSubDetail,
+      renderIssueDetailComments
     };
   }
   var WORKSPACE_URI = "ui://zcode-mattpocock-skills-deck/workspace.json";

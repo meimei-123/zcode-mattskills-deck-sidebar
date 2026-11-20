@@ -130,10 +130,10 @@ function panelSnapshotOf(rows) {
   const hiddenKeys = new Set();
   for (const m of closedContainers) {
     const own = (Array.isArray(rows) ? rows : []).filter((r) => r && r.type !== "map" && r.type !== "spec" && r.parentKey != null && String(r.effortId || "") === String(m.effortId || "") && String(r.parentKey) === String(m.key) && String(r.state || "").toUpperCase() === "CLOSED");
-    for (const r of own) hiddenKeys.add(`${String(r.effortId || "")} ${String(r.key)}`);
+    for (const r of own) hiddenKeys.add(`${String(r.effortId || "")}\u0000${String(r.key)}`);
   }
   const issues = (Array.isArray(rows) ? rows : [])
-    .filter((r) => !hiddenKeys.has(`${String((r && r.effortId) || "")} ${String((r && r.key) || "")}`))
+    .filter((r) => !hiddenKeys.has(`${String((r && r.effortId) || "")}\u0000${String((r && r.key) || "")}`))
     .map(panelRowOf);
   return { maps, issues };
 }
@@ -212,4 +212,84 @@ function aggregateRowLabels(rows) {
     }
   }
   return out;
+}
+
+// ── 工单 U05:详情投影 ─────────────────────────────────────────────────────
+// wf.issueDetail 的回包按上游 api-io.ts fetchIssueDetail 的消费面拼:issue.number 必须是
+// 数字(守卫 `typeof issue.number !== 'number'`);评论区只认 GraphQL 连接 {nodes, pageInfo}
+// (#1519 不再兼容数组);#693 口径「正文与评论只认 get 那一次」在本地落成 deck_issue_get
+// 的 structuredContent.card 直接投影 —— 卡模型(cards.mjs parseCard)的 comments 本来就是
+// {author:{login}, authorAssociation, body, createdAt, updatedAt} 节点形,零改形。
+// 子票与被阻塞邻居从 list 薄行池派生(同 effort 的 parentKey/blockedBy 边),行面走
+// panelRowOf(大写态:IssueDetail 子票区/被阻塞区与 detailProjection 都按面板快照口径读)。
+
+/** 卡正文段:剥文件头注释块、H1 票题行与顶部元行块(Status/Labels/Assignees/Blocked by/
+ *  Type/Close reason),掐掉 ## Comments 段。首条内容行之前只剥这几样,之后原样保留。 */
+export function bodySectionOf(card) {
+  let raw = String((card && card.body) || "");
+  const cm = /^\s*##\s*Comments\s*$/im.exec(raw);
+  if (cm) raw = raw.slice(0, cm.index);
+  const metaLine = /^\s*(?:\*\*)?(?:Status|Labels?|Assignees|Blocked\s+by|Type|Close\s+reason)(?:\*\*)?\s*[:\uFF1A]/i;
+  const out = [];
+  let started = false;
+  for (const line of raw.split("\n")) {
+    if (!started) {
+      if (!line.trim()) continue;
+      if (/^\s*<!--/.test(line)) continue;
+      if (/^#\s/.test(line)) continue;
+      if (metaLine.test(line)) continue;
+      started = true;
+    }
+    out.push(line);
+  }
+  return out.join("\n").trim();
+}
+
+/** 详情 issue 投影:card(全量卡) + pool(list 薄行池,给子票/被阻塞邻居补边)。 */
+export function detailIssueOf(card, pool) {
+  const c = card || {};
+  const rows = Array.isArray(pool) ? pool : [];
+  const effortId = String(c.effortId || "");
+  const key = String(c.key || "");
+  const rowOf = (k) =>
+    rows.find(
+      (r) => r && String(r.effortId || "") === effortId && (String(r.key || "") === k || String(r.key || "") === `${effortId}/${k}`)
+    ) || null;
+  const children = rows.filter(
+    (r) => r && r.type !== "map" && r.type !== "spec" && String(r.effortId || "") === effortId && r.parentKey != null && String(r.parentKey) === key
+  );
+  const blockers = (Array.isArray(c.blockedBy) ? c.blockedBy : [])
+    .map((ref) => (ref && ref.key != null ? rowOf(String(ref.key)) : null))
+    .filter(Boolean);
+  const comments = Array.isArray(c.comments) ? c.comments : [];
+  const claimed = Array.isArray(c.assignees) && c.assignees.length ? c.assignees[0] : null;
+  return {
+    number: parseInt(key, 10) || 0,
+    key,
+    effortId,
+    type: c.type || "issue",
+    title: c.title || "",
+    state: c.state === "closed" ? "closed" : "open",
+    labels: Array.isArray(c.labels) ? c.labels : [],
+    assignees: Array.isArray(c.assignees) ? c.assignees : [],
+    author: claimed && claimed.login ? { login: claimed.login } : { login: "local" },
+    body: bodySectionOf(c),
+    url: typeof c.url === "string" ? c.url : key,
+    createdAt: c.createdAt || "",
+    updatedAt: c.updatedAt || c.createdAt || "",
+    closedAt: c.closedAt || null,
+    subIssues: { nodes: children.map(panelRowOf), totalCount: children.length },
+    blockedBy: blockers.map(panelRowOf),
+    comments: { nodes: comments, pageInfo: { hasNextPage: false, endCursor: String(comments.length) } },
+  };
+}
+
+/** 评论分页投影:上游 fetchIssueComments 的 after 是十进制偏移串(客户端分页,endCursor 同义),
+ *  页大小 50 与上游 COMMENTS_PAGE_SIZE 同数(卡片评论量小,一页通常全量)。 */
+export function commentsPageOf(card, after) {
+  const all = Array.isArray(card && card.comments) ? card.comments : [];
+  const PAGE = 50;
+  const off = Math.max(0, parseInt(after, 10) || 0);
+  const nodes = all.slice(off, off + PAGE);
+  return { nodes, pageInfo: { hasNextPage: off + nodes.length < all.length, endCursor: String(off + nodes.length) } };
 }

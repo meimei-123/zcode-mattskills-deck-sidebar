@@ -281,6 +281,8 @@ export const LEAVES = [
   { id: "kernel:storeDerived", file: "src/client/kernel/store-derived.ts" },
   // 行动作(mkRowAction/actionColorOf/rowActionText)
   { id: "kernel:rowActions", file: "src/client/kernel/row-actions.ts" },
+  // 顶栏门禁(上游标记序在 rowActions 与 probeChain 之间;closed/blocked 置灰的唯一真源)
+  { id: "kernel:detailTopGate", file: "src/client/kernel/detail-top-gate.ts" },
   // 链快照纯读(chainSteps = ListTab 主渲染路径的环境坏项计数;loadChain 等宿主通路走桩/缺席)
   { id: "kernel:probeChain", file: "src/refresh/rooms/client/probe-chain-subscription.ts" },
   // 颜色小件(hexA/darken:Pop/筛选行/行内标签)
@@ -345,6 +347,24 @@ export const LEAVES = [
   { id: "leaf:stateKind", file: "src/client/views/shared/stateKind.ts" },
   // 地图详情内的票务行(U05+ 详情视图用;先按工单点名搬入,渲染路径休眠)
   { id: "leaf:ticketRow", file: "src/client/views/TicketRow.ts" },
+  // ---- 工单 U05:详情页全家 + 动作栏(上游 index.ts 标记序原位,次序即依赖次序) ----
+  // 容器详情底部动作条(三态主按钮;上游标记序在 mapDetail 与 mapDetailSpecBody 之间,
+  // 本仓跳过 mapDetail 家族后仍保序)
+  { id: "leaf:detailActionBar", file: "src/client/views/DetailActionBar.ts" },
+  // 详情投影(#1694:上次数据先画、失败不清空;knownBlockedNodes/detailViewFor 真源)
+  { id: "leaf:detailProjection", file: "src/client/views/shared/detailProjection.ts" },
+  // 详情错误视图(issueErrorViewOf:错误横幅一句话)
+  { id: "leaf:issueDetailErrorView", file: "src/client/views/issueDetailErrorView.ts" },
+  // 子票路由(enterSubDetail:子票/被阻塞行点击进下一层详情)
+  { id: "leaf:subIssueRouting", file: "src/client/views/subIssueRouting.ts" },
+  // 评论区(50 页分页/只读门/提交纪律;COMMENT_RESULT_FLASH_MS 等三常量自持)
+  { id: "leaf:IssueDetailComments", file: "src/client/views/IssueDetailComments.ts" },
+  // 折叠判据层(阶梯五元素按字数逐级裁;零 declare)
+  { id: "leaf:issueDetailFold", file: "src/client/views/issueDetailFold.ts" },
+  // 折叠机(测量+逐档试裁;依赖 issueDetailFold 的两函数)
+  { id: "leaf:useIssueDetailFold", file: "src/client/views/useIssueDetailFold.ts" },
+  // 详情页本体(粘性顶栏/元行/正文/子票/被阻塞/评论区挂载)
+  { id: "leaf:IssueDetail", file: "src/client/views/IssueDetail.ts" },
   // 标签/行宽折叠(fitAllTags/fitMapRows 的四相测量)
   { id: "leaf:tagsFit", file: "src/client/views/shared/tagsFit.ts" },
   // 浮层底座(showPop:行内 +N 标签弹层)

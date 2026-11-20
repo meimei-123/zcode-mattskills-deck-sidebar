@@ -20,9 +20,18 @@
 //   - snapFresh/loadSnapshot/scheduleActionProbe/DetailsDock 四个名字是最小桩(refresh rooms
 //     家族与 Dock 不搬:数据面是 boot/ingest,详情视图是 U05+)。
 import * as PreactCompat from "preact/compat";
-import { h, render } from "preact";
+import { h, render, options as PreactOptions } from "preact";
+// effect 冲刷调度兜底(U05):Preact 把 passive effect 排给 options.requestAnimationFrame,
+// 环境没有 rAF 时退到内部 w2(setTimeout 档),但有「diffed 只推一次队列」的竞态——无 rAF 环境
+// 里最后一轮 effect 会挂起到「下一次渲染」,而那次渲染可能永远不来(详情页改号后 fetch 不发车,
+// 2026-11-20 真渲染踩到)。给 options 挂 setTimeout 兜底,真实 webview 有 rAF 时本行不生效。
+try {
+  if (typeof PreactOptions === "object" && PreactOptions !== null && !PreactOptions.requestAnimationFrame) {
+    PreactOptions.requestAnimationFrame = function (fn) { return setTimeout(fn, 0); };
+  }
+} catch (eOpts) { /* options 不可写时按上游原生调度走,不挡 boot */ }
 import { createSeamCtx, SEAM_SERVICE_IDS } from "./seam.mjs";
-import { ingestSnapshot, trackerDeckOf, panelRowOf } from "./ingest.mjs";
+import { ingestSnapshot, trackerDeckOf, panelRowOf, detailIssueOf, commentsPageOf } from "./ingest.mjs";
 
 const React = PreactCompat;
 // ReactDOM 名字给 kernel:portal 的挂顶底座(上游由宿主注入 react-dom;preact/compat 的
@@ -62,14 +71,24 @@ function apply(ctx) {
     setItem(k, v) { this._m[k] = String(v); },
     removeItem(k) { delete this._m[k]; },
   };
+  // ---- U05 缝:详情读投影走 legacy 回滚路径(上游 #1694 自带的开关,同等支持) ----
+  // 上游 snapshot 投影依赖宿主合并服务(#1690:详情取回后合并进快照行,回看走投影);ZCode
+  // 数据面是 boot→ingest 的薄行,没有合并服务,快照行永远不带正文/评论(rowHasDetail 恒假,
+  // 投影永不命中)。拨 legacy 后:详情缓存走 st.issueCache(命中即回指 st.issueDetail),
+  // TTL 内回看不再留上一张票的 live——这正是 #1694 设计 legacy 路径要保住的行为。
+  try {
+    localStorage.setItem("dsws.readProjection", "legacy");
+  } catch (eProj) { /* 存不进按上游默认 snapshot 走,详情仍可用(取数每次真发) */ }
+
   // ---- U04 宿主适配与桩(提前到首标记之前:kernel:log 等叶子在求值期就抓 host,TDZ 防护) ----
-  // ---- U04 装配段(本仓自有) ----
-  // 宿主适配(U04):上游叶子对 DSH 宿主的电话出口统一是 host.call('wf.*')。ZCode 这边唯一
-  // 接通的是 wf.issuesPage(历史票翻页,上游契约见 api-io.ts 的 fetchIssuesPage)—— 按我们
-  // list 工具口径接:deck_issue_list 全量枚举 + state 过滤,游标做客户端分页(偏移量语义,
-  // nextCursor = 下一页起点的十进制串);effortId 在客户端过滤(md 目录签换工作单元时换页)。
-  // 其余 wf.* 电话(ZCode 数据面没有对应物)回八档里的 unsupported 形状,上游消费方按各自
-  // 兜底分支走,不抛。
+  // ---- U05 装配段(本仓自有) ----
+  // 宿主适配(U04→U05):上游叶子对 DSH 宿主的电话出口统一是 host.call('wf.*')。ZCode 这边
+  // 接通的有四路 —— wf.issuesPage(历史票翻页 → deck_issue_list 客户端分页,上游契约见
+  // api-io.ts 的 fetchIssuesPage)、wf.issueDetail/wf.issueComments(详情正文与评论,上游
+  // 契约见 api-io.ts 的 fetchIssueDetail/fetchIssueComments;#693 口径「正文与评论只认 get
+  // 那次」在我们这落成「都打 deck_issue_get,评论按 after 偏移切页」)、wf.commentIssue
+  // (评论提交 → deck_issue_comment 落 `### 谁 — ISO时间` 块)。其余 wf.* 电话(ZCode 数据面
+  // 没有对应物)回八档里的 unsupported 形状,上游消费方按各自兜底分支走,不抛。
   const issuesPageOverList = function (args) {
     const o = args || {};
     const client = clientRef;
@@ -96,11 +115,101 @@ function apply(ctx) {
         return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
       });
   };
+  // 详情取数(U05):wf.issueDetail → deck_issue_get + deck_issue_list 并取 —— get 给全量卡
+  // (正文/评论/标签/认领),list 薄行池给子票与被阻塞邻居补边(ingest.detailIssueOf 投影,
+  // number/连接形状守卫都在上游 fetchIssueDetail 消费面那头)。
+  const issueDetailOverGet = function (args) {
+    const o = args || {};
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") {
+      return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
+    }
+    const num = Number(o.number);
+    if (isNaN(num) || num < 0) {
+      return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
+    }
+    const nn = String(num).padStart(2, "0");
+    const key = o.effortId ? String(o.effortId) + "/" + nn : nn;
+    return Promise.all([
+      client.callTool("deck_issue_get", { key: key }),
+      client.callTool("deck_issue_list", { state: "all" }).catch(function () { return { structuredContent: { rows: [] } }; }),
+    ])
+      .then(function (pair) {
+        const sc = pair[0] && pair[0].structuredContent;
+        const card = sc && sc.card;
+        if (!card) {
+          return { ok: false, error: { kind: "parse", message: "issue missing", raw: "" } };
+        }
+        const rows = (pair[1] && pair[1].structuredContent && pair[1].structuredContent.rows) || [];
+        return { ok: true, issue: detailIssueOf(card, rows) };
+      })
+      .catch(function (e) {
+        return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
+      });
+  };
+  // 评论分页(U05):同一张卡按 after 偏移切页(ingest.commentsPageOf;上游 wf.issueComments
+  // 契约:{ok, nodes, pageInfo{hasNextPage, endCursor}})。
+  const issueCommentsOverGet = function (args) {
+    const o = args || {};
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") {
+      return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
+    }
+    const num = Number(o.number);
+    if (isNaN(num) || num < 0) {
+      return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
+    }
+    const nn = String(num).padStart(2, "0");
+    const key = o.effortId ? String(o.effortId) + "/" + nn : nn;
+    return client
+      .callTool("deck_issue_get", { key: key })
+      .then(function (res) {
+        const sc = res && res.structuredContent;
+        const card = sc && sc.card;
+        if (!card) return { ok: false, error: { kind: "parse", message: "issue missing", raw: "" } };
+        const page = commentsPageOf(card, o.after);
+        return { ok: true, nodes: page.nodes, pageInfo: page.pageInfo };
+      })
+      .catch(function (e) {
+        return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
+      });
+  };
+  // 评论提交(U05):wf.commentIssue → deck_issue_comment(落 `### 谁 — ISO时间` 块,作者记
+  // panel);上游契约 {ok:true, data:comment}。expectedUpdatedAt 乐观并发这层不带(面板没有
+  // 并发写手时不需要;带错值反而会被拒)。
+  const commentIssueOverWrite = function (args) {
+    const o = args || {};
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") {
+      return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
+    }
+    const num = Number(o.number);
+    if (isNaN(num) || num < 0) {
+      return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
+    }
+    const nn = String(num).padStart(2, "0");
+    const key = o.effortId ? String(o.effortId) + "/" + nn : nn;
+    return client
+      .callTool("deck_issue_comment", { key: key, body: String(o.body || ""), actor: "panel" })
+      .then(function (res) {
+        if (res && res.isError) {
+          const text = (res.content && res.content[0] && res.content[0].text) || "comment failed";
+          return { ok: false, error: { kind: "network", message: text, raw: text } };
+        }
+        return { ok: true, data: (res && res.structuredContent) || null };
+      })
+      .catch(function (e) {
+        return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
+      });
+  };
   const host = {
     // ZCode 宿主适配(wf.* → 工具桥;未接的电话一律 unsupported,不抛)
     call: function (method, args) {
       if (method === "wf.issuesPage") return issuesPageOverList(args);
-      return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U04)", raw: "" } });
+      if (method === "wf.issueDetail") return issueDetailOverGet(args);
+      if (method === "wf.issueComments") return issueCommentsOverGet(args);
+      if (method === "wf.commentIssue") return commentIssueOverWrite(args);
+      return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U05)", raw: "" } });
     },
   };
 
@@ -181,6 +290,7 @@ function apply(ctx) {
   // ==== kernel:workRouteOwn (spliced by build) ====
   // ==== kernel:storeDerived (spliced by build) ====
   // ==== kernel:rowActions (spliced by build) ====
+  // ==== kernel:detailTopGate (spliced by build) ====
   // ==== kernel:probeChain (spliced by build) ====
   // ==== kernel:probeSnapshotHelpers (spliced by build) ====
   // ==== kernel:router (spliced by build) ====
@@ -235,6 +345,14 @@ function apply(ctx) {
   // ==== leaf:ticket (spliced by build) ====
   // ==== leaf:stateKind (spliced by build) ====
   // ==== leaf:ticketRow (spliced by build) ====
+  // ==== leaf:detailActionBar (spliced by build) ====
+  // ==== leaf:detailProjection (spliced by build) ====
+  // ==== leaf:issueDetailErrorView (spliced by build) ====
+  // ==== leaf:subIssueRouting (spliced by build) ====
+  // ==== leaf:IssueDetailComments (spliced by build) ====
+  // ==== leaf:issueDetailFold (spliced by build) ====
+  // ==== leaf:useIssueDetailFold (spliced by build) ====
+  // ==== leaf:IssueDetail (spliced by build) ====
   // ==== leaf:tagsFit (spliced by build) ====
   // ==== leaf:pop (spliced by build) ====
   // ==== leaf:noRepoCard (spliced by build) ====
@@ -294,7 +412,17 @@ function apply(ctx) {
         !st
           ? h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, ["U04:等待工具数据(deck_issue_list / deck_issue_counts)…"])
           : st.tab === "list"
-            ? h(ListTab, { st: st, narrow: narrow })
+            ? (function () {
+                // 上游 Dock 的内容分发(#552 渲染优先级读导航栈顶):issue 层挂 IssueDetail,
+                // map 层是 mapV2 家族(本仓未搬,U06+ 候选),栈空回 ListTab。
+                const navTop = typeof peekNav === "function" ? peekNav(st) : null;
+                const topIssue = navTop && navTop.kind === "issue" ? navTop.n : st.activeIssue;
+                const topMap = navTop && navTop.kind === "map" ? navTop.n : st.activeMap;
+                if (topIssue !== null && topIssue !== undefined) return h(IssueDetail, { st: st });
+                if (topMap !== null && topMap !== undefined)
+                  return h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, ["地图详情页:mapV2 家族未搬(U06+ 候选)"]);
+                return h(ListTab, { st: st, narrow: narrow });
+              })()
             : h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tab" + (st.tab === "skills" ? "Skills" : st.tab === "checks" ? "Checks" : "Pr")) + " 页:U06+ 搬入"]),
       ]),
     ]);
@@ -306,14 +434,24 @@ function apply(ctx) {
 
   // 数据接驳:boot 拉回工具数据后回调 —— ingest 进上游状态机(makeStore 的上游初值 + 面板快照,
   // snapMode 拨 real),重画面板,控制台留档。
+  // U05:重画按微任务合批(defer + 脏位)。上游真机 emit→React setState 天然异步;本仓若同步
+  // 直渲,fetchIssueDetail 缓存命中路径的同步 emit(issueMode='real')会与 effect 冲刷互相
+  // 嵌套(fetch→emit→render→effect→fetch…)直至栈溢出。合批后 emit 风暴只触发一帧重画,
+  // 语义与上游一致(测试侧 tick/settle 等待覆盖微任务时序)。
+  let rerenderQueued = false;
   const rerenderPanels = function () {
-    try {
-      for (const rec of slots.registered()) {
-        if (rec.container) render(h(rec.Component), rec.container);
+    if (rerenderQueued) return;
+    rerenderQueued = true;
+    Promise.resolve().then(function () {
+      rerenderQueued = false;
+      try {
+        for (const rec of slots.registered()) {
+          if (rec.container) render(h(rec.Component), rec.container);
+        }
+      } catch (e) {
+        if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 面板重画失败:", e);
       }
-    } catch (e) {
-      if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 面板重画失败:", e);
-    }
+    });
   };
   showDeckDataRef = function (data) {
     const st = Object.assign(makeStore(), ingestSnapshot(
@@ -322,6 +460,13 @@ function apply(ctx) {
     ));
     st.snapMode = "real"; // 快照已到手(上游 hydrateFromCache 同款拨位)
     st.workspaceRoot = data.workspaceRoot || st.cwd;
+    // U05:注入通道 —— 上游 inject(st, text) 读 st.injector(缺席时降级复制到剪贴板);
+    // ZCode 等价物 = ui/message 桥发进当前对话(与旧 UI 动作栏同一条桥)。
+    try {
+      if (clientRef && typeof clientRef.sendMessage === "function") {
+        st.injector = function (text) { clientRef.sendMessage(text); };
+      }
+    } catch (eInj) { /* 桥缺席时上游自己降级 copyText,不挡 boot */ }
     deckPanelState.st = st;
     // emit→重画订阅挂在骨架层(不等组件 useEffect:上游面板在组件里订阅,本骨架单壳等价、更稳)
     try { sub(st, rerenderPanels); } catch (eSub) { /* 订阅失败不挡首渲 */ }
@@ -431,6 +576,19 @@ function apply(ctx) {
     renderInto: function (Component, container, props) {
       render(h(withCx(Component), props || {}), container);
     },
+  };
+  //   detail —— 工单 U05 详情页接口:视图组件、投影/门禁/折叠纯函数与路由动作
+  //     (缝 2 断言与 U06 对照走它,不经内部名)。
+  window.MattSkillsUpstream.detail = {
+    IssueDetail: IssueDetail,
+    DetailActionBar: DetailActionBar,
+    detailTopGate: detailTopGate,
+    detailViewFor: detailViewFor,
+    knownBlockedNodes: knownBlockedNodes,
+    issueDetailFoldLadderOf: issueDetailFoldLadderOf,
+    issueDetailFoldStateAt: issueDetailFoldStateAt,
+    enterSubDetail: enterSubDetail,
+    renderIssueDetailComments: renderIssueDetailComments,
   };
 }
 
