@@ -181,6 +181,28 @@ if (existsSync(BUNDLE)) {
   check("bundle-1 无模块级 import(资源通道只搬文本)", !/\bimport\s*["']/.test(code));
   check("bundle-1 无模块级 export", !/^[^\S\r\n]*export\s/m.test(code));
 
+  // 工单 04 收口:页签占位清零;地图层占位按规格保留(只清页签占位,不误删地图)
+  const skeletonSrc = readFileSync(join(ROOT, "src", "ui", "upstream", "entry.mjs"), "utf8");
+  check("bundle 无页签占位「U06+ 搬入」", !code.includes("U06+ 搬入"));
+  check("骨架 src 无页签占位「U06+ 搬入」", !skeletonSrc.includes("U06+ 搬入"));
+  check("bundle 保留地图详情层占位(mapV2 家族未搬)", code.includes("地图详情页:mapV2 家族未搬"));
+  check("骨架 src 保留地图详情层占位(同上)", skeletonSrc.includes("地图详情页:mapV2 家族未搬"));
+  // 页签分发形状:两个新页签各挂真视图,末分支(pr 无能力)回 ListTab。
+  // 行为面由点页签断言看守(upstream-skills 27 行目录 / upstream-checks 6 行链快照 /
+  // upstream-list 的 pr 兜底回列表),这里锁骨架里的分发次序。
+  const idxSkills = skeletonSrc.indexOf('st.tab === "skills"');
+  const idxChecks = skeletonSrc.indexOf('st.tab === "checks"');
+  const idxListFallback = skeletonSrc.indexOf(": h(ListTab, { st: st, narrow: narrow })", idxChecks);
+  check(
+    "骨架页签分发:skills→SkillsTab / checks→ChecksTab / 末分支→ListTab",
+    idxSkills > 0 &&
+      /h\(SkillsTab/.test(skeletonSrc.slice(idxSkills, idxSkills + 80)) &&
+      idxChecks > idxSkills &&
+      /h\(ChecksTab/.test(skeletonSrc.slice(idxChecks, idxChecks + 80)) &&
+      idxListFallback > idxChecks,
+    `skills=${idxSkills} checks=${idxChecks} listFallback=${idxListFallback}`
+  );
+
   // 假 window/document 里执行 bundle(与 stub-host 同法):只求定义 window.MattSkillsUpstream
   const docStub = {
     head: { appendChild: (n) => headStyles.push(n) },

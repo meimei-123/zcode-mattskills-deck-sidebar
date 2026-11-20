@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { scanWorkspace, computeCounts, findCardByScan, thinRow } from "./cards.mjs";
 import { commentIssue, updateStatusIssue, closeIssue, reopenIssue, setLabelsIssue, createIssue } from "./write.mjs";
 import { createDeckWatch, refreshFromEnv } from "./watch.mjs";
+import { buildEnvChain, summarizeEnvCheck } from "./env-check.mjs";
+import { readSkillDoc } from "./skill-doc.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_NAME = "zcode-mattpocock-skills-deck";
@@ -180,6 +182,30 @@ const TOOLS = [
       required: ["key"],
     },
   },
+  {
+    name: "deck_skill_doc",
+    description:
+      "读本机技能目录里的 SKILL.md 原文:按 工作区 .zcode/skills → ~/.zcode/skills → ~/.agents/skills → 插件内置 skills 的顺序找 <name>/SKILL.md,同名先命中。成功返回 markdown 正文与绝对路径(ok:true);找不到回 ok:false(不是错误)。file 参数本批不支持,给了回 ok:false。只读,不写盘。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "技能名(目录名),如 ask-matt" },
+        file: { type: "string", description: "技能内文件引用(本批不支持;给了会回 ok:false)" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "deck_env_check",
+    description:
+      "环境检查:按本地真实事实组装检查链快照(工作区有无 .scratch/、卡片可读、监听在线、工具桥通、技能根可读、是否 git 仓),返回链步骤(状态/标题/原因/修复动作)与计数。只读,不写盘;每次调用都按当前状态重新扫描。force=true 表示用户亲手重检(语义标记,不回错)。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        force: { type: "boolean", description: "true = 用户亲手点「重新检查」;工具每次都真扫,本字段只表达调用意图" },
+      },
+    },
+  },
 ];
 
 /** 卡的显示标签:#effort/编号(根级无目录前缀);退化身份的 key 已带目录前缀,不重复拼。 */
@@ -220,10 +246,45 @@ function summarizeCounts(sc) {
   return `共 ${c.total} 张票:可接 ${c.frontier} · 占用 ${c.occupied} · 阻塞 ${c.blocked} · 故障 ${c.bug} · 诊断 ${c.triage} · 已关闭 ${c.closed}(另有地图 ${c.maps}、规格 ${c.specs} 个容器)`;
 }
 
+/** deck_skill_doc(工单 02):读本机技能目录里的 SKILL.md 原文。与 .scratch 数据面无关,
+ *  先于扫描/监听返回(工作区读不动也不该挡技能页)。错误分层:名字不合法/读盘异常 →
+ *  isError;技能不存在 → ok:false + reason=missing(上游画缺文说明,不是错误)。 */
+function handleSkillDoc(a, root) {
+  const name = String(a.name === undefined || a.name === null ? "" : a.name).trim();
+  if (a.file !== undefined && a.file !== null && String(a.file) !== "") {
+    return {
+      content: [{ type: "text", text: "file 参数本批不支持:只读技能的 SKILL.md 原文,没有随包文件引用链。" }],
+      structuredContent: { ok: false, name, reason: "unsupported" },
+    };
+  }
+  let res;
+  try {
+    res = readSkillDoc({ name }, { workspaceRoot: root, env: process.env });
+  } catch (e) {
+    return { content: [{ type: "text", text: `读技能 ${name || "(空名)"} 的原文时出错:${e && e.message ? e.message : String(e)}` }], isError: true };
+  }
+  if (!res || res.ok !== true) {
+    if (res && res.reason === "invalid") {
+      return { content: [{ type: "text", text: `技能名不合法:${res.message}(只认目录名,不许 /、\\、..、绝对路径)。` }], isError: true };
+    }
+    return {
+      content: [{ type: "text", text: `本机技能目录里找不到 ${name} 的 SKILL.md(找过 工作区/.zcode/skills、~/.zcode/skills、~/.agents/skills、插件内置 skills)。` }],
+      structuredContent: { ok: false, name, reason: "missing" },
+    };
+  }
+  const bytes = Buffer.byteLength(res.md, "utf8");
+  return {
+    content: [{ type: "text", text: `已读 ${res.name} 的技能原文(${res.path},${bytes} 字节,来源:${res.source})。` }],
+    structuredContent: res,
+  };
+}
+
 /** 工具实现:全部走同一次扫描,返回 {content, structuredContent} 或 {content, isError}。 */
 function handleCall(name, args) {
   const a = args && typeof args === "object" ? args : {};
   const root = workspaceRoot();
+  // 技能原文与 .scratch 数据面无关:在扫描之前分派(本工具只读技能根)。
+  if (name === "deck_skill_doc") return handleSkillDoc(a, root);
   const scan = scanWorkspace(root);
   deckWatch.observe(scan); // 请求即探测:签名变了推进 revision(监听离线时的降级新鲜度)
 
@@ -290,6 +351,19 @@ function handleCall(name, args) {
     return {
       content: [{ type: "text", text: `规范标签 ${CANONICAL_LABELS.length} 枚:${CANONICAL_LABELS.join("、")};内置标签色 ${Object.keys(LABEL_COLORS).length} 枚(与面板色表同源,hex 无 # 前缀)。` }],
       structuredContent: sc,
+    };
+  }
+
+  // ---- 工单 03:环境检查链(链快照唯一渲染;按本地真实事实组装,不造假) ----
+  if (name === "deck_env_check") {
+    // scan 是 handleCall 顶部现扫的这一次(每个请求都重扫 —— 「真重扫」不是 force 才有的分支);
+    // force 只表达调用意图(用户亲手点「重新检查」),非布尔按未传处理,容错不报错。
+    const force = a.force === true;
+    const snapshot = buildEnvChain(root, { scan, watchOnline: deckWatch.state().online, env: process.env });
+    const summary = summarizeEnvCheck(snapshot);
+    return {
+      content: [{ type: "text", text: force ? `已按当前状态重扫。${summary}` : summary }],
+      structuredContent: { ok: true, snapshot, checkedAt: new Date().toISOString() },
     };
   }
 

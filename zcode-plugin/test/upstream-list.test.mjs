@@ -576,17 +576,36 @@ if (U) {
     check("排序翻转后方向标记出现在药丸文本(↑/↓)", /↑|↓/.test(textOf(numberChip)), textOf(numberChip));
   }
 
-  // ---- 页签切换:技能页签占位、切回列表(壳保序,内容层 U05+ 接手) ----
+  // ---- 页签切换:技能页签是真目录(工单 02 起)、切回列表(壳保序) ----
   if (tabsRow) {
     const tabBtn = (log) => walk(tabsRow).filter((n) => n.attributes["data-log"] === log && n.tagName === "BUTTON")[0];
     fireClick(tabBtn("panel.tab.skills"));
     await tick();
     if (st) eq("页签壳状态:st.tab = skills", st.tab, "skills");
     else check("页签壳状态:st.tab = skills", false, "st 缺席");
-    check("技能页签内容为占位(U06+ 搬入)", textOf(body).includes("U06"), textOf(body).slice(0, 40));
+    check("技能页签渲染上游技能目录(占位已撤)",
+      qsa(surface, ".pixel-skillrow").length === 27 && !textOf(body).includes("U06"),
+      `rows=${qsa(surface, ".pixel-skillrow").length} text=${textOf(body).slice(0, 40)}`);
     fireClick(tabBtn("panel.tab.list"));
     await tick();
     eq("切回列表恢复三段列表(开票行)", rowsNow().length, 9);
+
+    // ---- 工单 04 收口:pr 无能力兜底 ----
+    // 本地后端没有 PR 能力,prTabVisible 缺席 → 页签不渲染;状态若落到 pr,分发必须回列表
+    // 真视图(上游 Dock.ts 同款),不能落回占位。借上游 emit(setActiveIssue 清空导航)重画。
+    if (st) {
+      st.tab = "pr";
+      U.list.rowHelpers.setActiveIssue(st, null);
+      await tick();
+      await new Promise((r) => setTimeout(r, 30)); // 等合批重画落定
+      eq("pr 状态保留(无能力不静默改写 st.tab)", st.tab, "pr");
+      check("pr 无能力时渲染回列表真视图(KPI 行在)", qsa(surface, '[data-list-head="kpi"]').length >= 1);
+      check("pr 兜底不出占位文案(无 U06+ 搬入)", !textOf(body).includes("U06+ 搬入"));
+      check("pr 兜底行集仍是开票 9 行", rowsNow().length === 9, String(rowsNow().length));
+      st.tab = "list";
+      U.list.rowHelpers.setActiveIssue(st, null);
+      await tick();
+    }
   }
 
   // ---- 样式:上游 STYLE_TEXT 仍在 head(令牌族) ----

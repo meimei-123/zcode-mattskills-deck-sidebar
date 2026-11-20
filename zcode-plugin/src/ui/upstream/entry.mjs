@@ -18,7 +18,7 @@
 //   - host:上游叶子对 DSH 宿主电话的出口统一是 host.call('wf.*');ZCode 这边唯一接通的是
 //     wf.issuesPage(历史票翻页 → deck_issue_list 客户端分页),其余电话回 unsupported 形状;
 //   - snapFresh/loadSnapshot/scheduleActionProbe/DetailsDock 四个名字是最小桩(refresh rooms
-//     家族与 Dock 不搬:数据面是 boot/ingest,详情视图是 U05+)。
+//     家族与 Dock 不搬:数据面是 boot/ingest,详情由列表分支的 IssueDetail 承担)。
 import * as PreactCompat from "preact/compat";
 import { h, render, options as PreactOptions } from "preact";
 // effect 冲刷调度兜底(U05):Preact 把 passive effect 排给 options.requestAnimationFrame,
@@ -202,6 +202,35 @@ function apply(ctx) {
         return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
       });
   };
+  // 技能文档(工单 02):上游 PixelSkillOps 的取数电话是 host.call('skill.readDoc', {name, file?})
+  // (上游宿主真源 src/host/skillDoc.ts),ZCode 这边映射到 deck_skill_doc(服务端按技能根顺序
+  // 读 SKILL.md 原文)。错误分层照上游 pixelFetch 的消费口径,三档不能混:
+  //   工具回 {structuredContent:{ok:true, md, path}} → resolve 同形状(上游画正文);
+  //   工具回 ok:false(技能不存在/读不到) → resolve {ok:false}(上游画「包里没有这一篇」,不画重试);
+  //   桥异常/工具 isError → reject(上游画「读失败」横幅 + 重试)。
+  // file 参数与 refs 名单本批不支持:前者直接回 ok:false(不伪造),后者不返回(正文里的
+  // md 文件名不变成可点,避免半成品链路)。
+  const skillReadDocOverTool = function (args) {
+    const o = args || {};
+    const name = typeof o.name === "string" ? o.name.trim() : "";
+    if (!name) return Promise.resolve({ ok: false, name: "", reason: "missing" });
+    if (o.file !== undefined && o.file !== null && String(o.file) !== "") {
+      return Promise.resolve({ ok: false, name: name, reason: "unsupported" });
+    }
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") {
+      return Promise.reject(new Error("ZCode 宿主适配:无工具桥"));
+    }
+    return client.callTool("deck_skill_doc", { name: name }).then(function (res) {
+      if (res && res.isError) {
+        const text = (res.content && res.content[0] && res.content[0].text) || "skill doc failed";
+        throw new Error(text);
+      }
+      const sc = res && res.structuredContent;
+      if (sc && sc.ok === true) return { ok: true, name: sc.name || name, md: sc.md, path: sc.path };
+      return { ok: false, name: name, reason: (sc && sc.reason) || "missing" };
+    });
+  };
   const host = {
     // ZCode 宿主适配(wf.* → 工具桥;未接的电话一律 unsupported,不抛)
     call: function (method, args) {
@@ -209,9 +238,75 @@ function apply(ctx) {
       if (method === "wf.issueDetail") return issueDetailOverGet(args);
       if (method === "wf.issueComments") return issueCommentsOverGet(args);
       if (method === "wf.commentIssue") return commentIssueOverWrite(args);
+      if (method === "wf.chain") return envCheckOverTool(args);
+      if (method === "wf.detect") return envCheckOverTool({ force: true });
+      if (method === "skill.readDoc") return skillReadDocOverTool(args);
       return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U05)", raw: "" } });
     },
   };
+
+  // 环境检查(工单 03):wf.chain / wf.detect → 工具桥 deck_env_check。
+  //   上游 wf.chain 的回包契约是 {ok, snapshot}(probe-chain-subscription.loadChain 的消费面),
+  //   形如 {steps:[{id,status,show,actions,blockedBy}], currentIndex/doneCount/...};
+  //   上游 wf.detect 是「探测后端」电话,ChecksTab 的 refresh 路只用它催一次真重扫 ——
+  //   两路都落同一个工具:工具每次调用都按本地事实重扫,force 语义天然成立。
+  const envCheckOverTool = function (args) {
+    const o = args || {};
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") {
+      return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
+    }
+    // force 只传布尔真值(工具声明 {force?: boolean});缺省不传 = 打开页签那一次的缓存优先语义,
+    // 由 loadChain 在本地缓存/在途表那一段自行消化。
+    const toolArgs = o.force === true ? { force: true } : {};
+    return client
+      .callTool("deck_env_check", toolArgs)
+      .then(function (res) {
+        if (res && res.isError) {
+          const text = (res.content && res.content[0] && res.content[0].text) || "env check failed";
+          return { ok: false, error: { kind: "internal", message: text, raw: text } };
+        }
+        const sc = res && res.structuredContent;
+        if (!sc || sc.ok !== true || !sc.snapshot || !Array.isArray(sc.snapshot.steps)) {
+          return { ok: false, error: { kind: "parse", message: "env check snapshot missing", raw: "" } };
+        }
+        return { ok: true, snapshot: sc.snapshot, checkedAt: sc.checkedAt };
+      })
+      .catch(function (e) {
+        return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
+      });
+  };
+
+  // ---- 工单 03:refresh rooms 家族不搬,装配段补两个上游名字(检查页依赖) ----
+  // nowStr:上游真源在 src/refresh/rooms/client/snapshot-sync.ts:85(逐字同源)。该文件属于本轮
+  //   不搬的 refresh rooms 家族;而 loadChain 成功路径里 `st.chainLoadedAt = nowStr()` 是无守卫
+  //   调用(kernel:probeChain 整叶搬入),缺它 -> 抛错被 loadChain 的 catch 吞掉 -> 链快照永远
+  //   落不了地(面板只剩占位)。这里只补这一个纯函数,不搬快照同步那一套。
+  const nowStr = () => {
+    try { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); } catch (e) { return ''; }
+  };
+  // refreshAll:上游真源在 src/refresh/rooms/client/refresh-timer.ts:408(不搬)。本仓最小实现,
+  //   与上游的差异写在明处:只做「st.refreshing=true -> emit -> chainEventRefresh(st,'user-recheck')
+  //   -> 收尾 st.refreshing=false -> emit」。上游那一段还并发 loadSnapshot、扇出同工作区组、
+  //   合并快照差异 —— 本仓数据面是 boot/ingest(没有 refresh 回合、没有多会话 store 表),这些都不搬;
+  //   按钮转圈由 st.refreshing 驱动(ChecksTab 里加 dsws-spin 类)。
+  const refreshAll = function (st) {
+    if (!st) return;
+    st.refreshing = true; // #195:重查按钮必须有反应(不因上一次还挂着就锁死)
+    try { emit(st); } catch (eR1) { /* 无订阅者不挡后续 */ }
+    const p = chainEventRefresh(st, "user-recheck");
+    Promise.resolve(p)
+      .catch(function () { /* 失败由 loadChain 自己记录;这里只负责收圈 */ })
+      .then(function () {
+        st.refreshing = false;
+        try { emit(st); } catch (eR2) { /* 忽略 */ }
+      });
+  };
+  // 工单 05(P1-1):检查页可见拍间隔。上游界面没有自续定时器 —— 重算由宿主事件源
+  // (切进工作区/人手重检/动作完成)带起,宿主按退避裁定(probe-chain-subscription.ts 头注释)。
+  // 本仓没有宿主推送通道,检查页可见时只能用上游活跃探测拍同一节奏(5 秒档)自问一次;
+  // 离页即停(见 DeckBody 的 effect)。
+  const CHECKS_REVALIDATE_MS = 5000;
 
   // 宿主专属名最小桩(U02 惯例;与被搬叶子的关系逐条列明,缺一即崩的点都有对应上游真源):
   //   snapFresh / loadSnapshot —— 上游住在 refresh rooms 家族(refresh-timer/snapshot-sync),
@@ -220,8 +315,9 @@ function apply(ctx) {
   //     snapFresh=true(永远新鲜 → loadSnapshot 不被调),loadSnapshot 给无操作兜底。
   //   scheduleActionProbe —— 上游 api-io 的 inject 后排一次探测刷新(refresh-timer);ZCode 无
   //     刷新回合,给空函数(调用点 api-io inject 与 348 行的 typeof 守卫各得其所)。
-  //   DetailsDock —— 上游 router 的 DeckSidebarTab 渲的是整套 Dock(U05+ 的详情/页签内容分发);
-  //     本票给 null 组件占位,U05 详情视图接手后撤。
+  //   DetailsDock —— 上游 router 的 DeckSidebarTab 渲整套 Dock;本仓 router 不搬,面板由
+  //     本文件 DeckShell/DeckBody 直接挂槽位,详情走 list 分支的 IssueDetail。此名只为装配
+  //     差集保留,返回 null、不参与渲染。
   const snapFresh = function (st) {
     void st; // U04 桩:数据面是 boot/ingest,页签点击不触发快照重拉
     return true;
@@ -247,6 +343,10 @@ function apply(ctx) {
   // ==== kernel:motion (spliced by build) ====
   // ==== kernel:styles (spliced by build) ====
   styles.insert(STYLE_TEXT);
+  // ---- 技能详情像素风皮肤(工单 02;上游 index.ts 标记序在 kernel:styles 之后、locale 之前;
+  //      皮肤里引 MOTION,而 kernel:motion 已在本段之前) ----
+  // ==== leaf:pixelStyles (spliced by build) ====
+  styles.insert(PIXEL_STYLE_TEXT);
 
   // ---- locale 段(上游 index.ts §0.5 装配段原文照搬,仅去类型标注) ----
   // ==== kernel:localeData (spliced by build) ====
@@ -267,6 +367,10 @@ function apply(ctx) {
           if (params) s = s.replace(/\{(\w+)\}/g, function (m, name) { return name in params ? String(params[name]) : m; });
           return s;
         };
+
+  // ---- 技能目录数据表(工单 02;上游 §1 段原位:locale 之后、trackerConstants 之前。
+  //      SKILLS 是上游的静态展示目录(27 项),不是扫本机盘;技能原文走 deck_skill_doc) ----
+  // ==== shared:mattSkills (spliced by build) ====
 
   // ---- 词表五份(票身份算法:effortOf/idOf/idOfParts/refKeyOf + 常量) ----
   // ==== shared:trackerConstants (spliced by build) ====
@@ -336,7 +440,26 @@ function apply(ctx) {
   // ==== leaf:mapCard (spliced by build) ====
   styles.insert(PIXEL_CARDS_STYLE_TEXT);
 
+  // ---- 工单 01(0.3.1):响应式接缝样式(本仓自有,零上游改动) ----
+  // 上游 .dsws-panel 是 460px 浮动窗的定位(STYLE_TEXT 原样保留);ZCode 的 surface 里它要随
+  // 容器宽高走,所以这里只覆盖布局:定位/尺寸换成静态满幅,圆角/边框/底色/字号照旧(用户裁定:
+  // 字号与间距不随宽度缩放)。宽侧防拉散:行/KPI/正文根设 460px 上限(上游浮动窗的视觉宽度),
+  // 超出只留白,不排上游没有的栅格。
+  styles.insert(
+    [
+      "html,body,#dsws-surface{height:100%}",
+      "#dsws-surface > div{height:100%;display:flex;flex-direction:column}",
+      // box-sizing:border-box —— 上游面板带 1px 边框,content-box 下 width:100% 会多出 2px 横向溢出
+      "#dsws-surface .dsws-panel{position:static;left:auto;top:auto;width:100%;height:100%;max-height:none;box-sizing:border-box}",
+      "#dsws-surface .dsws-aggrow{max-width:460px}",
+      '#dsws-surface [data-list-head="kpi"]{max-width:460px}',
+      "#dsws-surface .dsws-body > div{max-width:460px}",
+    ].join("\n")
+  );
+
   // ---- 列表页全家 + 页签壳(工单 U04;上游 index.ts 标记序原位) ----
+  // 链渲染器通用件(工单 03;上游标记序在 tabs 之前、checksums 之后 —— 本仓跳过 checksums 保序)
+  // ==== leaf:chainRenderer (spliced by build) ====
   // ==== leaf:tabs (spliced by build) ====
   // ==== leaf:truthLines (spliced by build) ====
   // ==== leaf:fallbackMark (spliced by build) ====
@@ -363,6 +486,19 @@ function apply(ctx) {
   // ==== leaf:mdEffortRow (spliced by build) ====
   // ==== leaf:listTab (spliced by build) ====
 
+  // ---- 技能页签 + 文档详情像素风家族(工单 02;上游 index.ts 标记序原位,leaf:prTab 不搬
+  //      (本地后端无 PR 能力,页签不渲染)。
+  //      依赖次序:页签本体先声明,详情家族按 目录/正文/行/列表/弹窗/取数 次序) ----
+  // ==== leaf:skillsTab (spliced by build) ====
+  // ==== leaf:pixelContents (spliced by build) ====
+  // ==== leaf:pixelMarkdown (spliced by build) ====
+  // ==== leaf:pixelSkillRow (spliced by build) ====
+  // ==== leaf:pixelSkillList (spliced by build) ====
+  // ==== leaf:pixelSkillDetailModal (spliced by build) ====
+  // ==== leaf:pixelSkillOps (spliced by build) ====
+  // 环境检查页本体(工单 03;上游标记序在 skillsTab/pixel* 之后:#284 起链快照唯一渲染)
+  // ==== leaf:checksTab (spliced by build) ====
+
   // Ctx 接线(上游 panelAssembly §5.11 同款,八字段冻结清单;router 接真源 store-prefs)
   const cx = createCx({
     ctx: ctx,
@@ -381,10 +517,12 @@ function apply(ctx) {
   };
 
   // ---- 主视图(工单 U04:页签壳 + KPI 头 + 筛选 + 三段列表 + 关闭票折叠,全部来自上游叶子;
-  //      U03 的卡面临时挂点在此撤销,卡面组件仍经 cards 自检面供给) ----
+  //      U03 的卡面临时挂点在此撤销,卡面组件仍经 cards 自检面供给;工单 03 起「环境检查」
+  //      页签也接真视图:ChecksTab 的链快照唯一渲染;#284 起九格 wf.status 视图已退役,不恢复) ----
   // 结构对上游 panel/Dock.ts 的头部三段:dsws-head(标题)/dsws-tabs(useTabsRow 的墨块 + 页签
-  // 与 wayfinder、bug 入口、EntryChooser)/dsws-body(按 st.tab 分发;本票只有 list 是真视图,
-  // 其余页签占位待后续工单搬入)。
+  // 与 wayfinder、bug 入口、EntryChooser)/dsws-body(按 st.tab 分发;list/skills/checks 都是真视图,
+  // pr 页签在本地后端无能力、不可达(prTabVisible 缺席)—— 上游 Dock 还会把 st.tab 改回 list,
+  // 本仓只在渲染层兜底回列表,不改状态)。
   // 门组件(上游 #670 同款):无数据先画 dsws-hold 空壳,有数据才挂 DeckBody ——
   // hooks(useTabsRow 等)只在 DeckBody 里调,渲染次数变化不破坏 hook 次序。
   const DeckShell = function () {
@@ -400,8 +538,107 @@ function apply(ctx) {
     }, [st]);
     const tabsRef = React.useRef(null);
     const tabs = st ? useTabsRow(st, tabsRef) : { items: [] };
-    const narrow = false;
-    return h("div", { className: "dsws-panel" }, [
+    // 面板宽度通道(工单 01:上游 panel/Dock.ts 同款):根节点挂 ResizeObserver 量内容宽,
+    // 宽度进状态(初值 460 = 上游浮动窗宽)。ResizeObserver 缺席(Node 假 DOM / 极老内核)时
+    // try/catch 退化为恒 460 宽档 —— 面板照常可用,不挡渲染;测试经全局注入可驱动。
+    const panelRef = React.useRef(null);
+    const [dw, setDw] = React.useState(460);
+    React.useEffect(function () {
+      const el = panelRef.current;
+      if (!el) return undefined;
+      let ro = null;
+      try {
+        ro = new ResizeObserver(function (entries) {
+          try { setDw(entries[0].contentRect.width); } catch (e) { /* 忽略 */ }
+          // 工单 05(P1-2):宽度拍补一次标签重排。上游 ListTab 的重排指纹是
+          // snapshot|tab|stateFilter|lblFilters(不含宽度),靠宿主重挂/重渲触发;
+          // 本仓面板不重挂,拖宽拖窄后不补这一拍 +N 就不重算。页面隐藏时不测量(浏览器不给可用宽)。
+          try {
+            if (typeof document === "undefined" || document.visibilityState !== "hidden") {
+              if (typeof fitAllTags === "function") fitAllTags();
+            }
+          } catch (eFit) { /* 标签重排失败不挡宽度通道 */ }
+        });
+        ro.observe(el);
+      } catch (e) { ro = null; }
+      return function () { if (ro) { try { ro.disconnect(); } catch (e) { /* 忽略 */ } } };
+    }, []);
+    // ---- 工单 05(P1-1):检查页可见拍(上游靠宿主事件源驱动,本仓没有) ----
+    // 仅当停在检查页签时注册 5 秒拍:force=true 绕本地缓存,每次都真扫 deck_env_check;
+    // document.visibilityState === "hidden"(页面在后台)时这一拍跳过;页签切走或卸载时清掉。
+    // 回调自己吞掉拒绝(失败由 loadChain 记录),不产生未处理拒绝。
+    React.useEffect(function () {
+      if (!st || st.tab !== "checks") return undefined;
+      if (typeof setInterval !== "function" || typeof clearInterval !== "function") return undefined;
+      let alive = true;
+      const id = setInterval(function () {
+        if (!alive) return; // 已离页/卸载:清掉时可能还有一拍排在队里,不再发车
+        try {
+          if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+          const p = chainEventRefresh(st, "checks-visible-tick", true);
+          if (p && typeof p.catch === "function") p.catch(function () {});
+        } catch (e) { /* 一拍失败不挡下一拍 */ }
+      }, CHECKS_REVALIDATE_MS);
+      return function () {
+        alive = false;
+        try { clearInterval(id); } catch (e) { /* 忽略 */ }
+      };
+    }, [st, st.tab]);
+    // 页签折叠机(工单 01:上游 panel/Dock.ts 的 applyFold 逐字移植;tabsRef 已由 useTabsRow 持有)。
+    // 三道触发与上游一致:ResizeObserver(页签行宽变)+ window resize + document.fonts.ready;
+    // 卸载时断开。判据只有 scrollWidth/clientWidth 的 DOM 测量 —— 上游纯函数 tabsLevelDecide
+    // 全仓无调用(死代码),折叠真身就是这段测量。
+    React.useEffect(function () {
+      const applyFold = function () {
+        const t = tabsRef.current;
+        if (!t) return;
+        const btns = t.querySelectorAll("[data-priority]");
+        // 测量阶段临时禁用 transition(max-width 动画会污染 scrollWidth 测量 → 0/6 抖动)
+        t.classList.add("dsws-no-anim");
+        // 1) 全展开 + 强制 reflow(拿到"内容真实放得下"的基准)
+        for (let i = 0; i < btns.length; i++) btns[i].classList.remove("collapsed");
+        void t.offsetWidth;
+        // 2) 从最不重要(priority 大)逐个折叠,直到放得下(scrollWidth 溢出判定)
+        //    dataset 是上游写法;Node 假 DOM(既有缝 2 套件)没有它,退回读 data-* 属性 ——
+        //    真浏览器里两条读到的是同一个值,行为不变。
+        const priorityOf = function (b) {
+          if (b.dataset) return Number(b.dataset.priority || 99);
+          return Number((b.getAttribute && b.getAttribute("data-priority")) || 99);
+        };
+        const items = Array.from(btns)
+          .map(function (b) { return { el: b, p: priorityOf(b) }; })
+          .sort(function (a, b) { return b.p - a.p; });
+        for (const it of items) {
+          if (t.scrollWidth <= t.clientWidth + 1) break;
+          it.el.classList.add("collapsed");
+          void t.offsetWidth;
+        }
+        // 3) 记录折叠数供 tooltip 门控(上游 #1285:版本号已撤,在办表图标永不让位)
+        const level = String(t.querySelectorAll("[data-priority].collapsed").length);
+        if (t.dataset) t.dataset.tabsLevel = level;
+        else t.setAttribute("data-tabs-level", level);
+        t.classList.remove("dsws-no-anim");
+      };
+      const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(function () { applyFold(); }) : null;
+      let observed = null;
+      const apply = function () {
+        const t = tabsRef.current;
+        if (!t) return;
+        if (ro && observed !== t) {
+          if (observed) { try { ro.unobserve(observed); } catch (e) { /* noop */ } }
+          ro.observe(t);
+          observed = t;
+        }
+        applyFold();
+      };
+      apply();
+      if (typeof window !== "undefined") window.addEventListener("resize", apply);
+      if (typeof document !== "undefined" && document.fonts && document.fonts.ready) document.fonts.ready.then(apply);
+      return function () { if (ro) ro.disconnect(); if (typeof window !== "undefined") window.removeEventListener("resize", apply); };
+    }, []);
+    // 上游 panel/Dock.ts 的窄档判据(容器宽 < 380):行内按钮收图标档、KPI 体检按钮三档
+    const narrow = dw < 380;
+    return h("div", { ref: panelRef, className: "dsws-panel" + (narrow ? " dsws-narrow" : "") }, [
       h("div", { className: "dsws-head" }, [h("span", { className: "dsws-mtitle" }, [tr("panel.title")])]),
       h(
         "div",
@@ -423,7 +660,13 @@ function apply(ctx) {
                   return h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, ["地图详情页:mapV2 家族未搬(U06+ 候选)"]);
                 return h(ListTab, { st: st, narrow: narrow });
               })()
-            : h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tab" + (st.tab === "skills" ? "Skills" : st.tab === "checks" ? "Checks" : "Pr")) + " 页:U06+ 搬入"]),
+            : st.tab === "skills"
+              ? h(SkillsTab, { st: st })
+              : st.tab === "checks"
+                ? h(ChecksTab, { st: st })
+                // pr 页签不可达(prTabVisible 缺席),这里只做渲染兜底,不改状态:上游 Dock 还有
+                // 「st.tab === 'pr' 且无能力 → 把 st.tab 改回 list」的 effect,本仓没有(pr 到不了这儿)。
+                : h(ListTab, { st: st, narrow: narrow }),
       ]),
     ]);
   };

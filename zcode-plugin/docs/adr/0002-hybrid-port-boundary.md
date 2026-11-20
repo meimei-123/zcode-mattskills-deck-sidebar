@@ -28,3 +28,14 @@
 
 - **a′ 的"搬视觉"自 U01 起为字面搬运**:上游 client 本体 + ctx 八服务垫片 + Preact(上述修订的执行结果);T04 重画版废弃。
 - **U06 删旧 ms-* 层,双 UI 时代结束**:`src/ui/{app.js,copy.mjs,actions.mjs,detail.mjs,writer.mjs,panel.css,cards.mjs}` 与 bundle-0/panel.css 产物删除,panel.html 只注 bundle-1 起上游复刻(0.2.1 的 off 逃生舱随层退役);段间命名空间互调(`globalThis.MattSkills*`)与"域逻辑纯 JS IIFE"两条 M1 偏离随旧层一并归零——bundle-1 内部即上游原样的裸名 splice 共享作用域(esbuild IIFE),M1 有意偏离清单至此只剩服务端重复与散布类 smell 三条(不受本票影响)。
+
+## 实施修订记录(m2,0.3.1,2026-11-20)
+
+- **容器形态**:由上游原样的固定 460px 浮动窗改为填满 surface —— `.dsws-panel` 改 `position:static` + 宽高 100%,内容按 460px 上限(行/KPI/正文根),窄档判据仍是 380px;字号与间距不随宽度缩放(用户裁定)。
+- **装配段两个本仓补件**:`nowStr`(上游真源 `src/refresh/rooms/client/snapshot-sync.ts`,纯日期串)与 `refreshAll`(上游真源 `refresh-timer.ts`,本仓只做 refreshing→emit→chainEventRefresh→收尾,不搬快照并发与同工作区组扇出);两者所在 refresh rooms 家族不搬,补件只为让整叶搬入的 loadChain/ChecksTab 不崩。
+- **检查页刷新通路**:上游靠宿主事件源驱动重算(界面无自续定时器);本仓无宿主推送通道,检查页可见时用上游活跃探测拍同一节奏(5 秒)自问一次 `chainEventRefresh(..., force=true)`,页面隐藏跳过,离页即停。
+- **标签重排**:上游 ListTab 的指纹(snapshot/tab/stateFilter/lblFilters)不含宽度,靠宿主重挂/重渲触发;本仓面板不重挂,在宽度 ResizeObserver 回调里补一次 `fitAllTags()`(页面隐藏时跳过测量)。
+- **bundle 无版本串**:骨架没有 `__DSW_VERSION__`/`__DSW_REPO_URL__`/`__DSW_BUILD_COMMIT__` 引用,构建的版本占位替换当前无消费方,产物里没有版本串 —— 既有状况,本批未改。
+- **测试假 DOM 六份副本**:upstream 六个套件各带一份 fake DOM helper,是既有测试舱模式;本批只新增两套断言,不做全量抽取。已接受为 smell,后续可收进共享 helper。
+- **检查步骤 id 用本仓事实名**:`scratch:workspace`(.scratch 看板目录存在)与 `scratch:cards`(卡片可读)替代借用的上游 `tracker:initialized`/`md:workspace`(上游判据不同);其余 id 不动。连带效应:上游派生的 `setupPendingOf`/`setupCheck` 读不到 `tracker:initialized` 行,恒为 false/undefined —— 这两者在本仓闭包里都没有调用点(调用方 refresh-timer/statusbar 未搬),不产生行为影响。
+- **技能根单一真源**:新建 `src/skill-roots.mjs`,`deck_skill_doc` 与 `env:skills` 判据共用同一顺序(工作区 → ~/.zcode → ~/.agents → 插件内置);env-check 旧实现漏了插件根,随之补齐。
