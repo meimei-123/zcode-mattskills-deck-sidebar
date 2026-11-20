@@ -12,6 +12,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import * as watchMod from "../dist/watch.mjs";
 
+// 共存开关(0.2.1 起默认上游复刻):旧 UI 系测试拨到 off
+globalThis.localStorage = { getItem: () => "off", setItem() {}, removeItem() {} };
+
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url))); // zcode-plugin/
 const FIXTURES = join(ROOT, "test", "fixtures");
 const DEBOUNCE = 80; // 收短的合并窗(缺省 1200,见 refresh-constants.md syncDirtyProbeDebounceMs)

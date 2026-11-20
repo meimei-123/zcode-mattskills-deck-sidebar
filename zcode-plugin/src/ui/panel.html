@@ -120,8 +120,9 @@
           };
         }
 
-        // 引导五步(ui-host.md):__pluginClient → assets.json → 并行拉 CSS+JS → style/script 注入 → 起应用。
-        // 次级资产不走 HTTP,全部经 readResource 拉回;JS 段后缀 .txt,资源通道只搬文本。
+        // 引导(2026-11-20 默认翻转:U04 复刻成品直接示人):
+        //   默认(on) = 只注 bundle-1,上游面板带数据起 —— 不再与旧 UI 同屏(样式串染消解);
+        //   off      = 只注 bundle-0,纯旧 UI(回退逃生舱);切换按钮翻配置后重载生效。
         window.__pluginClient ??= createClient();
         (async function () {
           var client = window.__pluginClient;
@@ -131,48 +132,42 @@
             if (!c || !("text" in c) || !c.text) throw Error("Empty asset " + name);
             return c.text;
           }
-          say("2 拉 assets.json …", "warn");
+          var mode = "";
+          try {
+            mode = (typeof localStorage !== "undefined" && localStorage.getItem("mattskills-upstream")) || "";
+          } catch (eL) {} // 沙箱 localStorage 禁访:当默认(上游版)
+          var upstreamOn = mode !== "off";
+          say("2 拉 assets.json …(模式: " + (upstreamOn ? "上游复刻" : "旧 UI") + ")", "warn");
           var manifest = JSON.parse(await load("assets.json"));
-          say("3 资产清单 OK: " + JSON.stringify(manifest.scripts), "ok");
-          var fetched = await Promise.all([load("panel.css")].concat(manifest.scripts.map(load)));
+          var scripts = (manifest.scripts || []).filter(function (n) {
+            return upstreamOn ? n !== "bundle-0.txt" : n !== "bundle-1.txt";
+          });
+          var fetched = await Promise.all([load("panel.css")].concat(scripts.map(load)));
           var css = fetched[0];
           var parts = fetched.slice(1);
           var style = document.createElement("style");
           style.textContent = css;
           document.head.append(style);
-          var root = document.getElementById("root");
-          if (root) root.removeAttribute("style");
-          say("4 注入 CSS+JS,起应用 …", "warn");
+          say("4 注入 CSS+JS(" + scripts.join(",") + ")…", "warn");
           for (var text of parts) {
             var s = document.createElement("script");
             s.textContent = text;
-            document.body.append(s); // 注入即执行,bundle 定义 window.MattSkillsPanel
+            document.body.append(s);
           }
-          var app = window.MattSkillsPanel;
-          if (!app || typeof app.boot !== "function") throw Error("bundle 未定义 MattSkillsPanel");
-          await app.boot({ client: client, doc: document, root: root });
-          say("5 应用已启动", "ok");
-
-          // 工单 U01:上游面板壳(共存期,默认开)。bundle-1 已随清单注入,定义
-          // window.MattSkillsUpstream;这里复用同一条桥起壳,失败不影响旧 UI。
-          // 回退:localStorage mattskills-upstream=off(或下方切换按钮)后重载,即纯旧 UI。
-          // 工单 U02:壳默认只起形、不拉数据 —— 共存期不偷跑桥流量(旧 UI 的 deck_issue_list
-          //   调用次数是它的测试契约);配置翻到 'on' 才带 fetchData 起,壳里显示上游 kernel
-          //   算出来的 counts。
-          try {
-            var mode = "";
-            try {
-              mode = typeof localStorage !== "undefined" && localStorage.getItem("mattskills-upstream") || "";
-            } catch (eL) {} // 沙箱 iframe 里 localStorage 可能禁访:当默认开
-            if (mode !== "off") {
-              var upstream = window.MattSkillsUpstream;
-              if (upstream && typeof upstream.boot === "function") {
-                await upstream.boot({ client: client, doc: document, fetchData: mode === "on" });
-                say(mode === "on" ? "6 上游面板壳已启动(接数据:kernel counts)" : "6 上游面板壳已启动(空壳;配置翻 on 接数据)", "ok");
-              } else say("⚠ window.MattSkillsUpstream 缺失(bundle-1 未注入)", "bad");
-            } else say("6 上游面板壳按配置关闭(纯旧 UI)", "warn");
-          } catch (e2) {
-            say("✗ 上游面板壳启动失败(旧 UI 不受影响): " + (e2 && e2.message ? e2.message : String(e2)), "bad");
+          if (upstreamOn) {
+            var root = document.getElementById("root");
+            if (root) root.remove(); // 旧 UI 的加载占位不再需要
+            var upstream = window.MattSkillsUpstream;
+            if (!upstream || typeof upstream.boot !== "function") throw Error("bundle-1 未定义 MattSkillsUpstream");
+            await upstream.boot({ client: client, doc: document, fetchData: true });
+            say("5 上游复刻看板已启动(接数据)", "ok");
+          } else {
+            var root2 = document.getElementById("root");
+            if (root2) root2.removeAttribute("style");
+            var app = window.MattSkillsPanel;
+            if (!app || typeof app.boot !== "function") throw Error("bundle-0 未定义 MattSkillsPanel");
+            await app.boot({ client: client, doc: document, root: root2 });
+            say("5 旧 UI 已启动(回退模式)", "ok");
           }
           // 新旧切换按钮(排障金丝雀区):翻配置并重载
           if (diag && diag.parentNode && document.createElement) {
