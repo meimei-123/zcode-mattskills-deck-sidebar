@@ -249,6 +249,10 @@ export const LEAVES = [
   { id: "kernel:link", file: "src/client/kernel/link.ts" },
   { id: "kernel:motion", file: "src/client/kernel/motion.ts" },
   { id: "kernel:styles", file: "src/client/kernel/styles.ts" },
+  // ---- 工单 02(版本管理):vc 家族两片样式叶子(上游 index.ts 标记序原位:styles 之后、
+  //      pixelStyles 之前;标记后各补一行 styles.insert,与上游同位) ----
+  { id: "leaf:vcStyles", file: "src/client/views/versionControl/vcStyles.ts" },
+  { id: "leaf:vcShellStyles", file: "src/client/views/versionControl/vcShellStyles.ts" },
   // ---- 工单 02:技能详情像素风皮肤(887 样式叶子;上游标记序在 styles 与 localeData 之间) ----
   { id: "leaf:pixelStyles", file: "src/client/views/skillDetail/PixelStyles.ts" },
   // localeData/promptData 是上游构建现场生成、不入库的生成物(config/ YAML → 生成器)。
@@ -276,6 +280,28 @@ export const LEAVES = [
   { id: "kernel:log", file: "scripts/generated/logKernel.derived.js" },
   // 刷新额度档位(freshnessLevel/lagPromiseFor/tierFor:truthLines 的真相行档位真源)
   { id: "shared:refreshBudget", file: "src/refresh/kernel/host-budget.ts" },
+  // ---- 工单 02(版本管理):vc 家族的共享层(上游 index.ts 标记序原位:refreshBudget 之后、
+  //      能力账本/首屏契约/各域动作规则;vc 叶子的 declare 逐个由它们提供)。
+  //      上游 build.mts 的 SHARED_SPLICE 同一份 file 对照;全部零运行时 import(仅 type-only)。 ----
+  { id: "shared:vcRules", file: "src/shared/version-control/src/rules.ts" },
+  { id: "shared:vcCommitPlan", file: "src/shared/version-control/src/commit-plan.ts" },
+  { id: "shared:vcCapabilityLedger", file: "src/shared/version-control/src/capability-ledger.ts" },
+  { id: "shared:vcCapabilities", file: "src/shared/version-control/src/capabilities.ts" },
+  { id: "shared:vcFirstScreen", file: "src/shared/version-control/src/first-screen.ts" },
+  { id: "shared:vcSyncActions", file: "src/shared/version-control/src/sync-actions.ts" },
+  { id: "shared:vcSyncRules", file: "src/shared/version-control/src/sync-rules.ts" },
+  { id: "shared:vcMigrateActions", file: "src/shared/version-control/src/migrate-actions.ts" },
+  { id: "shared:vcStashRules", file: "src/shared/version-control/src/stash-rules.ts" },
+  { id: "shared:vcPlatformInspect", file: "src/shared/version-control/src/platform-inspect.ts" },
+  { id: "shared:vcCloneOptions", file: "src/shared/version-control/src/clone-options.ts" },
+  { id: "shared:vcCloneTicket", file: "src/shared/version-control/src/clone-ticket.ts" },
+  { id: "shared:vcConfigRules", file: "src/shared/version-control/src/config-rules.ts" },
+  { id: "shared:vcWorktreeOps", file: "src/shared/version-control/src/worktree-ops.ts" },
+  { id: "shared:vcSubmoduleOps", file: "src/shared/version-control/src/submodule-ops.ts" },
+  { id: "shared:vcConflictText", file: "src/shared/version-control/src/conflict-text.ts" },
+  { id: "shared:vcRewriteOps", file: "src/shared/version-control/src/rewrite-ops.ts" },
+  { id: "shared:vcRecoveryPoint", file: "src/shared/version-control/src/recovery-point.ts" },
+  { id: "shared:vcMaintenanceOps", file: "src/shared/version-control/src/maintenance-ops.ts" },
   // 列表筛选记忆 + 导航栈 + 行点击(setActiveIssue/setActiveMap;saveUiPrefs typeof 守卫缺席走 legacy)
   { id: "kernel:storePrefs", file: "src/client/kernel/store-prefs.ts" },
   { id: "kernel:deckState", file: "src/client/kernel/deck-state.ts" },
@@ -340,6 +366,75 @@ export const LEAVES = [
   // ---- 工单 03:环境检查页(上游 index.ts 标记序在原位:chainRenderer 在 tabs 之前) ----
   // 链渲染器通用件(ChecksTab 的标题解析 checkShowTitle 真源;整叶搬,不手写副本)
   { id: "leaf:chainRenderer", file: "src/client/views/shared/ChainRenderer.ts" },
+  // ---- 工单 02(版本管理):vc 家族 67 叶(上游 index.ts 大块原位:chainRenderer 之后、tabs
+  //      之前;次序即声明的依赖次序,不是 build.mts LEAF_MODULES 序) ----
+  { id: "leaf:vcText", file: "src/client/views/versionControl/vcText.ts" },
+  { id: "leaf:vcFold", file: "src/client/views/versionControl/vcFold.ts" },
+  { id: "leaf:vcDiff", file: "src/client/views/versionControl/vcDiff.ts" },
+  { id: "leaf:vcCommit", file: "src/client/views/versionControl/vcCommit.ts" },
+  { id: "leaf:vcRows", file: "src/client/views/versionControl/vcRows.ts" },
+  { id: "leaf:vcWrite", file: "src/client/views/versionControl/vcWrite.ts" },
+  { id: "leaf:vcWriteRun", file: "src/client/views/versionControl/vcWriteRun.ts" },
+  { id: "leaf:vcWriteUi", file: "src/client/views/versionControl/vcWriteUi.ts" },
+  { id: "leaf:vcWriteOps", file: "src/client/views/versionControl/vcWriteOps.ts" },
+  { id: "leaf:vcWriteView", file: "src/client/views/versionControl/vcWriteView.ts" },
+  { id: "leaf:vcDiffOps", file: "src/client/views/versionControl/vcDiffOps.ts" },
+  { id: "leaf:vcBlocks", file: "src/client/views/versionControl/vcBlocks.ts" },
+  { id: "leaf:vcViews", file: "src/client/views/versionControl/vcViews.ts" },
+  { id: "leaf:vcAiHandoff", file: "src/client/views/versionControl/vcAiHandoff.ts" },
+  { id: "leaf:vcTabVisible", file: "src/client/views/versionControl/vcTabVisible.ts" },
+  { id: "leaf:vcData", file: "src/client/views/versionControl/vcData.ts" },
+  { id: "leaf:vcCache", file: "src/client/views/versionControl/vcCache.ts" },
+  { id: "leaf:vcInView", file: "src/client/views/versionControl/vcInView.ts" },
+  { id: "leaf:vcFirstScreen", file: "src/client/views/versionControl/vcFirstScreen.ts" },
+  { id: "leaf:vcCapabilityPages", file: "src/client/views/versionControl/vcCapabilityPages.ts" },
+  { id: "leaf:vcShellPrimitives", file: "src/client/views/versionControl/vcShellPrimitives.ts" },
+  { id: "leaf:vcPalette", file: "src/client/views/versionControl/vcPalette.ts" },
+  { id: "leaf:vcCapabilityList", file: "src/client/views/versionControl/vcCapabilityList.ts" },
+  { id: "leaf:vcHistory", file: "src/client/views/versionControl/vcHistory.ts" },
+  { id: "leaf:vcSyncData", file: "src/client/views/versionControl/vcSyncData.ts" },
+  { id: "leaf:vcRemoteData", file: "src/client/views/versionControl/vcRemoteData.ts" },
+  { id: "leaf:vcRemotePage", file: "src/client/views/versionControl/vcRemotePage.ts" },
+  { id: "leaf:vcSyncPage", file: "src/client/views/versionControl/vcSyncPage.ts" },
+  { id: "leaf:vcMigrateData", file: "src/client/views/versionControl/vcMigrateData.ts" },
+  { id: "leaf:vcQuery", file: "src/client/views/versionControl/vcQuery.ts" },
+  { id: "leaf:vcQueryView", file: "src/client/views/versionControl/vcQueryView.ts" },
+  { id: "leaf:vcCommitOps", file: "src/client/views/versionControl/vcCommitOps.ts" },
+  { id: "leaf:vcCommitPage", file: "src/client/views/versionControl/vcCommitPage.ts" },
+  { id: "leaf:vcTaskPanel", file: "src/client/views/versionControl/vcTaskPanel.ts" },
+  { id: "leaf:vcBranches", file: "src/client/views/versionControl/vcBranches.ts" },
+  { id: "leaf:vcChangesPage", file: "src/client/views/versionControl/vcChangesPage.ts" },
+  { id: "leaf:vcStashOps", file: "src/client/views/versionControl/vcStashOps.ts" },
+  { id: "leaf:vcStashPage", file: "src/client/views/versionControl/vcStashPage.ts" },
+  { id: "leaf:vcDiagnostics", file: "src/client/views/versionControl/vcDiagnostics.ts" },
+  { id: "leaf:vcDiagnosticsPage", file: "src/client/views/versionControl/vcDiagnosticsPage.ts" },
+  { id: "leaf:vcUndoOps", file: "src/client/views/versionControl/vcUndoOps.ts" },
+  { id: "leaf:vcUndoPage", file: "src/client/views/versionControl/vcUndoPage.ts" },
+  { id: "leaf:vcWorktreesData", file: "src/client/views/versionControl/vcWorktreesData.ts" },
+  { id: "leaf:vcWorktreesOps", file: "src/client/views/versionControl/vcWorktreesOps.ts" },
+  { id: "leaf:vcWorktreesPage", file: "src/client/views/versionControl/vcWorktreesPage.ts" },
+  { id: "leaf:vcMigratePage", file: "src/client/views/versionControl/vcMigratePage.ts" },
+  { id: "leaf:vcClonePage", file: "src/client/views/versionControl/vcClonePage.ts" },
+  { id: "leaf:vcSubmodulesData", file: "src/client/views/versionControl/vcSubmodulesData.ts" },
+  { id: "leaf:vcSubmodulesOps", file: "src/client/views/versionControl/vcSubmodulesOps.ts" },
+  { id: "leaf:vcSubmodulesPage", file: "src/client/views/versionControl/vcSubmodulesPage.ts" },
+  { id: "leaf:vcConflictsOps", file: "src/client/views/versionControl/vcConflictsOps.ts" },
+  { id: "leaf:vcConflictsPage", file: "src/client/views/versionControl/vcConflictsPage.ts" },
+  { id: "leaf:vcConfigOps", file: "src/client/views/versionControl/vcConfigOps.ts" },
+  { id: "leaf:vcConfigPage", file: "src/client/views/versionControl/vcConfigPage.ts" },
+  { id: "leaf:vcHooksPage", file: "src/client/views/versionControl/vcHooksPage.ts" },
+  { id: "leaf:vcPlatformData", file: "src/client/views/versionControl/vcPlatformData.ts" },
+  { id: "leaf:vcPlatformPage", file: "src/client/views/versionControl/vcPlatformPage.ts" },
+  { id: "leaf:vcMigrateExport", file: "src/client/views/versionControl/vcMigrateExport.ts" },
+  { id: "leaf:vcRebaseOps", file: "src/client/views/versionControl/vcRebaseOps.ts" },
+  { id: "leaf:vcRebasePage", file: "src/client/views/versionControl/vcRebasePage.ts" },
+  { id: "leaf:vcRewriteOps", file: "src/client/views/versionControl/vcRewriteOps.ts" },
+  { id: "leaf:vcRewritePage", file: "src/client/views/versionControl/vcRewritePage.ts" },
+  { id: "leaf:vcMaintenanceData", file: "src/client/views/versionControl/vcMaintenanceData.ts" },
+  { id: "leaf:vcMaintenancePage", file: "src/client/views/versionControl/vcMaintenancePage.ts" },
+  { id: "leaf:vcMaintenanceDiag", file: "src/client/views/versionControl/vcMaintenanceDiag.ts" },
+  { id: "leaf:vcShellPages", file: "src/client/views/versionControl/vcShellPages.ts" },
+  { id: "leaf:versionControlTab", file: "src/client/views/versionControl/VersionControlTab.ts" },
   // ---- 工单 U04:列表页全家 + 页签壳(上游 index.ts 标记序原位,次序即依赖次序) ----
   // 页签壳:共享 tabs 行(wayfinder/bug 入口 + EntryChooser + 液态墨块)
   { id: "leaf:tabs", file: "src/client/views/shared/Tabs.ts" },
@@ -711,9 +806,10 @@ export async function buildUpstreamBundle() {
     allowOverwrite: true,
   });
   const code = readFileSync(tmpOut, "utf8");
-  // 门禁:语法过(等价 node --check,只解析不执行)+ 资源通道约束(无模块级 import/export)
+  // 门禁:语法过(等价 node --check,只解析不执行)+ 资源通道约束(无模块级 import/export)。
+  //   import 判据只看行首语句位:vc 数据里有 "git fast-import" 这类字符串,词边界判据会误伤。
   new vm.Script(code, { filename: "dist-ui-bundle-1.txt" });
-  if (/\bimport\s*["']/.test(code) || /^[^\S\r\n]*export\s/m.test(code)) {
+  if (/^[^\S\r\n]*import[\s{"'*]/m.test(code) || /^[^\S\r\n]*export\s/m.test(code)) {
     throw new Error("[build-upstream] bundle-1 含模块级 import/export —— 资源通道只搬文本,产物必须是 IIFE");
   }
   mkdirSync(dirname(OUT_BUNDLE), { recursive: true });
