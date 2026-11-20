@@ -337,6 +337,9 @@ export const LEAVES = [
   { id: "leaf:issueCard", file: "src/client/views/cards/PixelIssueCard.ts" },
   { id: "leaf:issueMapCard", file: "src/client/views/cards/PixelIssueMapCard.ts" },
   { id: "leaf:mapCard", file: "src/client/views/cards/PixelMapCard.ts" },
+  // ---- 工单 03:环境检查页(上游 index.ts 标记序在原位:chainRenderer 在 tabs 之前) ----
+  // 链渲染器通用件(ChecksTab 的标题解析 checkShowTitle 真源;整叶搬,不手写副本)
+  { id: "leaf:chainRenderer", file: "src/client/views/shared/ChainRenderer.ts" },
   // ---- 工单 U04:列表页全家 + 页签壳(上游 index.ts 标记序原位,次序即依赖次序) ----
   // 页签壳:共享 tabs 行(wayfinder/bug 入口 + EntryChooser + 液态墨块)
   { id: "leaf:tabs", file: "src/client/views/shared/Tabs.ts" },
@@ -391,6 +394,8 @@ export const LEAVES = [
   { id: "leaf:pixelSkillList", file: "src/client/views/skillDetail/PixelSkillList.ts" },
   { id: "leaf:pixelSkillDetailModal", file: "src/client/views/skillDetail/PixelSkillDetailModal.ts" },
   { id: "leaf:pixelSkillOps", file: "src/client/views/skillDetail/PixelSkillOps.ts" },
+  // 环境检查页本体(工单 03;上游在 skillsTab/pixel* 之后:#284 起链快照唯一渲染,九格视图退役)
+  { id: "leaf:checksTab", file: "src/client/views/ChecksTab.ts" },
 ];
 const CTX_BLOCK_FILE = "src/client/kernel/ctx.ts";
 

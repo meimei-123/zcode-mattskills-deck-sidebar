@@ -238,9 +238,71 @@ function apply(ctx) {
       if (method === "wf.issueDetail") return issueDetailOverGet(args);
       if (method === "wf.issueComments") return issueCommentsOverGet(args);
       if (method === "wf.commentIssue") return commentIssueOverWrite(args);
+      if (method === "wf.chain") return envCheckOverTool(args);
+      if (method === "wf.detect") return envCheckOverTool({ force: true });
       if (method === "skill.readDoc") return skillReadDocOverTool(args);
       return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U05)", raw: "" } });
     },
+  };
+
+  // 环境检查(工单 03):wf.chain / wf.detect → 工具桥 deck_env_check。
+  //   上游 wf.chain 的回包契约是 {ok, snapshot}(probe-chain-subscription.loadChain 的消费面),
+  //   形如 {steps:[{id,status,show,actions,blockedBy}], currentIndex/doneCount/...};
+  //   上游 wf.detect 是「探测后端」电话,ChecksTab 的 refresh 路只用它催一次真重扫 ——
+  //   两路都落同一个工具:工具每次调用都按本地事实重扫,force 语义天然成立。
+  const envCheckOverTool = function (args) {
+    const o = args || {};
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") {
+      return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
+    }
+    // force 只传布尔真值(工具声明 {force?: boolean});缺省不传 = 打开页签那一次的缓存优先语义,
+    // 由 loadChain 在本地缓存/在途表那一段自行消化。
+    const toolArgs = o.force === true ? { force: true } : {};
+    return client
+      .callTool("deck_env_check", toolArgs)
+      .then(function (res) {
+        if (res && res.isError) {
+          const text = (res.content && res.content[0] && res.content[0].text) || "env check failed";
+          return { ok: false, error: { kind: "internal", message: text, raw: text } };
+        }
+        const sc = res && res.structuredContent;
+        if (!sc || sc.ok !== true || !sc.snapshot || !Array.isArray(sc.snapshot.steps)) {
+          return { ok: false, error: { kind: "parse", message: "env check snapshot missing", raw: "" } };
+        }
+        return { ok: true, snapshot: sc.snapshot, checkedAt: sc.checkedAt };
+      })
+      .catch(function (e) {
+        return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
+      });
+  };
+
+  // ---- 工单 03:refresh rooms 家族不搬,装配段补两个上游名字(检查页依赖) ----
+  // nowStr:上游真源在 src/refresh/rooms/client/snapshot-sync.ts:85(逐字同源)。该文件属于本轮
+  //   不搬的 refresh rooms 家族;而 loadChain 成功路径里 `st.chainLoadedAt = nowStr()` 是无守卫
+  //   调用(kernel:probeChain 整叶搬入),缺它 -> 抛错被 loadChain 的 catch 吞掉 -> 链快照永远
+  //   落不了地(面板只剩占位)。这里只补这一个纯函数,不搬快照同步那一套。
+  const nowStr = () => {
+    try { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); } catch (e) { return ''; }
+  };
+  // refreshAll:上游真源在 src/refresh/rooms/client/refresh-timer.ts:408(不搬)。本仓最小实现,
+  //   与上游的差异写在明处:只做「st.refreshing=true -> emit -> chainEventRefresh(st,'user-recheck')
+  //   -> 收尾 st.refreshing=false -> emit」。上游那一段还并发 loadSnapshot、扇出同工作区组、
+  //   合并快照差异 —— 本仓数据面是 boot/ingest(没有 refresh 回合、没有多会话 store 表),这些都不搬;
+  //   按钮转圈由 st.refreshing 驱动(ChecksTab 里加 dsws-spin 类)。
+  const refreshAll = function (st) {
+    if (!st) return;
+    st.refreshing = true; // #195:重查按钮必须有反应(不因上一次还挂着就锁死)
+    try { emit(st); } catch (eR1) { /* 无订阅者不挡后续 */ }
+    const p = typeof chainEventRefresh === "function"
+      ? chainEventRefresh(st, "user-recheck")
+      : loadChain(st, true, "user-recheck");
+    Promise.resolve(p)
+      .catch(function () { /* 失败由 loadChain 自己记录;这里只负责收圈 */ })
+      .then(function () {
+        st.refreshing = false;
+        try { emit(st); } catch (eR2) { /* 忽略 */ }
+      });
   };
 
   // 宿主专属名最小桩(U02 惯例;与被搬叶子的关系逐条列明,缺一即崩的点都有对应上游真源):
@@ -392,6 +454,8 @@ function apply(ctx) {
   );
 
   // ---- 列表页全家 + 页签壳(工单 U04;上游 index.ts 标记序原位) ----
+  // 链渲染器通用件(工单 03;上游标记序在 tabs 之前、checksums 之后 —— 本仓跳过 checksums 保序)
+  // ==== leaf:chainRenderer (spliced by build) ====
   // ==== leaf:tabs (spliced by build) ====
   // ==== leaf:truthLines (spliced by build) ====
   // ==== leaf:fallbackMark (spliced by build) ====
@@ -427,6 +491,8 @@ function apply(ctx) {
   // ==== leaf:pixelSkillList (spliced by build) ====
   // ==== leaf:pixelSkillDetailModal (spliced by build) ====
   // ==== leaf:pixelSkillOps (spliced by build) ====
+  // 环境检查页本体(工单 03;上游标记序在 skillsTab/pixel* 之后:#284 起链快照唯一渲染)
+  // ==== leaf:checksTab (spliced by build) ====
 
   // Ctx 接线(上游 panelAssembly §5.11 同款,八字段冻结清单;router 接真源 store-prefs)
   const cx = createCx({
@@ -446,7 +512,8 @@ function apply(ctx) {
   };
 
   // ---- 主视图(工单 U04:页签壳 + KPI 头 + 筛选 + 三段列表 + 关闭票折叠,全部来自上游叶子;
-  //      U03 的卡面临时挂点在此撤销,卡面组件仍经 cards 自检面供给) ----
+  //      U03 的卡面临时挂点在此撤销,卡面组件仍经 cards 自检面供给;工单 03 起「环境检查」
+  //      页签也接真视图:ChecksTab 的链快照唯一渲染;#284 起九格 wf.status 视图已退役,不恢复) ----
   // 结构对上游 panel/Dock.ts 的头部三段:dsws-head(标题)/dsws-tabs(useTabsRow 的墨块 + 页签
   // 与 wayfinder、bug 入口、EntryChooser)/dsws-body(按 st.tab 分发;list 与 skills 是真视图,
   // checks 占位待 03 票搬入,pr 在本地后端无能力、兜底占位)。
@@ -560,7 +627,9 @@ function apply(ctx) {
               })()
             : st.tab === "skills"
               ? h(SkillsTab, { st: st })
-              : h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tab" + (st.tab === "checks" ? "Checks" : "Pr")) + " 页:U06+ 搬入"]),
+              : st.tab === "checks"
+                ? h(ChecksTab, { st: st })
+                : h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tabPr") + " 页:U06+ 搬入"]),
       ]),
     ]);
   };

@@ -3,9 +3,9 @@
 // 工作区根经 ZCODE_WORKSPACE_ROOT 环境变量注入(模拟宿主 manifest 的 ${ZCODE_PROJECT_DIR})。
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url))); // zcode-plugin/
 const FIXTURES = join(ROOT, "test", "fixtures");
@@ -19,7 +19,7 @@ function check(name, cond, detail = "") {
   }
 }
 
-/** 起一个指向指定工作区根的 server 会话,交回 rpc/stop。 */
+/** 起一个指向指定工作区根的 server 会话,交回 rpc/stop。extraEnv 覆盖 HOME/ZCODE_PLUGIN_ROOT 等环境(工具面测试用)。 */
 async function startServer(workspaceRoot, extraEnv = {}) {
   const child = spawn(process.execPath, [join(ROOT, "dist", "server.mjs")], {
     stdio: ["pipe", "pipe", "inherit"],
@@ -349,7 +349,100 @@ async function sliceLabels() {
 await sliceLabels();
 
 // ---------------------------------------------------------------------------
-// 切片 8:deck_skill_doc(工单 02)—— 读本机技能目录里的 SKILL.md 原文。
+// 切片 8:deck_env_check 环境检查链(工单 03)。事实只认本地真实状态:
+//   空临时工作区(无 .scratch/无 .git/假 HOME 无技能根)→ 初始化/卡片/监听/技能/git 各态;
+//   造出 .scratch 与 .git 后同一工具的状态翻转;回包形状对齐上游链快照口径。
+// ---------------------------------------------------------------------------
+async function sliceEnvCheck() {
+  const base = mkdtempSync(join(tmpdir(), "deck-env-check-"));
+  const rootEmpty = join(base, "empty");
+  const rootInit = join(base, "init");
+  const fakeHome = join(base, "home");
+  for (const p of [rootEmpty, rootInit, fakeHome]) mkdirSync(p, { recursive: true });
+  // 假 HOME 收窄技能根:工作区/用户级技能根都不存在,技能一步的判据可复现。
+  const fakeHomeEnv = { HOME: fakeHome, USERPROFILE: fakeHome, HOMEDRIVE: "", HOMEPATH: "" };
+
+  const stepOf = (sc, id) => (sc.snapshot?.steps || []).find((s) => s.id === id);
+  const STATUS = new Set(["done", "current", "fail", "pending"]);
+
+  const s = await startServer(rootEmpty, fakeHomeEnv);
+  try {
+    const tools = await s.rpc("tools/list", {});
+    const tool = (tools.result?.tools || []).find((t) => t.name === "deck_env_check");
+    check("env: tools/list 声明 deck_env_check", !!tool, JSON.stringify((tools.result?.tools || []).map((t) => t.name)));
+    check("env: inputSchema 只有 force 布尔(缺省不传 = 只读检查)",
+      !!tool && tool.inputSchema?.type === "object" && tool.inputSchema?.properties?.force?.type === "boolean" &&
+        !(tool.inputSchema.required || []).includes("force"),
+      JSON.stringify(tool && tool.inputSchema));
+
+    const r = await s.call("deck_env_check", {});
+    check("env: 应答无错误", !r.error && !r.result?.isError, JSON.stringify(r.error || r.result?.isError));
+    const sc = r.result?.structuredContent || {};
+    const snap = sc.snapshot || {};
+    const steps = snap.steps || [];
+    check("env: 回包 {ok:true, snapshot, checkedAt}", sc.ok === true && !!snap && typeof sc.checkedAt === "string" && sc.checkedAt.length >= 10,
+      JSON.stringify({ ok: sc.ok, checkedAt: sc.checkedAt }));
+    check("env: 六步链(初始化/卡片/监听/桥/技能/git)", steps.length === 6, JSON.stringify(steps.map((x) => x.id)));
+    check("env: 每步形状齐(id/status/show/actions/blockedBy)",
+      steps.every((x) => typeof x.id === "string" && STATUS.has(x.status) && x.show && typeof x.show.fallback === "string" && typeof x.show.desc === "string" &&
+        Array.isArray(x.actions) && x.blockedBy === null),
+      JSON.stringify(steps));
+
+    // 空工作区:没有 .scratch → 初始化一步不过且带 inject-prompt 修复动作;监听离线;桥恒在。
+    const init = stepOf(sc, "tracker:initialized");
+    check("env: 无 .scratch → 初始化一步非 done 且带修复动作",
+      init && init.status !== "done" && init.actions.length === 1 && init.actions[0].type === "inject-prompt" &&
+        typeof init.actions[0].prompt === "string" && init.actions[0].prompt.length > 0,
+      JSON.stringify(init));
+    check("env: 无 .scratch → 监听一步不假报在线", stepOf(sc, "env:watch")?.status !== "done", JSON.stringify(stepOf(sc, "env:watch")));
+    check("env: 工具桥自身恒 done", stepOf(sc, "env:bridge")?.status === "done", JSON.stringify(stepOf(sc, "env:bridge")));
+    check("env: 无技能根(假 HOME)→ 技能一步非 done", stepOf(sc, "env:skills")?.status !== "done", JSON.stringify(stepOf(sc, "env:skills")));
+    check("env: 无 .git → git 一步非 done", stepOf(sc, "git:repo")?.status !== "done", JSON.stringify(stepOf(sc, "git:repo")));
+
+    // 计数口径 = stepEvalParallel:doneCount/totalCount/currentIndex/chainState 自洽。
+    const doneN = steps.filter((x) => x.status === "done").length;
+    const firstNotDone = steps.findIndex((x) => x.status !== "done");
+    check("env: doneCount/totalCount 与 steps 自洽", snap.doneCount === doneN && snap.totalCount === 6 && snap.applicableCount === 6,
+      JSON.stringify({ done: snap.doneCount, total: snap.totalCount }));
+    check("env: currentIndex 指首个未 done 步", snap.currentIndex === firstNotDone, JSON.stringify({ ci: snap.currentIndex, firstNotDone }));
+    check("env: chainState = hasCurrent", snap.chainState === "hasCurrent" && snap.version === "1", JSON.stringify({ s: snap.chainState, v: snap.version }));
+    check("env: 摘要是人话(N/M + 待处理)", typeof r.result?.content?.[0]?.text === "string" &&
+      new RegExp(`环境检查 ${doneN}/6`).test(r.result.content[0].text) && /待处理/.test(r.result.content[0].text),
+      r.result?.content?.[0]?.text);
+
+    // force:用户亲手重检(本工具每次调用都真扫;force 只改变调用语义,不回错)
+    const forced = await s.call("deck_env_check", { force: true });
+    check("env: force=true 照常返回新快照", !forced.error && !forced.result?.isError && forced.result?.structuredContent?.snapshot?.totalCount === 6,
+      JSON.stringify(forced.result?.structuredContent?.snapshot?.totalCount || forced.error));
+    const tolerant = await s.call("deck_env_check", { force: "yes" });
+    check("env: force 非布尔按未传处理(容错不报错)", !tolerant.error && !tolerant.result?.isError && tolerant.result?.structuredContent?.ok === true,
+      JSON.stringify(tolerant.error || tolerant.result?.isError));
+  } finally {
+    await s.stop();
+  }
+
+  // 造出 .scratch 与 .git:同一工具的状态翻转(卡片/监听/git 三步变 done)。
+  mkdirSync(join(rootInit, ".scratch"), { recursive: true });
+  mkdirSync(join(rootInit, ".git"), { recursive: true });
+  const s2 = await startServer(rootInit, fakeHomeEnv);
+  try {
+    const r = await s2.call("deck_env_check", {});
+    const sc = r.result?.structuredContent || {};
+    check("env(有 .scratch/.git): tracker:initialized done", stepOf(sc, "tracker:initialized")?.status === "done", JSON.stringify(stepOf(sc, "tracker:initialized")));
+    check("env(有 .scratch/.git): md:workspace(卡片可读)done", stepOf(sc, "md:workspace")?.status === "done", JSON.stringify(stepOf(sc, "md:workspace")));
+    check("env(有 .scratch/.git): env:watch 监听在线", stepOf(sc, "env:watch")?.status === "done", JSON.stringify(stepOf(sc, "env:watch")));
+    check("env(有 .scratch/.git): git:repo done", stepOf(sc, "git:repo")?.status === "done", JSON.stringify(stepOf(sc, "git:repo")));
+    check("env(有 .scratch/.git): 技能根仍按假 HOME 判(不假报 done)", stepOf(sc, "env:skills")?.status !== "done", JSON.stringify(stepOf(sc, "env:skills")));
+    check("env(有 .scratch/.git): 计数随之上升(5/6;技能根按假 HOME 仍未过)", sc.snapshot?.doneCount === 5, JSON.stringify(sc.snapshot?.doneCount));
+  } finally {
+    await s2.stop();
+    rmSync(base, { recursive: true, force: true });
+  }
+}
+await sliceEnvCheck();
+
+// ---------------------------------------------------------------------------
+// 切片 9:deck_skill_doc(工单 02)—— 读本机技能目录里的 SKILL.md 原文。
 //   契约:声明(name 必填 / file 可选)、缺 name 与非法名是工具级 isError、
 //   存在 → ok:true + md/path/source、不存在 → ok:false + 人话(不是错误)、
 //   file 本批不支持 → ok:false(不伪造)。
