@@ -11,6 +11,15 @@
 | 2a | 点「技能」页签 | 技能目录 27 行(名称/摘要/推荐标记);点行开详情,加载中出骨架/文案,正文按 markdown 渲染;读取失败出错误与重试,重试恢复 | upstream-skills 覆盖(目录 27 行 / 详情 markdown / 加载·失败·重试) |
 | 2b | 点「环境检查」页签 | 链快照逐项列出状态/标题/原因(N/M 计数与步骤一致);点「重新检查」真实重扫并更新;失败步的修复按钮把提示词发进当前对话;页签打开时每 5 秒自问一次(本仓无宿主事件源),离页即停 | upstream-checks 覆盖(链快照状态/标题/原因、重检真重扫、修复动作发话、5 秒可见拍与离页停止) |
 | 2c | 拖动侧边栏从宽到窄再拖回 | 窄档(<380px)行内按钮收成图标、页签按优先级折叠、无横向溢出;拖宽内容随容器铺满(0.3.2 起不设 460 上限);任意宽度互切页签状态不串 | upstream-responsive 覆盖(窄档收字/页签折叠/宽侧铺满/详情顶栏折叠) |
+| 2d | 点「版本管理」页签 | 页签行四枚(列表/技能/版本管理/环境检查),版本管理高亮;改动页出当前分支与领先/落后、已暂存/未暂存两分组与文件行;点文件行出差异补丁 | upstream-versioncontrol 覆盖(四枚页签/改动页/文件差异);server-git 覆盖(gitStatus/gitDiff 真仓回包) |
+| 2e | 切「提交历史」 | 提交列表(短 oid/标题/作者/时间);点单笔提交出逐文件清单;点清单文件出该提交补丁;翻批(50/批) | upstream-versioncontrol、server-git-history 覆盖(提交列表/单笔/逐文件) |
+| 2f | 切「工作树」 | 当前工作树与分支状态;其他工作树列表(无则空态说明) | upstream-versioncontrol、server-git-refs 覆盖(工作树 list/add/remove/prune) |
+| 2g | 改一个文件→暂存/取消暂存→提交;再拉取/推送 | 面板操作结果与 `git status`/`git log` 一致;提交前身份与消息预检;网络失败出诚实错误并可重试 | server-git-writes 覆盖(改动/提交/同步;本地 bare 前进落后、坏远端、pre-push 钩子);server-git-admin 覆盖(联网读超时) |
+| 2h | 建分支/切分支/删分支/设上游;建标签 | 先预检签票(check)出计划与确认卡,确认后执行(write);过期票拒绝 | server-git-refs 覆盖(分支七 op、标签、过期票) |
+| 2i | 贮藏:入栈/查看/应用/弹出/丢弃 | 贮藏条目与恢复点提示;应用/弹出后工作区变化与 git 一致 | server-git-refs 覆盖(贮藏 push/list/apply/pop/drop 与 restore) |
+| 2j | 危险动作:重置、历史改写、变基、冲突向导 | 预检签票 + 确认卡 + 恢复点(备份/撤销)后才执行;拒绝过期票;冲突页逐文件处理与继续/中止 | server-git-history 覆盖(改写/变基/冲突/子模块);server-git-admin 覆盖(维护确认与备份要求) |
+| 2k | 子模块/维护/迁移/配置钩子/诊断/平台各页 | 按上游能力账本渲染;只读页出数,写页预检签票;缺外部工具/能力时回诚实说明 | server-git-admin 覆盖(维护/迁移/配置钩子/诊断/平台);server-git-history 覆盖(子模块) |
+| 2l | 换到另一个工作区再切回 | VC 读数与写状态整体复位:分支/差异/任务面板不串仓 | **待人工(真机)**(跨工作区复位无自动化断言) |
 | 3 | 对 agent 说"用 /to-tickets 在 m1-core-board 下建几张测试卡" | agent 调 `deck_issue_create`,卡片落盘 `.scratch/m1-core-board/issues/` | server-write 覆盖 |
 | 4 | 看板(不刷新面板) | 防抖后自动出现新卡;计数胶囊条变 | live-refresh 覆盖 |
 | 5 | 点开一张卡 | 详情:元行/正文/评论时间线;长文折叠可展开 | upstream-detail 覆盖 |
@@ -28,7 +37,22 @@
 - 真机拖拽侧边栏的手感与首帧:拖到窄档时第一帧是否先闪一下宽档布局(宽度通道首帧仍按 460 起量)。**待人工**
 - 面板填满侧边栏后,圆角/边框与 ZCode 侧边栏的融合观感(是否像原生的一格,而不是浮在里面的卡片)。**待人工**
 - 两个新页签的真机目检(技能目录/文档详情、环境检查链快照):截图备料见 `E:\mattskillzcode\prototype\m2-shots\README.md`,偏差由人工目检裁定。**待人工**
+- 版本管理页的真机观感(窄侧栏/宽页签):四枚页签行是否折叠得当,改动/历史/工作树三视图与差异区在窄档是否可读、无横向溢出。截图备料见 `E:\mattskillzcode\prototype\m3-shots\README.md`,偏差由人工目检裁定。**待人工**
+- 真实远端(https/ssh)的凭据提示与失败话术:自动化只用本地 bare 仓与静默 TCP 冒充;真远端要确认凭据助手提示、超时与失败文案是否诚实。**待人工**
+- `git-filter-repo` 等外部工具缺席时的提示:历史改写/维护页应回上游的诚实错误(说明缺什么),不静默失败。**待人工**
+- 非 git 工作区的「不是仓库」引导态:协调根 `E:\mattskillzcode` 本身不是 git 仓、插件仓是嵌套仓;真机要在这种工作区确认 VC 页给引导而不是报错。**待人工**
 - (可选)双击工作区副本 `E:\mattskillzcode\prototype\m1-ui-preview.html` 对照快照原型(U06 已随新 UI 重生成;源在 ui-preview 分支 `zcode-plugin/prototype/`);差异以真机为准——原型是一次性快照,不随代码日常更新。**待人工**
+
+## 自动化实测记录(0.4.0 收口,2026-11-20,离线)
+
+| 面 | 跑法 | 结果 |
+|---|---|---|
+| 构建 | `node build.mjs`(src→dist + build-upstream 拼包 + build-git 打包) | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html;bundle-1.txt code.length=2297624(UTF-16 码元),2449032 字节;dist/git.mjs code.length=954113,1020442 字节(本次构建日志) |
+| 测试 | `npm test` | ✓ 十八套 1824 断言全绿(scaffold 53 / server-read 124 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 176 / upstream-detail 89 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 242 / server-git 27 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106) |
+| 工具面 | `deck_git({method,args})` | ✓ 66 个 `handleGit*` 方法;未知方法/越界 cwd/坏参数回结构化人话;回包原样进 `structuredContent` |
+| 版本 | 双清单 + scaffold | ✓ plugin.json / marketplace.json / scaffold 断言均 0.4.0;package.json 保持 0.1.0;panel.html 未动 |
+
+版本断言按 TDD 先改红(manifest 与 marketplace 两项失败),再改双清单转绿;构建产物可复现(dist 未因版本 bump 变化)。
 
 ## 自动化实测记录(0.3.1 收口,2026-11-20,离线)
 
