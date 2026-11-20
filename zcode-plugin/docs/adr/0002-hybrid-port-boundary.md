@@ -37,5 +37,5 @@
 - **标签重排**:上游 ListTab 的指纹(snapshot/tab/stateFilter/lblFilters)不含宽度,靠宿主重挂/重渲触发;本仓面板不重挂,在宽度 ResizeObserver 回调里补一次 `fitAllTags()`(页面隐藏时跳过测量)。
 - **bundle 无版本串**:骨架没有 `__DSW_VERSION__`/`__DSW_REPO_URL__`/`__DSW_BUILD_COMMIT__` 引用,构建的版本占位替换当前无消费方,产物里没有版本串 —— 既有状况,本批未改。
 - **测试假 DOM 六份副本**:upstream 六个套件各带一份 fake DOM helper,是既有测试舱模式;本批只新增两套断言,不做全量抽取。已接受为 smell,后续可收进共享 helper。
-- **检查步骤 id 用本仓事实名**:`scratch:workspace`(.scratch 看板目录存在)与 `scratch:cards`(卡片可读)替代借用的上游 `tracker:initialized`/`md:workspace`(上游判据不同);其余 id 不动。
+- **检查步骤 id 用本仓事实名**:`scratch:workspace`(.scratch 看板目录存在)与 `scratch:cards`(卡片可读)替代借用的上游 `tracker:initialized`/`md:workspace`(上游判据不同);其余 id 不动。连带效应:上游派生的 `setupPendingOf`/`setupCheck` 读不到 `tracker:initialized` 行,恒为 false/undefined —— 这两者在本仓闭包里都没有调用点(调用方 refresh-timer/statusbar 未搬),不产生行为影响。
 - **技能根单一真源**:新建 `src/skill-roots.mjs`,`deck_skill_doc` 与 `env:skills` 判据共用同一顺序(工作区 → ~/.zcode → ~/.agents → 插件内置);env-check 旧实现漏了插件根,随之补齐。
