@@ -4,12 +4,15 @@
 //   ① 改动域:gitChangesCheck → gitChangesWrite 的暂存 / 撤回暂存 / 丢弃(单文件、多文件、逐块),票据绑定与过期;
 //   ② 提交域:gitCommitForm(身份/模板/上一条)、gitWriteCheck → gitCommit(消息与文件集)、重放、坏计划、过期票;
 //   ③ 同步域:gitSyncCheck → gitSyncWrite 的 fetch / pull / push,本地 bare 仓做 origin,断言前进/落后与远端状态;
-//      另含坏远端(路径删掉)的诚实失败、非交互环境(pre-push 钩子读环境)、缺确认与坏参数;
+//      另含坏远端(路径删掉)的诚实失败、非交互环境(pre-push 钩子读环境)、联网读超时(15 秒档)、缺确认与坏参数。
+//      注:同步域 pull 的执行 argv 有上游缺陷(把 origin/main 当仓库地址),本套按「诚实失败」断言;
+//      真正的快进由写域 gitWriteCheck → gitPull(按配置的上游)验证。
 //   ④ 路径边界与 deck_git 路由(起 dist/server.mjs,经一条工具走完一次写闭合)。
 // 期望值来自工单验收条目与 git 自身行为(harness 另起 git 命令核对),不拿实现回算实现。
 // 临时目录结束即删;进程内有挂起的命令预算计时器,收尾用 process.exit 结束,避免空等。
 import { execFileSync, spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -446,6 +449,8 @@ async function sliceSync(bridge, ws, cacheDir) {
 
   // 4) 同步域的 pull:预检签票成立;执行层 argv 把「origin/main」当成仓库地址,
   //    这是上游 task-protocol 的既有缺陷(记录不修)。这里断言它是诚实失败、不挂起。
+  //    上游哪天把 argv 改成 `<remote> <branch>`(git pull origin main),这条断言会失败——
+  //    那时应改成「success + 本地跟上」的断言,别把缺陷当契约。
   const pc2 = await bridge.call("gitSyncCheck", { cwd, action: "pull-ff-only", upstream: "origin/main" });
   check("sync: pull 预检 ok 且计划为 ff-only", pc2.ok === true && pc2.plan?.taskArgs?.mode === "ff-only" && typeof pc2.ticket?.id === "string", short(pc2.error || pc2.plan));
   const startedAt = Date.now();
@@ -515,7 +520,40 @@ async function sliceSync(bridge, ws, cacheDir) {
   );
   check("sync: 坏远端失败没有挂起(<30s)", badDone.ms < 30000, String(badDone.ms));
 
-  // 8) 坏参数 / 缺 cwd / 越界 cwd
+  // 8) 联网读取超时:本机静默 TCP 监听冒充 git:// 远端,ls-remote 会一直等回包;
+  //    同步预检的读超时(15 秒档)必须回 timeout 信封并结束进程,不许挂死。
+  const sockets = new Set();
+  const stall = net.createServer((sock) => {
+    sockets.add(sock);
+    sock.on("error", () => {});
+    sock.on("close", () => sockets.delete(sock));
+  });
+  await new Promise((r) => stall.listen(0, "127.0.0.1", r));
+  const port = stall.address().port;
+  gitIn(cwd, "remote", "add", "stall", "git://127.0.0.1:" + port + "/repo.git");
+  const stallStarted = Date.now();
+  let stallCheck;
+  try {
+    stallCheck = await bridge.call("gitSyncCheck", { cwd, action: "force-push", remote: "stall", localBranch: "main", branch: "main" });
+  } finally {
+    for (const sock of sockets) {
+      try {
+        sock.destroy();
+      } catch {
+        /* 已关闭 */
+      }
+    }
+    await new Promise((r) => stall.close(r));
+  }
+  const stallMs = Date.now() - stallStarted;
+  check(
+    "sync: 联网读取超时回 timeout 信封(不是挂起)",
+    stallCheck.ok === false && stallCheck.error?.kind === "timeout" && stallCheck.reason === "timeout",
+    short(stallCheck)
+  );
+  check("sync: 超时在 15 秒档附近返回(<30s)", stallMs >= 12000 && stallMs < 30000, String(stallMs));
+
+  // 9) 坏参数与非字符串 cwd / 越界 cwd
   const badAction = await bridge.call("gitSyncCheck", { cwd, action: "merge-now" });
   check("sync: 不认识的同步动作 → bad-target/unknown-action", badAction.ok === false && badAction.error?.kind === "bad-target" && badAction.reason === "unknown-action", short(badAction));
   const badCwdType = await bridge.call("gitSyncCheck", { cwd: 42, action: "fetch" });
@@ -528,7 +566,7 @@ async function sliceSync(bridge, ws, cacheDir) {
     rmSync(outside, { recursive: true, force: true });
   }
 
-  // 9) 长任务记录只落缓存目录,不落工作区/仓库
+  // 10) 长任务记录只落缓存目录,不落工作区/仓库
   check("sync: 任务记录落在 cacheDir", existsSync(join(cacheDir, "vc-task-events__tasks.json")), existsSync(cacheDir) ? readdirSync(cacheDir).join(",") : "(cacheDir 不存在)");
   check("sync: 工作区根没有任务记录文件", !existsSync(join(ws, "vc-task-events__tasks.json")));
   check("sync: 仓库根没有任务记录文件", !existsSync(join(cwd, "vc-task-events__tasks.json")));
