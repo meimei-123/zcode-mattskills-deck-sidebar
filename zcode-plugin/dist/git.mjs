@@ -21844,6 +21844,7 @@ function createGitBridge(opts) {
   const debugOn = String(baseEnv.ZCODE_GIT_DEBUG || process.env.ZCODE_GIT_DEBUG || "") === "1";
   const cacheIn = String(baseEnv.ZCODE_VC_TASK_CACHE || process.env.ZCODE_VC_TASK_CACHE || "");
   const cacheDir = cacheIn ? path2.resolve(root, cacheIn) : path2.join(os.tmpdir(), "zcode-mattpocock-skills-deck", "vc-tasks");
+  const now = typeof options.now === "function" ? options.now : Date.now;
   const deps = {
     subprocess: makeSubprocess(baseEnv),
     timer: makeTimer(),
@@ -21855,8 +21856,7 @@ function createGitBridge(opts) {
     } },
     logCtx: makeLogCtx(debugOn),
     getCacheDir: () => cacheDir,
-    // 上游 deps 里 now 本来就是可选注入项;给测试一个可推进的钟(票据 120 秒过期的验收不走真等待)。
-    now: typeof options.now === "function" ? options.now : Date.now
+    now
   };
   const vc = createVersionControl(deps);
   const methods = /* @__PURE__ */ new Map();

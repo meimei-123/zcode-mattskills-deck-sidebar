@@ -272,6 +272,8 @@ export function createGitBridge(opts) {
   const cacheDir = cacheIn
     ? path.resolve(root, cacheIn)
     : path.join(os.tmpdir(), "zcode-mattpocock-skills-deck", "vc-tasks");
+  // 时钟与上游 deps.now 同口径:默认 Date.now;测试可注入可控时钟,以便按真实 120 秒票期验证过期拒绝。
+  const now = typeof options.now === "function" ? options.now : Date.now;
   const deps = {
     subprocess: makeSubprocess(baseEnv),
     timer: makeTimer(),
@@ -282,8 +284,7 @@ export function createGitBridge(opts) {
     gate: { noteOutbound() {} },
     logCtx: makeLogCtx(debugOn),
     getCacheDir: () => cacheDir,
-    // 上游 deps 里 now 本来就是可选注入项;给测试一个可推进的钟(票据 120 秒过期的验收不走真等待)。
-    now: typeof options.now === "function" ? options.now : Date.now,
+    now,
   };
   const vc = createVersionControl(deps);
   const methods = new Map();
