@@ -32,7 +32,7 @@ check(".zcode-plugin/plugin.json 存在", existsSync(manifestPath));
 if (existsSync(manifestPath)) {
   const m = require(manifestPath);
   check("manifest.name", m.name === PLUGIN_NAME, m.name);
-  check("manifest.version 0.1.0", m.version === "0.1.0", m.version);
+  check("manifest.version 与 package/市场清单一致(当前 0.2.0)", m.version === "0.2.0", m.version);
 
   const srv = m.mcpServers?.mattskills;
   check("mcpServers.mattskills 存在", !!srv);
