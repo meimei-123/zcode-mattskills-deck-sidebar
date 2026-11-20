@@ -17775,10 +17775,7 @@ ${formatProgressEntry(entry)}
         "html,body,#dsws-surface{height:100%}",
         "#dsws-surface > div{height:100%;display:flex;flex-direction:column}",
         // box-sizing:border-box —— 上游面板带 1px 边框,content-box 下 width:100% 会多出 2px 横向溢出
-        "#dsws-surface .dsws-panel{position:static;left:auto;top:auto;width:100%;height:100%;max-height:none;box-sizing:border-box}",
-        "#dsws-surface .dsws-aggrow{max-width:460px}",
-        '#dsws-surface [data-list-head="kpi"]{max-width:460px}',
-        "#dsws-surface .dsws-body > div{max-width:460px}"
+        "#dsws-surface .dsws-panel{position:static;left:auto;top:auto;width:100%;height:100%;max-height:none;box-sizing:border-box}"
       ].join("\n")
     );
     const CHAIN_RENDERER_VERSION = 1;
