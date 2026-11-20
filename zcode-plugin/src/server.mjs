@@ -27,8 +27,8 @@ const ASSET_LIMIT = 8 * 1024 * 1024;
 const WORKSPACE_URI = `ui://${PLUGIN_NAME}/workspace.json`;
 
 // 规范标签(docs/agents/triage-labels.md,与上游 canonical-labels.ts 一字不差)与
-// 内置标签色表——与面板色表同源(src/ui/app.js 的 LABEL_COLORS,上游 defaultLabelPalette
-// 直拷;src/ui/detail.mjs 有同值副本),deck_issue_list_labels 原样返回这两份。
+// 内置标签色表(上游 defaultLabelPalette 直拷;旧 UI 的两份同值副本已随 ms-* 层删除,
+// 本表是唯一副本),deck_issue_list_labels 原样返回这两份。
 const CANONICAL_LABELS = ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"];
 const LABEL_COLORS = {
   "bug": "d73a4a",
