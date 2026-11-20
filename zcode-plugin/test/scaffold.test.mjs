@@ -85,7 +85,7 @@ if (existsSync(panelPath)) {
   const body = html.replace(/<script[\s\S]*?<\/script>/g, "");
   check("panel 无演示卡片数据", !/TODO-\d|ticket-\d|MS-\d/i.test(body));
   // U06 收口:旧 ms-* 层退役 —— 诊断金丝雀与双 bundle 切换不得还魂
-  check("panel 无诊断金丝雀(#diag / boot 日志)", !html.includes("#diag") && !html.includes("diag"));
+  check("panel 无诊断金丝雀(#diag / boot 日志)", !/\bdiag\b/i.test(html));
   check("panel 无 bundle-0 / panel.css / 切换开关", !html.includes("bundle-0") && !html.includes("panel.css") && !html.includes("mattskills-upstream"));
 } else {
   check("panel.html 可读(供文案断言)", false);

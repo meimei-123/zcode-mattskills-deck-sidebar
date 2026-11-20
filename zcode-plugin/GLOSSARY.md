@@ -9,7 +9,7 @@
 _Avoid_: 标签页组件、面板(指 Surface 时)、注入式页签
 
 **面板(Panel)**:
-Surface 加载的 `ui://` Web UI 文档(panel.html 与 bundle),看板界面的实现件;Surface(页签)是产品概念,两者不混用。标识符(`window.MattSkillsPanel`、`panel.*` 键、panel.html 文件名)沿用不改。
+Surface 加载的 `ui://` Web UI 文档(panel.html 与 bundle),看板界面的实现件;Surface(页签)是产品概念,两者不混用。标识符(`panel.*` 键、panel.html 文件名)沿用不改;旧面板全局 `window.MattSkillsPanel` 已随 ms-* 层退役(U06)。
 _Avoid_: 用面板指页签/Surface
 
 **卡片(Card)**:

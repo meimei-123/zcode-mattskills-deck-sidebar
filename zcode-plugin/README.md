@@ -15,19 +15,19 @@ MattSkills 任务看板的 ZCode 插件:侧边栏 "MattSkills" 页签(官方 `ui
 
 试用:让 agent 跑 `/to-tickets` 拆解规格建卡,或直接说"列出我的工单"(调 `deck_issue_list`)。看板自动跟随磁盘变化。
 
-## 新旧面板并存(ui-fidelity 共存期)
+## 面板(0.3.0 起:上游复刻唯一面板)
 
-页签里两套面板同时活着:旧 UI(ms-*)照旧;上方另浮一张上游原样的 **dsws-panel 空壳**(460px 浮卡,来自上游 `src/client` 的 splice 拼接 bundle + Preact,见 `build-upstream.mjs` 与 ADR-0002 修订)。回退纯旧 UI:页签底部排障区点「切换上游面板壳」按钮,或把 localStorage `mattskills-upstream` 设为 `off` 后重开页签。后续工单往壳里搬上游列表/地图,U06 删旧 UI。
+页签里只有一套面板:上游原样的 dsws-panel(上游 `src/client` 的 splice 拼接 bundle + Preact,见 `build-upstream.mjs` 与 ADR-0002 修订)。旧 ms-* UI 层与「切换上游面板壳」回退开关已在 U06 删除,无逃生舱。
 
 ## 目录
 
 ```
 .zcode-plugin/plugin.json   清单(Surface + MCP)
-src/                        server/write/watch(数据面)+ ui/(面板,bundle 源;upstream/ 为上游骨架+垫片)
+src/                        server/write/watch/cards(数据面)+ ui/(panel.html 面板壳;upstream/ 为上游骨架+垫片,bundle-1 源)
 build-upstream.mjs          上游 client 叶子 splice 拼接构建(bundle-1.txt)
 dist/                       构建产物(server.mjs + ui/),安装即用
 test/                       九套直跑测试(缝 1:工具边界;缝 2:面板 DOM/桥包络;U01:上游骨架)
-prototype/                  UI 快照原型(一次性,见 SMOKE.md 提示)
+prototype/                  UI 快照原型(ui-preview 分支,一次性,见 SMOKE.md 提示)
 ```
 
 ## 与上游的关系

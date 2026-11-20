@@ -16,10 +16,10 @@ const PLUGIN_NAME = "zcode-mattpocock-skills-deck";
 const VERSION = "0.1.0";
 const PANEL_URI = `ui://${PLUGIN_NAME}/panel.html`;
 const PANEL_MIME = "text/html;profile=mcp-app";
-// 面板次级资产(panel.css / bundle-*.txt / assets.json):资源模板 + 白名单 + 大小上限
+// 面板次级资产(bundle-*.txt / assets.json):资源模板 + 白名单 + 大小上限
 // (ui-host.md,同 excalidraw 惯例:JS 段故意 .txt 后缀,资源通道只搬文本)。
 const ASSET_PREFIX = `ui://${PLUGIN_NAME}/assets/`;
-const ASSET_RE = /^(panel\.css|bundle-\d+\.txt|assets\.json)$/;
+const ASSET_RE = /^(bundle-\d+\.txt|assets\.json)$/;
 const ASSET_LIMIT = 8 * 1024 * 1024;
 // 工单 U01:上游面板壳的 uiWorkspace 垫片数据源 —— 服务端注入的静态工作区根
 // (env 同现有 server 的注入口径)。上游 client 在 DSH 有宿主工作区服务,这里用

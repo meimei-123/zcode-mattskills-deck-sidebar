@@ -700,7 +700,7 @@ export async function buildUpstreamBundle() {
   }
   mkdirSync(dirname(OUT_BUNDLE), { recursive: true });
   writeFileSync(OUT_BUNDLE, code, "utf8");
-  // 源目录不散落 dist(与 bundle-0 对 BUNDLE_PARTS 的处理同款)
+  // 源目录不散落 dist
   rmSync(join(ROOT, "dist", "ui", "upstream"), { recursive: true, force: true });
   console.log(`[build-upstream] dist/ui/bundle-1.txt(${code.length} bytes;叶子:${LEAVES.map((l) => l.id).join(",")})`);
   return OUT_BUNDLE;

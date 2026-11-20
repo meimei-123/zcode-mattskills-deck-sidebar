@@ -22,13 +22,13 @@
 - 页签真实形态(图标/标题/开合)与主题融合:看板深色与 ZCode 深色是否协调。**待人工**
 - `ui/message` 在真机宿主的能力声明(`hostCapabilities.message`):若不支持,动作按钮应显示发送失败并可重试(失败路径有测试)。**待人工**
 - 真机切工作区后看板数据源跟随。**待人工**
-- (可选)双击 `prototype/m1-ui-preview.html` 对照快照原型(U06 已随新 UI 重生成);差异以真机为准——原型是一次性快照,不随代码日常更新。**待人工**
+- (可选)双击工作区副本 `E:\mattskillzcode\prototype\m1-ui-preview.html` 对照快照原型(U06 已随新 UI 重生成;源在 ui-preview 分支 `zcode-plugin/prototype/`);差异以真机为准——原型是一次性快照,不随代码日常更新。**待人工**
 
 ## 自动化实测记录(U06 复走,2026-11-20,离线)
 
 | 面 | 跑法 | 结果 |
 |---|---|---|
-| 构建 | `node build.mjs`(src→dist + build-upstream 拼包) | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html(1350296 字节;旧 bundle-0/panel.css 已退役) |
+| 构建 | `node build.mjs`(src→dist + build-upstream 拼包) | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html(1350296 字节;删前 1457974,−107678 —— bundle-0 88661 + panel.css 14638 + panel.html 瘦身;旧层 5s 轮询随之消除,双 UI 双份拉数开销归零) |
 | 测试 | `npm test` | ✓ 九套 856 断言全绿(scaffold 51 / server-read 79 / server-write 98 / live-refresh 17 / upstream-skeleton 66 / upstream-kernel 113 / upstream-cards 171 / upstream-list 172 / upstream-detail 89) |
 | 本地服务 | dist/server.mjs stdio 冒烟(spawn → initialize → tools/list → resources/list/read)+ 引导流量(stub 宿主逐字执行 panel.html) | ✓ 工具面四读+六写声明齐;资产白名单只供 bundle-1(读 bundle-0 报 resource not found);握手两拍序:ui/initialize → initialized(紧随)→ resources/read;上游壳真实调用 deck_issue_list / counts |
 | 工具面 | stdio 会话对临时工作区跑 建卡→列表→评论→状态改→关闭→重开→复核 | ✓(见下表) |
@@ -61,7 +61,7 @@
 
 ## 快照原型实测(U06,2026-11-20,无头 Edge)
 
-`prototype/m1-ui-preview.html`(U06 重生成,内嵌 bundle-1 + 录制数据)file:// 直开:
+`E:\mattskillzcode\prototype\m1-ui-preview.html`(U06 重生成,内嵌 bundle-1 + 录制数据;源在 ui-preview 分支 `zcode-plugin/prototype/`)file:// 直开:
 mixed 工作区列表/容器行(地图+规格,执行/新会话按钮)/票行(bug、被阻塞、needs-triage 标签)/
 关闭折叠(已关闭 2)/KPI 胶囊(可接 1 · 阻塞 3 · 已关闭 2)带数据真渲,桥日志
 (read bundle-1.txt · read workspace.json · call deck_issue_list · …)随引导顺序出现。
