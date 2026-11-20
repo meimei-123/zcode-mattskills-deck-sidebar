@@ -1447,7 +1447,7 @@
         emit(st);
       } catch (eR1) {
       }
-      const p3 = typeof chainEventRefresh === "function" ? chainEventRefresh(st, "user-recheck") : loadChain(st, true, "user-recheck");
+      const p3 = chainEventRefresh(st, "user-recheck");
       Promise.resolve(p3).catch(function() {
       }).then(function() {
         st.refreshing = false;
@@ -1457,6 +1457,7 @@
         }
       });
     };
+    const CHECKS_REVALIDATE_MS = 5e3;
     const snapFresh = function(st) {
       return true;
     };
@@ -23595,6 +23596,12 @@ ${formatProgressEntry(entry)}
               setDw(entries[0].contentRect.width);
             } catch (e3) {
             }
+            try {
+              if (typeof document === "undefined" || document.visibilityState !== "hidden") {
+                if (typeof fitAllTags === "function") fitAllTags();
+              }
+            } catch (eFit) {
+            }
           });
           ro.observe(el);
         } catch (e3) {
@@ -23609,6 +23616,28 @@ ${formatProgressEntry(entry)}
           }
         };
       }, []);
+      React.useEffect(function() {
+        if (!st || st.tab !== "checks") return void 0;
+        if (typeof setInterval !== "function" || typeof clearInterval !== "function") return void 0;
+        let alive = true;
+        const id = setInterval(function() {
+          if (!alive) return;
+          try {
+            if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+            const p3 = chainEventRefresh(st, "checks-visible-tick", true);
+            if (p3 && typeof p3.catch === "function") p3.catch(function() {
+            });
+          } catch (e3) {
+          }
+        }, CHECKS_REVALIDATE_MS);
+        return function() {
+          alive = false;
+          try {
+            clearInterval(id);
+          } catch (e3) {
+          }
+        };
+      }, [st, st.tab]);
       React.useEffect(function() {
         const applyFold = function() {
           const t3 = tabsRef.current;

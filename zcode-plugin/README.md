@@ -23,10 +23,10 @@ MattSkills 任务看板的 ZCode 插件:侧边栏 "MattSkills" 页签(官方 `ui
 
 ```
 .zcode-plugin/plugin.json   清单(Surface + MCP)
-src/                        server/write/watch/cards(数据面)+ ui/(panel.html 面板壳;upstream/ 为上游骨架+垫片,bundle-1 源)
+src/                        server/write/watch/cards/env-check/skill-doc/skill-roots(数据面)+ ui/(panel.html 面板壳;upstream/ 为上游骨架+垫片,bundle-1 源)
 build-upstream.mjs          上游 client 叶子 splice 拼接构建(bundle-1.txt)
 dist/                       构建产物(server.mjs + ui/),安装即用
-test/                       十二套直跑测试(缝 1:工具边界;缝 2:面板 DOM/桥包络;U01:上游骨架)
+test/                       十二套直跑测试(缝 1:工具边界;缝 2:面板 DOM/桥包络;U01:上游骨架;0.3.1:技能页/检查页/响应式三套)
 prototype/                  UI 快照原型(ui-preview 分支,一次性,见 SMOKE.md 提示)
 ```
 

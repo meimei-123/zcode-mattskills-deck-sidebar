@@ -303,10 +303,10 @@ const stepOf = (id, status, fallback, desc, actions) => ({
 const CHAIN_A = {
   steps: [
     stepOf("env:bridge", "done", "工具桥在线", "ZCode 工具桥在线"),
-    stepOf("tracker:initialized", "current", "工作区已初始化", "缺 .scratch/ 工单目录", [
+    stepOf("scratch:workspace", "current", "工作区已初始化", "缺 .scratch/ 工单目录", [
       { type: "inject-prompt", label: "初始化看板", prompt: "请初始化看板并建卡" },
     ]),
-    stepOf("md:workspace", "fail", "卡片可读", "有 1 张卡片文件读不动"),
+    stepOf("scratch:cards", "fail", "卡片可读", "有 1 张卡片文件读不动"),
     stepOf("env:watch", "pending", "监听在线", "还在挂监听"),
     stepOf("env:skills", "done", "技能根可读", "可读技能根:1 个"),
     stepOf("git:repo", "done", "工作区是 git 仓库", "工作区根有 .git"),
@@ -319,9 +319,9 @@ const CHAIN_A = {
   chainState: "hasCurrent",
   version: "1",
 };
-// fake 链 v2:用户重检后 md:workspace 修好 → fail 变 done,计数 4/6。
+// fake 链 v2:用户重检后 scratch:cards 修好 → fail 变 done,计数 4/6。
 const CHAIN_B = {
-  steps: CHAIN_A.steps.map((s) => (s.id === "md:workspace" ? stepOf("md:workspace", "done", "卡片可读", "共 9 张卡全部可读") : s)),
+  steps: CHAIN_A.steps.map((s) => (s.id === "scratch:cards" ? stepOf("scratch:cards", "done", "卡片可读", "共 9 张卡全部可读") : s)),
   currentIndex: 1,
   failedIndex: 1,
   doneCount: 4,
@@ -329,6 +329,42 @@ const CHAIN_B = {
   totalCount: 6,
   chainState: "hasCurrent",
   version: "1",
+};
+// fake 链 v3:检查页可见拍自己再扫一次后,监听那步也变绿 → 计数 5/6。
+const CHAIN_C = {
+  steps: CHAIN_B.steps.map((s) => (s.id === "env:watch" ? stepOf("env:watch", "done", "监听在线", "fs.watch 已挂上(可见拍重扫)") : s)),
+  currentIndex: 1,
+  failedIndex: 1,
+  doneCount: 5,
+  applicableCount: 6,
+  totalCount: 6,
+  chainState: "hasCurrent",
+  version: "1",
+};
+
+// ---------------------------------------------------------------------------
+// P1-1:检查页可见拍 —— boot 前把全局 setInterval/clearInterval 换成可控桩。
+// 桩记下每一次注册(间隔、回调、是否已被 clearInterval 清掉);fire() 遵循浏览器语义:
+// 已清掉的拍不再派发回调(测试「离页后旧回调再跑不触发工具」靠它)。
+// ---------------------------------------------------------------------------
+const intervals = [];
+let intervalSeq = 0;
+globalThis.setInterval = function (fn, ms) {
+  const rec = {
+    id: ++intervalSeq,
+    ms,
+    cleared: false,
+    fire() {
+      if (!rec.cleared) return fn();
+      return undefined;
+    },
+  };
+  intervals.push(rec);
+  return rec.id;
+};
+globalThis.clearInterval = function (id) {
+  const rec = intervals.find((r) => r.id === id);
+  if (rec) rec.cleared = true;
 };
 
 let U = null;
@@ -416,7 +452,7 @@ if (U) {
   await settle();
   check("重检真实重扫:工具被再次调用", chainCalls.length === 2, String(chainCalls.length));
   check("重检这一次带 force", chainCalls[1] && chainCalls[1].args.force === true, JSON.stringify(chainCalls[1] && chainCalls[1].args));
-  eq("面板跟着变:md:workspace 旧 fail 变 done", cards().map((n) => n.attributes["data-state"]), ["done", "current", "done", "pending", "done", "done"]);
+  eq("面板跟着变:scratch:cards 旧 fail 变 done", cards().map((n) => n.attributes["data-state"]), ["done", "current", "done", "pending", "done", "done"]);
   check("头部计数跟着变(环境检查 4/6)", textOf(qsa(surface, ".dsws-body")[0]).includes("环境检查 4/6"));
   check("重检收尾 st.refreshing 归假", !st.refreshing, String(st.refreshing));
 
@@ -432,6 +468,39 @@ if (U) {
 
   // ---- 链渲染没有恢复九格 wf.status 视图:页面上不该出现九格/状态格目录 ----
   check("没有恢复九格视图(wf.status 目录格)", qsa(surface, ".dsws-check-grid").length === 0 && !headText.includes("wf.status"));
+
+  // ---- P1-1:检查页可见拍 —— 页签可见时每 5 秒自问一次真实重扫,离页即停 ----
+  const tickInterval = intervals.find((it) => it.ms === 5000);
+  check("打开检查页注册 5 秒可见拍(setInterval 5000ms)", !!tickInterval, JSON.stringify(intervals.map((it) => ({ ms: it.ms, cleared: it.cleared }))));
+  check("可见拍注册后未被清掉(页签仍在 checks)", !!tickInterval && !tickInterval.cleared);
+
+  // 页面隐藏时这一拍跳过测量/重扫
+  doc.visibilityState = "hidden";
+  const callsBeforeHidden = chainCalls.length;
+  if (tickInterval) tickInterval.fire();
+  await settle();
+  check("document.visibilityState=hidden 时这一拍不触发重扫", chainCalls.length === callsBeforeHidden, `${callsBeforeHidden} → ${chainCalls.length}`);
+  doc.visibilityState = "visible";
+
+  // 改 fake 链状态 → 手动跑一拍 → 面板跟着变(force 真重扫)
+  currentChain = CHAIN_C;
+  const callsBeforeTick = chainCalls.length;
+  if (tickInterval) tickInterval.fire();
+  await settle();
+  check("可见拍触发真实重扫(fake 工具被再次调用)", chainCalls.length === callsBeforeTick + 1, `${callsBeforeTick} → ${chainCalls.length}`);
+  check("可见拍这一次带 force(绕本地缓存)", chainCalls[chainCalls.length - 1] && chainCalls[chainCalls.length - 1].args.force === true, JSON.stringify(chainCalls[chainCalls.length - 1] && chainCalls[chainCalls.length - 1].args));
+  eq("可见拍重扫后面板跟着变(六步状态)", cards().map((n) => n.attributes["data-state"]), ["done", "current", "done", "done", "done", "done"]);
+  check("可见拍重扫后头部计数 5/6", textOf(qsa(surface, ".dsws-body")[0]).includes("环境检查 5/6"), textOf(qsa(surface, ".dsws-body")[0]).slice(0, 120));
+
+  // 切回列表:effect 收尾 clearInterval,旧回调再跑也不再触发工具
+  fireClick(tabBtn("panel.tab.list"));
+  await settle();
+  eq("切回列表:st.tab = list", st && st.tab, "list");
+  check("切回列表清除可见拍(clearInterval 被调)", !!tickInterval && tickInterval.cleared === true, JSON.stringify(tickInterval && { ms: tickInterval.ms, cleared: tickInterval.cleared }));
+  const callsAfterLeave = chainCalls.length;
+  if (tickInterval) tickInterval.fire();
+  await settle();
+  check("离页后旧回调不再触发重扫", chainCalls.length === callsAfterLeave, `${callsAfterLeave} → ${chainCalls.length}`);
 }
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);

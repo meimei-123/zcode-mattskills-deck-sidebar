@@ -7,11 +7,13 @@
 // 「按本地真实事实组链,不造假」:事实源全部是服务端摸得到的真实状态,判据逐条写在下面。
 //
 // 事实源(每个 step 一条):
-//   1. tracker:initialized  工作区有没有 .scratch/(scanWorkspace().exists)
-//   2. md:workspace         卡片可读性(scanWorkspace().unreadable 的坏卡计数;list 永远跳过坏卡)
+//   1. scratch:workspace     工作区有没有 .scratch/(scanWorkspace().exists;本仓事实,不冒充上游
+//                            tracker:initialized —— 上游该 id 的判据是 docs/agents/issue-tracker.md)
+//   2. scratch:cards         卡片可读性(scanWorkspace().unreadable 的坏卡计数;list 永远跳过坏卡)
+//                            (本仓事实,不冒充上游 md:workspace —— 上游判据是「有工作单元或空工作区」)
 //   3. env:watch            .scratch/ 的 fs.watch 是否在线(deckWatch.state().online)
 //   4. env:bridge           本工具自身即桥 —— 能返回这份快照就证明工具桥在线(恒 done)
-//   5. env:skills           工作区 .zcode/skills、~/.zcode/skills、~/.agents/skills 至少一个可读
+//   5. env:skills           技能根逐档可读(顺序见 src/skill-roots.mjs)
 //   6. git:repo             工作区根有没有 .git(目录或 worktree 的 .git 文件都算)
 //
 // 状态口径照 stepEvalParallel:通过 → done;未通过且带修复动作 → current(行上有下一步可点);
@@ -20,8 +22,8 @@
 //
 // 只读纪律:本文件只 readdir/exists(可读性探测),不写盘、不建目录、不跑命令。
 import { existsSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, relative } from "node:path";
+import { skillRootsFor } from "./skill-roots.mjs";
 
 /** 修复动作的统一形状(上游动作词汇表 v1 的 inject-prompt;经 ChecksTab 的分发器落到 ui/message 桥)。 */
 function injectAction(label, prompt) {
@@ -39,17 +41,8 @@ function dirReadable(path) {
   }
 }
 
-/** 技能根三处(顺序即判据顺序,与工单一致):工作区级 + 两处用户级。 */
-export function skillRootsOf(root, home = homedir()) {
-  return [
-    { label: "工作区 .zcode/skills", path: join(String(root || ""), ".zcode", "skills") },
-    { label: "~/.zcode/skills", path: join(String(home || ""), ".zcode", "skills") },
-    { label: "~/.agents/skills", path: join(String(home || ""), ".agents", "skills") },
-  ];
-}
-
 /** 链快照计数(stepEvalParallel 同口径;拼接视图不判 failedIndex 的差别在这里不存在 —— 单段链)。 */
-export function snapshotOf(steps) {
+function snapshotOf(steps) {
   const firstNotDone = steps.findIndex((s) => s.status !== "done");
   const allDone = firstNotDone < 0;
   const snapshot = {
@@ -92,7 +85,7 @@ export function buildEnvChain(root, facts) {
   // 1) 工作区已初始化:.scratch/ 存在即看板数据面就位。
   steps.push(
     stepOf(
-      "tracker:initialized",
+      "scratch:workspace",
       scratchOn ? "done" : "current",
       scratchOn
         ? { fallback: "工作区已初始化", desc: `已找到 .scratch/ 工单目录(${units.length} 个工作单元)` }
@@ -108,7 +101,7 @@ export function buildEnvChain(root, facts) {
   const badMore = unreadable.length > badList.length ? ` 等 ${unreadable.length} 张` : "";
   steps.push(
     stepOf(
-      "md:workspace",
+      "scratch:cards",
       unreadable.length === 0 ? "done" : "current",
       unreadable.length === 0
         ? {
@@ -148,19 +141,19 @@ export function buildEnvChain(root, facts) {
     })
   );
 
-  // 5) 技能根可读:三处至少一个可读;逐根探测,desc 如实列出可读的那几处。
-  const roots = skillRootsOf(root);
-  const readable = roots.filter((r) => dirReadable(r.path));
+  // 5) 技能根可读:逐档探测(顺序与 deck_skill_doc 同一真源 skill-roots.mjs),至少一处可读即通过。
+  const roots = skillRootsFor(root, (facts && facts.env) || process.env);
+  const readable = roots.filter((r) => dirReadable(r.dir));
   steps.push(
     stepOf(
       "env:skills",
       readable.length ? "done" : "current",
       readable.length
-        ? { fallback: "技能根可读", desc: `可读技能根 ${readable.length} 处:${readable.map((r) => r.label).join("、")}` }
-        : { fallback: "技能根可读", desc: `${roots.map((r) => r.label).join("、")} 都读不到` },
+        ? { fallback: "技能根可读", desc: `可读技能根 ${readable.length} 处:${readable.map((r) => r.title).join("、")}` }
+        : { fallback: "技能根可读", desc: `${roots.map((r) => r.title).join("、")} 都读不到` },
       readable.length
         ? []
-        : [injectAction("安装技能", "本机没找到可读的技能根(工作区 .zcode/skills、~/.zcode/skills、~/.agents/skills)。请用 /setup-matt-pocock-skills 或 ZCode 技能市场安装 MattSkills 技能。")]
+        : [injectAction("安装技能", `本机没找到可读的技能根(${roots.map((r) => r.title).join("、")})。请用 /setup-matt-pocock-skills 或 ZCode 技能市场安装 MattSkills 技能。`)]
     )
   );
 

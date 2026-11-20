@@ -359,7 +359,7 @@ function handleCall(name, args) {
     // scan 是 handleCall 顶部现扫的这一次(每个请求都重扫 —— 「真重扫」不是 force 才有的分支);
     // force 只表达调用意图(用户亲手点「重新检查」),非布尔按未传处理,容错不报错。
     const force = a.force === true;
-    const snapshot = buildEnvChain(root, { scan, watchOnline: deckWatch.state().online });
+    const snapshot = buildEnvChain(root, { scan, watchOnline: deckWatch.state().online, env: process.env });
     const summary = summarizeEnvCheck(snapshot);
     return {
       content: [{ type: "text", text: force ? `已按当前状态重扫。${summary}` : summary }],
