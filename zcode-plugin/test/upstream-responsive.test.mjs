@@ -9,7 +9,8 @@
 //   4) 不重挂缝:改宽只经宽度状态重渲 —— 面板根节点身份不变、surface 下仍一个面板、
 //      boot 走过的工具调用次数不增、RO 观察者/窗口监听不随重渲增长;
 //   5) 详情顶栏缝:顶栏溢出时逐字变短(是 data-full 的前缀),放宽后还原(useIssueDetailFold 自持);
-//   6) 宽侧缝:插入样式含行/KPI/详情内容 max-width 上限,且不含字号/色卡/圆角/底色覆盖。
+//   6) 宽侧缝:内容随容器铺满(0.3.2 起撤掉 460 上限 —— 真机反馈内容锁窄不跟侧边栏),
+//      样式只动布局,不含字号/色卡/圆角/底色覆盖。
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
@@ -313,7 +314,7 @@ if (code) {
   has("页签折叠机(dataset.tabsLevel 回写)", /dataset\.tabsLevel/);
   has("页签折叠机(测量期 dsws-no-anim)", /dsws-no-anim/);
   has("surface 覆盖样式(#dsws-surface)", /#dsws-surface/);
-  has("宽侧上限(行/KPI/详情内容 max-width)", /max-width:\s*460px/);
+  check("内容不设 460 上限(0.3.2 起随容器铺满)", !/max-width:\s*460px/.test(code));
   has("宽度通道(面板根 ResizeObserver → setDw)", /setDw/);
   check("bundle 无拼接标记残留", !/\(spliced by build\)/.test(code));
   check("bundle 无锚点残留", !/@splice-anchor/.test(code));
@@ -598,9 +599,7 @@ if (U) {
     check("surface 撑满容器(height:100%)", /#dsws-surface\{[^}]*height:100%/.test(responsive) || /html,body,#dsws-surface\{height:100%\}/.test(responsive), responsive.slice(0, 200));
     check("面板根改为静态满幅(position:static + width/height 100%)", /\.dsws-panel\{[^}]*position:static/.test(responsive) && /\.dsws-panel\{[^}]*width:100%/.test(responsive) && /\.dsws-panel\{[^}]*height:100%/.test(responsive), responsive.slice(0, 400));
     check("seam 中间层 box 拉伸(height:100%)", /#dsws-surface > div\{[^}]*height:100%/.test(responsive), responsive.slice(0, 400));
-    check("宽侧上限:列表行 max-width:460px", /\.dsws-aggrow\{[^}]*max-width:460px/.test(responsive));
-    check('宽侧上限:KPI 行 max-width:460px', /\[data-list-head="kpi"\]\{[^}]*max-width:460px/.test(responsive));
-    check("宽侧上限:详情内容(正文根)max-width:460px", /\.dsws-body > div\{[^}]*max-width:460px/.test(responsive));
+    check("内容随容器铺满:行/KPI/正文根不再设宽上限(0.3.2)", !/max-width/.test(responsive), responsive);
     check("布局动、字号不动:样式文本无 font-size 覆盖", !/font-size/i.test(responsive));
     check("颜色/圆角/底色不动:样式文本无 color/background/border-radius", !/(?:^|[;{\s])(?:color|background|border-radius)\s*:/.test(responsive), responsive);
   }

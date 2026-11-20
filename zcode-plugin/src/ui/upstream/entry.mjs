@@ -440,20 +440,17 @@ function apply(ctx) {
   // ==== leaf:mapCard (spliced by build) ====
   styles.insert(PIXEL_CARDS_STYLE_TEXT);
 
-  // ---- 工单 01(0.3.1):响应式接缝样式(本仓自有,零上游改动) ----
+  // ---- 工单 01(0.3.1)/ 0.3.2 修订:响应式接缝样式(本仓自有,零上游改动) ----
   // 上游 .dsws-panel 是 460px 浮动窗的定位(STYLE_TEXT 原样保留);ZCode 的 surface 里它要随
   // 容器宽高走,所以这里只覆盖布局:定位/尺寸换成静态满幅,圆角/边框/底色/字号照旧(用户裁定:
-  // 字号与间距不随宽度缩放)。宽侧防拉散:行/KPI/正文根设 460px 上限(上游浮动窗的视觉宽度),
-  // 超出只留白,不排上游没有的栅格。
+  // 字号与间距不随宽度缩放)。0.3.2 撤掉内容级 460 上限:真机反馈 460 把列表锁在左边、不跟侧边栏
+  // 拉伸;行/KPI/正文根随容器铺满(不排上游没有的栅格,也不另设上限)。
   styles.insert(
     [
       "html,body,#dsws-surface{height:100%}",
       "#dsws-surface > div{height:100%;display:flex;flex-direction:column}",
       // box-sizing:border-box —— 上游面板带 1px 边框,content-box 下 width:100% 会多出 2px 横向溢出
       "#dsws-surface .dsws-panel{position:static;left:auto;top:auto;width:100%;height:100%;max-height:none;box-sizing:border-box}",
-      "#dsws-surface .dsws-aggrow{max-width:460px}",
-      '#dsws-surface [data-list-head="kpi"]{max-width:460px}',
-      "#dsws-surface .dsws-body > div{max-width:460px}",
     ].join("\n")
   );
 
