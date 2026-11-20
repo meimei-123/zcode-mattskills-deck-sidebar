@@ -5,7 +5,7 @@
   "description": "构建依赖与脚本(zcode-plugin 本体零运行时依赖;esbuild/preact 只进 bundle-1.txt 产物)",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node test/scaffold.test.mjs && node test/server-read.test.mjs && node test/server-write.test.mjs && node test/live-refresh.test.mjs && node test/upstream-skeleton.test.mjs && node test/upstream-kernel.test.mjs && node test/upstream-cards.test.mjs && node test/upstream-list.test.mjs && node test/upstream-detail.test.mjs && node test/upstream-skills.test.mjs && node test/upstream-responsive.test.mjs && node test/upstream-checks.test.mjs && node test/upstream-versioncontrol.test.mjs && node test/server-git.test.mjs && node test/server-git-writes.test.mjs"
+    "test": "node test/scaffold.test.mjs && node test/server-read.test.mjs && node test/server-write.test.mjs && node test/live-refresh.test.mjs && node test/upstream-skeleton.test.mjs && node test/upstream-kernel.test.mjs && node test/upstream-cards.test.mjs && node test/upstream-list.test.mjs && node test/upstream-detail.test.mjs && node test/upstream-skills.test.mjs && node test/upstream-responsive.test.mjs && node test/upstream-checks.test.mjs && node test/upstream-versioncontrol.test.mjs && node test/server-git.test.mjs && node test/server-git-refs.test.mjs && node test/server-git-writes.test.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",

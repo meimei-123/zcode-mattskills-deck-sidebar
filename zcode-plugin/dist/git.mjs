@@ -21841,6 +21841,7 @@ function createGitBridge(opts) {
   const root = path2.resolve(String(options.workspaceRoot || process.cwd()));
   const debugOn = String(options.env && options.env.ZCODE_GIT_DEBUG || process.env.ZCODE_GIT_DEBUG || "") === "1";
   const cacheDir = options.cacheDir ? path2.resolve(String(options.cacheDir)) : path2.join(os.tmpdir(), "zcode-deck-git-cache", createHash6("sha256").update(root, "utf8").digest("hex").slice(0, 12));
+  const now = typeof options.now === "function" ? options.now : Date.now;
   const deps = {
     subprocess: makeSubprocess(options.env || process.env),
     timer: makeTimer(),
@@ -21851,7 +21852,7 @@ function createGitBridge(opts) {
     gate: { noteOutbound() {
     } },
     logCtx: makeLogCtx(debugOn),
-    now: Date.now,
+    now,
     getCacheDir: () => cacheDir
   };
   const vc = createVersionControl(deps);

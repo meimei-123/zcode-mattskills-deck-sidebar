@@ -11,9 +11,10 @@
 //     resolve 把相对路径按工作区根归一,其余方法都吃 resolve 的产物或路径)。
 //   - gate.noteOutbound() 空操作;logCtx.fire() 默认静默(ZCODE_GIT_DEBUG=1 时 console.debug)。
 //   - getPlatform() → { resolveExecutable(name) → name };DEFAULT_CWD = 工作区根;
-//     TIMEOUT_MS = VC_RUN_TIMEOUT_MS(生成器产物,值源 config/timeouts.yaml);now = Date.now;
-//     getCacheDir() → 长任务记录目录(系统临时目录下按工作区根散列;options.cacheDir 可覆盖);
-//     不提供这一项时上游会把任务记录写成相对路径,被 fs 垫片按工作区根归一后落进用户工作区。
+//     TIMEOUT_MS = VC_RUN_TIMEOUT_MS(生成器产物,值源 config/timeouts.yaml);
+//     now = Date.now(options.now 可注入可控时钟);getCacheDir() → 长任务记录目录
+//     (系统临时目录下按工作区根散列;options.cacheDir 可覆盖);不提供 getCacheDir 时上游会把
+//     任务记录写成相对路径,被 fs 垫片按工作区根归一后落进用户工作区。
 //
 // createGitBridge 只暴露 createVersionControl() 回包里 handleGit* 派生的方法(handleGitStatus → gitStatus),
 // tickets 表与 runGitCommand 一律不暴露。路径边界(args.cwd 与真正的目标路径)必须落在工作区根内。
@@ -267,6 +268,8 @@ export function createGitBridge(opts) {
   const cacheDir = options.cacheDir
     ? path.resolve(String(options.cacheDir))
     : path.join(os.tmpdir(), "zcode-deck-git-cache", createHash("sha256").update(root, "utf8").digest("hex").slice(0, 12));
+  // 时钟与上游 deps.now 同口径:默认 Date.now;测试可注入可控时钟,以便按真实 120 秒票期验证过期拒绝。
+  const now = typeof options.now === "function" ? options.now : Date.now;
   const deps = {
     subprocess: makeSubprocess(options.env || process.env),
     timer: makeTimer(),
@@ -276,7 +279,7 @@ export function createGitBridge(opts) {
     TIMEOUT_MS: VC_RUN_TIMEOUT_MS,
     gate: { noteOutbound() {} },
     logCtx: makeLogCtx(debugOn),
-    now: Date.now,
+    now,
     getCacheDir: () => cacheDir,
   };
   const vc = createVersionControl(deps);

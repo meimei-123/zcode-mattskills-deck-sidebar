@@ -358,23 +358,18 @@ async function sliceCommit(bridge, ws, cacheDir) {
   check("commit: 空说明 → empty-message", emptyMsg.ok === false && emptyMsg.error?.reason === "empty-message", short(emptyMsg));
 
   // 7) 过期票:时间推过 TTL(120 秒),执行必须回 ticket-expired 且 HEAD 不动
-  const realNow = Date.now;
+  //    用桥的 options.now 注入可控时钟(与上游 deps.now 同口径),不改全局 Date.now。
   let offset = 0;
-  Date.now = () => realNow() + offset;
-  try {
-    const expBridge = await import(pathToFileURL(DIST_GIT).href).then((m) => m.createGitBridge({ workspaceRoot: ws, env: BASE_ENV, cacheDir }));
-    const expCheck = await expBridge.call("gitWriteCheck", { cwd, op: "commit", plan, message: "不该落地的提交" });
-    check("commit: 过期用例的预检 ok", expCheck.ok === true && typeof expCheck.ticket?.id === "string", short(expCheck.error || expCheck));
-    offset = 121000; // 越过 config/ttl.yaml 的 ticketTtlMs(120000)
-    const expCommit = await expBridge.call("gitCommit", { cwd, ticketId: expCheck.ticket?.id, requestId: "commit-expired-1", message: "不该落地的提交", plan });
-    check(
-      "commit: 过期票 → ticket-expired(参数门先拒,零写命令)",
-      expCommit.ok === false && expCommit.error?.kind === "args" && expCommit.error?.reason === "ticket-expired",
-      short(expCommit)
-    );
-  } finally {
-    Date.now = realNow;
-  }
+  const expBridge = createGitBridge({ workspaceRoot: ws, env: BASE_ENV, cacheDir, now: () => Date.now() + offset });
+  const expCheck = await expBridge.call("gitWriteCheck", { cwd, op: "commit", plan, message: "不该落地的提交" });
+  check("commit: 过期用例的预检 ok", expCheck.ok === true && typeof expCheck.ticket?.id === "string", short(expCheck.error || expCheck));
+  offset = 121000; // 越过 config/ttl.yaml 的 ticketTtlMs(120000)
+  const expCommit = await expBridge.call("gitCommit", { cwd, ticketId: expCheck.ticket?.id, requestId: "commit-expired-1", message: "不该落地的提交", plan });
+  check(
+    "commit: 过期票 → ticket-expired(参数门先拒,零写命令)",
+    expCommit.ok === false && expCommit.error?.kind === "args" && expCommit.error?.reason === "ticket-expired",
+    short(expCommit)
+  );
   check("commit: 过期票那次没有产生提交", gitIn(cwd, "log", "--format=%s").trim().split("\n").length === 2, gitIn(cwd, "log", "--format=%s"));
 
   // 8) 路径边界
