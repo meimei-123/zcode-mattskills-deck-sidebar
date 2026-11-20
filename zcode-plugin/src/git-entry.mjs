@@ -6,18 +6,23 @@
 //   - subprocess.spawn({argv,cwd,stdio,graceMs,env}) → {done, collected, stdin?, terminate};
 //     Node child_process.spawn + shell:false,argv 数组直传(不做任何 shell 拼接);
 //     env 里值为 undefined 的键从继承环境删除(上游的墓碑语义);terminate 先 SIGTERM,graceMs 后 SIGKILL。
-//   - timer.timeout(ms) → Promise(到点 resolve) 与 clearTimeout(handle)。
+//   - timer.timeout(ms) → Promise(到点 resolve) 与 clearTimeout(handle);定时器 unref,
+//     成功命令留下的竞速定时器不拖住进程退出。
 //   - fs.resolve/stat/lstat/exists/readText/writeText/listDir/mkdir/statfs(node:fs/promises;
 //     resolve 把相对路径按工作区根归一,其余方法都吃 resolve 的产物或路径)。
 //   - gate.noteOutbound() 空操作;logCtx.fire() 默认静默(ZCODE_GIT_DEBUG=1 时 console.debug)。
 //   - getPlatform() → { resolveExecutable(name) → name };DEFAULT_CWD = 工作区根;
-//     TIMEOUT_MS = VC_RUN_TIMEOUT_MS(生成器产物,值源 config/timeouts.yaml);now = Date.now。
+//     TIMEOUT_MS = VC_RUN_TIMEOUT_MS(生成器产物,值源 config/timeouts.yaml);now = Date.now;
+//     getCacheDir() = 系统临时目录下按工作区根散列分桶的目录(长任务记录不落仓库工作区)。
 //
 // createGitBridge 只暴露 createVersionControl() 回包里 handleGit* 派生的方法(handleGitStatus → gitStatus),
 // tickets 表与 runGitCommand 一律不暴露。路径边界(args.cwd 与真正的目标路径)必须落在工作区根内。
+// 测试可注入 now(模拟票据过期)与 cacheDir(隔离任务记录)。
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 import { promises as fsp } from "node:fs";
+import { createHash } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { createVersionControl } from "../../src/host/versionControl.js";
 import { VC_RUN_TIMEOUT_MS } from "../../src/shared/time-config/src/values.js";
@@ -168,6 +173,9 @@ function makeTimer() {
       const promise = new Promise((resolve) => {
         id = setTimeout(resolve, wait);
       });
+      // 上游把这一条 promise 放进 Promise.race 后不 clearTimeout(成功路径也一样):
+      // 不 unref 的话,每条成功命令都会留下一个到点才醒的定时器,把 Node 进程(含测试)无谓地拖住。
+      if (id && typeof id.unref === "function") id.unref();
       promise.timer = id;
       return promise;
     },
@@ -257,6 +265,11 @@ export function createGitBridge(opts) {
   const options = opts || {};
   const root = path.resolve(String(options.workspaceRoot || process.cwd()));
   const debugOn = String((options.env && options.env.ZCODE_GIT_DEBUG) || process.env.ZCODE_GIT_DEBUG || "") === "1";
+  // 长任务库要一个缓存目录(上游 deps.getCacheDir)。缺省放到系统临时目录、按工作区根散列分桶,
+  // 避免任务记录落进仓库工作区变成未跟踪文件;测试可传 cacheDir 指到自己的临时目录。
+  const cacheDir = path.resolve(
+    String(options.cacheDir || path.join(os.tmpdir(), "zcode-mattskills-deck-vc", createHash("sha256").update(root).digest("hex").slice(0, 12)))
+  );
   const deps = {
     subprocess: makeSubprocess(options.env || process.env),
     timer: makeTimer(),
@@ -266,7 +279,8 @@ export function createGitBridge(opts) {
     TIMEOUT_MS: VC_RUN_TIMEOUT_MS,
     gate: { noteOutbound() {} },
     logCtx: makeLogCtx(debugOn),
-    now: Date.now,
+    now: typeof options.now === "function" ? options.now : Date.now,
+    getCacheDir: async () => cacheDir,
   };
   const vc = createVersionControl(deps);
   const methods = new Map();

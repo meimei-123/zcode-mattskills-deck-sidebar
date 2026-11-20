@@ -19175,6 +19175,8 @@ var init_versionControlClone = __esm({
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 import { promises as fsp } from "node:fs";
+import { createHash as createHash6 } from "node:crypto";
+import os from "node:os";
 import path2 from "node:path";
 
 // ../src/host/versionControl.ts
@@ -21752,6 +21754,7 @@ function makeTimer() {
       const promise = new Promise((resolve) => {
         id = setTimeout(resolve, wait);
       });
+      if (id && typeof id.unref === "function") id.unref();
       promise.timer = id;
       return promise;
     },
@@ -21838,6 +21841,9 @@ function createGitBridge(opts) {
   const options = opts || {};
   const root = path2.resolve(String(options.workspaceRoot || process.cwd()));
   const debugOn = String(options.env && options.env.ZCODE_GIT_DEBUG || process.env.ZCODE_GIT_DEBUG || "") === "1";
+  const cacheDir = path2.resolve(
+    String(options.cacheDir || path2.join(os.tmpdir(), "zcode-mattskills-deck-vc", createHash6("sha256").update(root).digest("hex").slice(0, 12)))
+  );
   const deps = {
     subprocess: makeSubprocess(options.env || process.env),
     timer: makeTimer(),
@@ -21848,7 +21854,8 @@ function createGitBridge(opts) {
     gate: { noteOutbound() {
     } },
     logCtx: makeLogCtx(debugOn),
-    now: Date.now
+    now: typeof options.now === "function" ? options.now : Date.now,
+    getCacheDir: async () => cacheDir
   };
   const vc = createVersionControl(deps);
   const methods = /* @__PURE__ */ new Map();
