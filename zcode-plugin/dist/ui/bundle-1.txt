@@ -17721,6 +17721,17 @@ ${formatProgressEntry(entry)}
       ]);
     };
     styles.insert(PIXEL_CARDS_STYLE_TEXT);
+    styles.insert(
+      [
+        "html,body,#dsws-surface{height:100%}",
+        "#dsws-surface > div{height:100%;display:flex;flex-direction:column}",
+        // box-sizing:border-box —— 上游面板带 1px 边框,content-box 下 width:100% 会多出 2px 横向溢出
+        "#dsws-surface .dsws-panel{position:static;left:auto;top:auto;width:100%;height:100%;max-height:none;box-sizing:border-box}",
+        "#dsws-surface .dsws-aggrow{max-width:460px}",
+        '#dsws-surface [data-list-head="kpi"]{max-width:460px}',
+        "#dsws-surface .dsws-body > div{max-width:460px}"
+      ].join("\n")
+    );
     const useTabsRow = function(s3, tabsRef) {
       const [tabTip, setTabTip] = React.useState(null);
       const tabsTip = function(e3, text, priority) {
@@ -22912,8 +22923,88 @@ ${formatProgressEntry(entry)}
       }, [st]);
       const tabsRef = React.useRef(null);
       const tabs = st ? useTabsRow(st, tabsRef) : { items: [] };
-      const narrow = false;
-      return h3("div", { className: "dsws-panel" }, [
+      const panelRef = React.useRef(null);
+      const [dw, setDw] = React.useState(460);
+      React.useEffect(function() {
+        const el = panelRef.current;
+        if (!el) return void 0;
+        let ro = null;
+        try {
+          ro = new ResizeObserver(function(entries) {
+            try {
+              setDw(entries[0].contentRect.width);
+            } catch (e3) {
+            }
+          });
+          ro.observe(el);
+        } catch (e3) {
+          ro = null;
+        }
+        return function() {
+          if (ro) {
+            try {
+              ro.disconnect();
+            } catch (e3) {
+            }
+          }
+        };
+      }, []);
+      React.useEffect(function() {
+        const applyFold = function() {
+          const t3 = tabsRef.current;
+          if (!t3) return;
+          const btns = t3.querySelectorAll("[data-priority]");
+          t3.classList.add("dsws-no-anim");
+          for (let i3 = 0; i3 < btns.length; i3++) btns[i3].classList.remove("collapsed");
+          void t3.offsetWidth;
+          const priorityOf = function(b3) {
+            if (b3.dataset) return Number(b3.dataset.priority || 99);
+            return Number(b3.getAttribute && b3.getAttribute("data-priority") || 99);
+          };
+          const items = Array.from(btns).map(function(b3) {
+            return { el: b3, p: priorityOf(b3) };
+          }).sort(function(a3, b3) {
+            return b3.p - a3.p;
+          });
+          for (const it of items) {
+            if (t3.scrollWidth <= t3.clientWidth + 1) break;
+            it.el.classList.add("collapsed");
+            void t3.offsetWidth;
+          }
+          const level = String(t3.querySelectorAll("[data-priority].collapsed").length);
+          if (t3.dataset) t3.dataset.tabsLevel = level;
+          else t3.setAttribute("data-tabs-level", level);
+          t3.classList.remove("dsws-no-anim");
+        };
+        const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(function() {
+          applyFold();
+        }) : null;
+        let observed = null;
+        const apply2 = function() {
+          const t3 = tabsRef.current;
+          if (!t3) return;
+          if (ro && observed !== t3) {
+            if (observed) {
+              try {
+                ro.unobserve(observed);
+              } catch (e3) {
+              }
+            }
+            ro.observe(t3);
+            observed = t3;
+          }
+          applyFold();
+        };
+        apply2();
+        if (typeof window !== "undefined") window.addEventListener("resize", apply2);
+        if (typeof document !== "undefined" && document.fonts && document.fonts.ready) document.fonts.ready.then(apply2);
+        return function() {
+          if (ro) ro.disconnect();
+          if (typeof window !== "undefined") window.removeEventListener("resize", apply2);
+        };
+      }, []);
+      const narrow = dw < 380;
+      return h3("div", { ref: panelRef, className: "dsws-panel" + (narrow ? " dsws-narrow" : "") }, [
         h3("div", { className: "dsws-head" }, [h3("span", { className: "dsws-mtitle" }, [tr("panel.title")])]),
         h3(
           "div",

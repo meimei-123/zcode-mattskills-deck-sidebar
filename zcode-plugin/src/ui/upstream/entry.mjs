@@ -374,6 +374,23 @@ function apply(ctx) {
   // ==== leaf:mapCard (spliced by build) ====
   styles.insert(PIXEL_CARDS_STYLE_TEXT);
 
+  // ---- 工单 01(0.3.1):响应式接缝样式(本仓自有,零上游改动) ----
+  // 上游 .dsws-panel 是 460px 浮动窗的定位(STYLE_TEXT 原样保留);ZCode 的 surface 里它要随
+  // 容器宽高走,所以这里只覆盖布局:定位/尺寸换成静态满幅,圆角/边框/底色/字号照旧(用户裁定:
+  // 字号与间距不随宽度缩放)。宽侧防拉散:行/KPI/正文根设 460px 上限(上游浮动窗的视觉宽度),
+  // 超出只留白,不排上游没有的栅格。
+  styles.insert(
+    [
+      "html,body,#dsws-surface{height:100%}",
+      "#dsws-surface > div{height:100%;display:flex;flex-direction:column}",
+      // box-sizing:border-box —— 上游面板带 1px 边框,content-box 下 width:100% 会多出 2px 横向溢出
+      "#dsws-surface .dsws-panel{position:static;left:auto;top:auto;width:100%;height:100%;max-height:none;box-sizing:border-box}",
+      "#dsws-surface .dsws-aggrow{max-width:460px}",
+      '#dsws-surface [data-list-head="kpi"]{max-width:460px}',
+      "#dsws-surface .dsws-body > div{max-width:460px}",
+    ].join("\n")
+  );
+
   // ---- 列表页全家 + 页签壳(工单 U04;上游 index.ts 标记序原位) ----
   // ==== leaf:tabs (spliced by build) ====
   // ==== leaf:truthLines (spliced by build) ====
@@ -448,8 +465,78 @@ function apply(ctx) {
     }, [st]);
     const tabsRef = React.useRef(null);
     const tabs = st ? useTabsRow(st, tabsRef) : { items: [] };
-    const narrow = false;
-    return h("div", { className: "dsws-panel" }, [
+    // 面板宽度通道(工单 01:上游 panel/Dock.ts 同款):根节点挂 ResizeObserver 量内容宽,
+    // 宽度进状态(初值 460 = 上游浮动窗宽)。ResizeObserver 缺席(Node 假 DOM / 极老内核)时
+    // try/catch 退化为恒 460 宽档 —— 面板照常可用,不挡渲染;测试经全局注入可驱动。
+    const panelRef = React.useRef(null);
+    const [dw, setDw] = React.useState(460);
+    React.useEffect(function () {
+      const el = panelRef.current;
+      if (!el) return undefined;
+      let ro = null;
+      try {
+        ro = new ResizeObserver(function (entries) {
+          try { setDw(entries[0].contentRect.width); } catch (e) { /* 忽略 */ }
+        });
+        ro.observe(el);
+      } catch (e) { ro = null; }
+      return function () { if (ro) { try { ro.disconnect(); } catch (e) { /* 忽略 */ } } };
+    }, []);
+    // 页签折叠机(工单 01:上游 panel/Dock.ts 的 applyFold 逐字移植;tabsRef 已由 useTabsRow 持有)。
+    // 三道触发与上游一致:ResizeObserver(页签行宽变)+ window resize + document.fonts.ready;
+    // 卸载时断开。判据只有 scrollWidth/clientWidth 的 DOM 测量 —— 上游纯函数 tabsLevelDecide
+    // 全仓无调用(死代码),折叠真身就是这段测量。
+    React.useEffect(function () {
+      const applyFold = function () {
+        const t = tabsRef.current;
+        if (!t) return;
+        const btns = t.querySelectorAll("[data-priority]");
+        // 测量阶段临时禁用 transition(max-width 动画会污染 scrollWidth 测量 → 0/6 抖动)
+        t.classList.add("dsws-no-anim");
+        // 1) 全展开 + 强制 reflow(拿到"内容真实放得下"的基准)
+        for (let i = 0; i < btns.length; i++) btns[i].classList.remove("collapsed");
+        void t.offsetWidth;
+        // 2) 从最不重要(priority 大)逐个折叠,直到放得下(scrollWidth 溢出判定)
+        //    dataset 是上游写法;Node 假 DOM(既有缝 2 套件)没有它,退回读 data-* 属性 ——
+        //    真浏览器里两条读到的是同一个值,行为不变。
+        const priorityOf = function (b) {
+          if (b.dataset) return Number(b.dataset.priority || 99);
+          return Number((b.getAttribute && b.getAttribute("data-priority")) || 99);
+        };
+        const items = Array.from(btns)
+          .map(function (b) { return { el: b, p: priorityOf(b) }; })
+          .sort(function (a, b) { return b.p - a.p; });
+        for (const it of items) {
+          if (t.scrollWidth <= t.clientWidth + 1) break;
+          it.el.classList.add("collapsed");
+          void t.offsetWidth;
+        }
+        // 3) 记录折叠数供 tooltip 门控(上游 #1285:版本号已撤,在办表图标永不让位)
+        const level = String(t.querySelectorAll("[data-priority].collapsed").length);
+        if (t.dataset) t.dataset.tabsLevel = level;
+        else t.setAttribute("data-tabs-level", level);
+        t.classList.remove("dsws-no-anim");
+      };
+      const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(function () { applyFold(); }) : null;
+      let observed = null;
+      const apply = function () {
+        const t = tabsRef.current;
+        if (!t) return;
+        if (ro && observed !== t) {
+          if (observed) { try { ro.unobserve(observed); } catch (e) { /* noop */ } }
+          ro.observe(t);
+          observed = t;
+        }
+        applyFold();
+      };
+      apply();
+      if (typeof window !== "undefined") window.addEventListener("resize", apply);
+      if (typeof document !== "undefined" && document.fonts && document.fonts.ready) document.fonts.ready.then(apply);
+      return function () { if (ro) ro.disconnect(); if (typeof window !== "undefined") window.removeEventListener("resize", apply); };
+    }, []);
+    // 上游 panel/Dock.ts 的窄档判据(容器宽 < 380):行内按钮收图标档、KPI 体检按钮三档
+    const narrow = dw < 380;
+    return h("div", { ref: panelRef, className: "dsws-panel" + (narrow ? " dsws-narrow" : "") }, [
       h("div", { className: "dsws-head" }, [h("span", { className: "dsws-mtitle" }, [tr("panel.title")])]),
       h(
         "div",
