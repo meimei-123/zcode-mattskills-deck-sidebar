@@ -210,7 +210,7 @@ const TOOLS = [
   {
     name: "deck_git",
     description:
-      "版本管理页签的 git 数据面:上游全部 wf.git* 电话(当前 66 条)经此一条工具路由;路径限制在工作区根内;只读与写操作都在此。method 是电话名(如 gitStatus/gitFirstScreen/gitLog),args 原样转给该电话;回包形状与上游一致({ok,...} 或 {ok:false,error:{kind,message}})。",
+      "版本管理页签的 git 数据面:上游全部 wf.git* 电话(约 60 余条,以方法表为准)经此一条工具路由;路径限制在工作区根内;只读与写操作都在此。method 是电话名(如 gitStatus/gitFirstScreen/gitLog),args 必须是对象,原样转给该电话;回包形状与上游一致({ok,...} 或 {ok:false,error:{kind,message}})。",
     inputSchema: {
       type: "object",
       properties: {

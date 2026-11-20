@@ -19175,7 +19175,7 @@ var init_versionControlClone = __esm({
 import { spawn } from "node:child_process";
 import { createHash as createHash6 } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
-import { promises as fsp } from "node:fs";
+import { realpathSync, promises as fsp } from "node:fs";
 import os from "node:os";
 import path2 from "node:path";
 
@@ -21613,6 +21613,8 @@ function createVersionControl(deps) {
 
 // src/git-entry.mjs
 init_values();
+var DEFAULT_STDOUT_MAX_BYTES = 8 * 1024 * 1024;
+var DEFAULT_STDERR_MAX_BYTES = 256 * 1024;
 function mergeChildEnv(overrides, baseEnv) {
   const env = { ...baseEnv || process.env };
   const extra = overrides && typeof overrides === "object" ? overrides : {};
@@ -21637,7 +21639,7 @@ function tailWithinBytes(text2, maxBytes) {
   return lo > 0 ? text2.slice(text2.length - lo) : "";
 }
 function makeCollector(maxBytes) {
-  const limit = Number.isFinite(maxBytes) && maxBytes > 0 ? Math.floor(maxBytes) : 8 * 1024 * 1024;
+  const limit = Number.isFinite(maxBytes) && maxBytes > 0 ? Math.floor(maxBytes) : DEFAULT_STDOUT_MAX_BYTES;
   const decoder = new StringDecoder("utf8");
   let text2 = "";
   let totalChars = 0;
@@ -21687,8 +21689,8 @@ function makeSubprocess(baseEnv) {
       const [exe, ...args] = argv;
       const stdio = req.stdio && typeof req.stdio === "object" ? req.stdio : {};
       const stdinMode = stdio.stdin === "pipe" ? "pipe" : "ignore";
-      const stdoutLimit = stdio.stdout && typeof stdio.stdout.maxBytes === "number" ? stdio.stdout.maxBytes : 8 * 1024 * 1024;
-      const stderrLimit = stdio.stderr && typeof stdio.stderr.maxBytes === "number" ? stdio.stderr.maxBytes : 256 * 1024;
+      const stdoutLimit = stdio.stdout && typeof stdio.stdout.maxBytes === "number" ? stdio.stdout.maxBytes : DEFAULT_STDOUT_MAX_BYTES;
+      const stderrLimit = stdio.stderr && typeof stdio.stderr.maxBytes === "number" ? stdio.stderr.maxBytes : DEFAULT_STDERR_MAX_BYTES;
       const child = spawn(exe, args, {
         cwd: typeof req.cwd === "string" && req.cwd !== "" ? req.cwd : void 0,
         env: mergeChildEnv(req.env, baseEnv),
@@ -21708,7 +21710,7 @@ function makeSubprocess(baseEnv) {
       }
       let settled = false;
       let killed = false;
-      const done = new Promise((resolve) => {
+      const done = new Promise((resolve, reject) => {
         child.on("close", (code, signal) => {
           if (settled) return;
           settled = true;
@@ -21719,7 +21721,7 @@ function makeSubprocess(baseEnv) {
         child.on("error", (error) => {
           if (settled) return;
           settled = true;
-          resolve({ exitCode: -1, signal: "spawn-error", error });
+          reject(error);
         });
       });
       const graceMs = Number.isFinite(req.graceMs) && req.graceMs >= 0 ? req.graceMs : 1e4;
@@ -21755,7 +21757,6 @@ function makeTimer() {
         id = setTimeout(resolve, wait);
         if (id && typeof id.unref === "function") id.unref();
       });
-      if (id && typeof id.unref === "function") id.unref();
       promise.timer = id;
       return promise;
     },
@@ -21814,9 +21815,29 @@ function makeLogCtx(debugOn) {
     }
   };
 }
-function insideRoot(root, target) {
-  const rel = path2.relative(root, target);
-  return rel === "" || !rel.startsWith("..") && !path2.isAbsolute(rel);
+function insideRoot(rootReal, targetReal) {
+  const rel = path2.relative(rootReal, targetReal);
+  return rel === "" || !(rel === ".." || rel.startsWith(".." + path2.sep) || path2.isAbsolute(rel));
+}
+function realPathOf(target) {
+  const abs = path2.resolve(target);
+  const rest = [];
+  let base = abs;
+  for (; ; ) {
+    try {
+      const real = realpathSync.native(base);
+      return rest.length ? path2.join(real, ...rest.reverse()) : real;
+    } catch (e) {
+      if (e && (e.code === "ENOENT" || e.code === "ENOTDIR")) {
+        const parent = path2.dirname(base);
+        if (parent === base) return abs;
+        rest.push(path2.basename(base));
+        base = parent;
+        continue;
+      }
+      return abs;
+    }
+  }
 }
 function boundaryReply(field, value, root) {
   return {
@@ -21842,6 +21863,11 @@ var BOUNDARY_FIELDS = {
 function createGitBridge(opts) {
   const options = opts || {};
   const root = path2.resolve(String(options.workspaceRoot || process.cwd()));
+  let rootReal = root;
+  try {
+    rootReal = realpathSync.native(root);
+  } catch {
+  }
   const baseEnv = options.env || process.env;
   const debugOn = String(baseEnv.ZCODE_GIT_DEBUG || process.env.ZCODE_GIT_DEBUG || "") === "1";
   const cacheIn = String(baseEnv.ZCODE_VC_TASK_CACHE || process.env.ZCODE_VC_TASK_CACHE || "");
@@ -21871,7 +21897,7 @@ function createGitBridge(opts) {
   function resolveTarget(field, value, baseCwd) {
     if (typeof value !== "string" || value.trim() === "") return null;
     const resolved = path2.isAbsolute(value) ? path2.normalize(value) : path2.resolve(baseCwd, value);
-    return insideRoot(root, resolved) ? null : boundaryReply(field, value, root);
+    return insideRoot(rootReal, realPathOf(resolved)) ? null : boundaryReply(field, value, root);
   }
   function checkTarget(fields, args, baseCwd) {
     for (const field of fields) {
@@ -21890,14 +21916,17 @@ function createGitBridge(opts) {
     if (!fn) {
       return { ok: false, error: { kind: "unknown-method", message: `未知 git 方法:${name || "(空)"}。` } };
     }
-    const input = args && typeof args === "object" && !Array.isArray(args) ? { ...args } : {};
+    if (args !== void 0 && (args === null || typeof args !== "object" || Array.isArray(args))) {
+      return { ok: false, error: { kind: "bad-args", message: "args 必须是对象。" } };
+    }
+    const input = args && typeof args === "object" ? { ...args } : {};
     if (input.cwd !== void 0 && input.cwd !== null && input.cwd !== "" && typeof input.cwd !== "string") {
       return { ok: false, error: { kind: "bad-args", message: "参数 cwd 必须是工作区根内的路径字符串。" } };
     }
     let baseCwd = root;
     if (typeof input.cwd === "string" && input.cwd.trim() !== "") {
       const resolvedCwd = path2.resolve(root, input.cwd);
-      if (!insideRoot(root, resolvedCwd)) return boundaryReply("cwd", input.cwd, root);
+      if (!insideRoot(rootReal, realPathOf(resolvedCwd))) return boundaryReply("cwd", input.cwd, root);
       input.cwd = resolvedCwd;
       baseCwd = resolvedCwd;
     } else if (input.cwd === void 0 || input.cwd === null || input.cwd === "") {

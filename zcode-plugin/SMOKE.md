@@ -47,8 +47,8 @@
 
 | 面 | 跑法 | 结果 |
 |---|---|---|
-| 构建 | `node build.mjs`(src→dist + build-upstream 拼包 + build-git 打包) | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html;bundle-1.txt code.length=2297624(UTF-16 码元),2449032 字节;dist/git.mjs code.length=954113,1020442 字节(本次构建日志) |
-| 测试 | `npm test` | ✓ 十八套 1824 断言全绿(scaffold 53 / server-read 124 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 176 / upstream-detail 89 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 242 / server-git 27 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106) |
+| 构建 | `node build.mjs`(src→dist + build-upstream 拼包 + build-git 打包) | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html;bundle-1.txt code.length=2298445(UTF-16 码元),2449853 字节;dist/git.mjs code.length=955015,1021356 字节(本次构建日志) |
+| 测试 | `npm test` | ✓ 十八套 1896 断言全绿(scaffold 53 / server-read 124 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 176 / upstream-detail 89 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 306 / server-git 35 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106) |
 | 工具面 | `deck_git({method,args})` | ✓ 66 个 `handleGit*` 方法;未知方法/越界 cwd/坏参数回结构化人话;回包原样进 `structuredContent` |
 | 版本 | 双清单 + scaffold | ✓ plugin.json / marketplace.json / scaffold 断言均 0.4.0;package.json 保持 0.1.0;panel.html 未动 |
 

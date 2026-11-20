@@ -16,7 +16,6 @@ import * as esbuild from "esbuild";
 import { generateUpstreamLeaves } from "./build-upstream.mjs";
 
 const ROOT = dirname(fileURLToPath(import.meta.url)); // zcode-plugin/
-const UPSTREAM_ROOT = resolve(ROOT, process.env.UPSTREAM_ROOT || "..");
 const GEN_VALUES = join(ROOT, ".tmp", "upstream-gen", "src", "shared", "time-config", "src", "values.ts");
 const ENTRY = join(ROOT, "src", "git-entry.mjs");
 const OUT = join(ROOT, "dist", "git.mjs");
@@ -120,7 +119,7 @@ export async function buildGitBundle() {
   );
   // 源目录不散落 dist(build.mjs 会把 src/git/ 一并直拷进来;装机只认 bundle 与一行入口)。
   rmSync(join(ROOT, "dist", "git"), { recursive: true, force: true });
-  console.log("[build-git] dist/git.mjs(" + code.length + " bytes;入口 " + ENTRY + ")");
+  console.log("[build-git] dist/git.mjs(" + code.length + " 个字符,code.length(UTF-16 码元);入口 " + ENTRY + ")");
   return OUT;
 }
 

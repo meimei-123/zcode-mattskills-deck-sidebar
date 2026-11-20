@@ -43058,6 +43058,32 @@ ${formatProgressEntry(entry)}
       enterSubDetail,
       renderIssueDetailComments
     };
+    window.MattSkillsUpstream.vc = {
+      VersionControlTab,
+      VC_VIEWS,
+      VC_TAB_PAGES,
+      VC_MANAGE_PAGES,
+      VC_SIDE_PAGES,
+      pageIds: function() {
+        return PAGE_SURFACES.map(function(p3) {
+          return String(p3.id);
+        });
+      },
+      renderPageInto: function(page, container, props) {
+        const o3 = Object.assign({}, props || {}, { page: String(page) });
+        const Page = function() {
+          return vcShellPageNode(h3, tr, o3);
+        };
+        R(h3(withCx(Page), {}), container);
+        return o3;
+      },
+      readBranches: function(reads, call, cwd) {
+        return vcReadBranches(reads, call, cwd);
+      },
+      branchBoardNode: function(board, props) {
+        return vcBranchBoardNode(h3, tr, Object.assign({}, props || {}, { board }));
+      }
+    };
   }
   var WORKSPACE_URI = "ui://zcode-mattpocock-skills-deck/workspace.json";
   async function fetchWorkspace(client) {
