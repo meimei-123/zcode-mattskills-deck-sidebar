@@ -2,7 +2,8 @@
 // list / get / counts 的返回、坏卡容忍与空态语义。沿用 scaffold.test.mjs 的 spawn 会话模式,无框架。
 // 工作区根经 ZCODE_WORKSPACE_ROOT 环境变量注入(模拟宿主 manifest 的 ${ZCODE_PROJECT_DIR})。
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -19,10 +20,10 @@ function check(name, cond, detail = "") {
 }
 
 /** 起一个指向指定工作区根的 server 会话,交回 rpc/stop。 */
-async function startServer(workspaceRoot) {
+async function startServer(workspaceRoot, extraEnv = {}) {
   const child = spawn(process.execPath, [join(ROOT, "dist", "server.mjs")], {
     stdio: ["pipe", "pipe", "inherit"],
-    env: { ...process.env, ZCODE_WORKSPACE_ROOT: workspaceRoot },
+    env: { ...process.env, ZCODE_WORKSPACE_ROOT: workspaceRoot, ...extraEnv },
   });
   let buf = "";
   const pending = new Map();
@@ -346,6 +347,84 @@ async function sliceLabels() {
   }
 }
 await sliceLabels();
+
+// ---------------------------------------------------------------------------
+// 切片 8:deck_skill_doc(工单 02)—— 读本机技能目录里的 SKILL.md 原文。
+//   契约:声明(name 必填 / file 可选)、缺 name 与非法名是工具级 isError、
+//   存在 → ok:true + md/path/source、不存在 → ok:false + 人话(不是错误)、
+//   file 本批不支持 → ok:false(不伪造)。
+//   技能根顺序:工作区 .zcode/skills → ~/.zcode/skills → ~/.agents/skills → 插件内置;
+//   这里同放两份(工作区 + ZCODE_PLUGIN_ROOT)验证「同名先命中」。
+// ---------------------------------------------------------------------------
+async function sliceSkillDoc() {
+  const ws = mkdtempSync(join(tmpdir(), "deck-skill-ws-"));
+  const plugin = mkdtempSync(join(tmpdir(), "deck-skill-plugin-"));
+  const NAME = "t02-skill-doc-probe";
+  const BODY = "# 探针技能\n\n这是工作区里的技能原文。\n";
+  try {
+    mkdirSync(join(ws, ".zcode", "skills", NAME), { recursive: true });
+    writeFileSync(join(ws, ".zcode", "skills", NAME, "SKILL.md"), BODY, "utf8");
+    mkdirSync(join(plugin, "skills", NAME), { recursive: true });
+    writeFileSync(join(plugin, "skills", NAME, "SKILL.md"), "# 插件内置副本\n\n这份不该被读到。\n", "utf8");
+
+    const s = await startServer(ws, { ZCODE_PLUGIN_ROOT: plugin });
+    try {
+      const tools = await s.rpc("tools/list", {});
+      const tool = (tools.result?.tools || []).find((t) => t.name === "deck_skill_doc");
+      check("skilldoc: tools/list 声明 deck_skill_doc", !!tool, JSON.stringify((tools.result?.tools || []).map((t) => t.name)));
+      check("skilldoc: 输入契约 name 必填 / file 可选",
+        tool && Array.isArray(tool.inputSchema?.required) && tool.inputSchema.required.includes("name") &&
+          !!tool.inputSchema?.properties?.name && !!tool.inputSchema?.properties?.file,
+        JSON.stringify(tool?.inputSchema));
+      check("skilldoc: 描述写清读 SKILL.md 原文", /SKILL\.md/.test(String(tool?.description || "")), tool?.description);
+
+      const hit = await s.call("deck_skill_doc", { name: NAME });
+      const sc = hit.result?.structuredContent || {};
+      check("skilldoc: 应答无错误", !hit.error && !hit.result?.isError, JSON.stringify(hit.error || hit.result?.isError));
+      check("skilldoc: ok=true + 原文回读", sc.ok === true && sc.md === BODY, JSON.stringify({ ok: sc.ok, md: sc.md }));
+      check("skilldoc: 技能名原样回", sc.name === NAME, sc.name);
+      check("skilldoc: 路径是绝对路径且指向工作区技能根",
+        typeof sc.path === "string" && sc.path.endsWith(join(".zcode", "skills", NAME, "SKILL.md")) && sc.source === "workspace",
+        JSON.stringify({ path: sc.path, source: sc.source }));
+      check("skilldoc: 同名先命中(工作区盖过插件内置)", !String(sc.md).includes("插件内置副本"));
+      check("skilldoc: 摘要是人话(含技能名)",
+        /已读/.test(hit.result?.content?.[0]?.text || "") && String(hit.result?.content?.[0]?.text).includes(NAME),
+        hit.result?.content?.[0]?.text);
+
+      const miss = await s.call("deck_skill_doc", { name: "t02-definitely-missing" });
+      check("skilldoc: 不存在的技能不是 isError", !miss.error && miss.result?.isError !== true, JSON.stringify(miss.result || miss.error));
+      check("skilldoc: 不存在回 ok:false + reason=missing",
+        miss.result?.structuredContent?.ok === false && miss.result?.structuredContent?.reason === "missing",
+        JSON.stringify(miss.result?.structuredContent));
+      check("skilldoc: 不存在给人话",
+        /找不到/.test(miss.result?.content?.[0]?.text || "") && String(miss.result?.content?.[0]?.text).includes("t02-definitely-missing"),
+        miss.result?.content?.[0]?.text);
+
+      for (const bad of ["../secret", "a/b", "..", "/etc/passwd", "a\\b"]) {
+        const r = await s.call("deck_skill_doc", { name: bad });
+        check(`skilldoc: 非法名被拒 ${JSON.stringify(bad)}`,
+          !r.error && r.result?.isError === true && /技能名/.test(r.result?.content?.[0]?.text || ""),
+          JSON.stringify(r.result || r.error));
+      }
+      const noName = await s.call("deck_skill_doc", {});
+      check("skilldoc: 缺 name 是工具级 isError",
+        !noName.error && noName.result?.isError === true && /缺少|技能名/.test(noName.result?.content?.[0]?.text || ""),
+        JSON.stringify(noName.result || noName.error));
+
+      const withFile = await s.call("deck_skill_doc", { name: NAME, file: "GLOSSARY.md" });
+      check("skilldoc: file 参数本批不支持 → ok:false(不伪造)",
+        !withFile.error && withFile.result?.isError !== true && withFile.result?.structuredContent?.ok === false &&
+          withFile.result?.structuredContent?.reason === "unsupported",
+        JSON.stringify(withFile.result || withFile.error));
+    } finally {
+      await s.stop();
+    }
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+    rmSync(plugin, { recursive: true, force: true });
+  }
+}
+await sliceSkillDoc();
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);
 process.exit(failures === 0 ? 0 : 1);
