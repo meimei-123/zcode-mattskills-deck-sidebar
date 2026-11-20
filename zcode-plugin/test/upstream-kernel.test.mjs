@@ -51,7 +51,8 @@ const MIXED = {
   ours: { total: 6, open: 4, closed: 2, frontier: 1, occupied: 3, claimed: 1, blocked: 2, bug: 1, triage: 3 },
   derive: { total: 6, open: 4, closed: 2, frontier: 1, claimed: 1, blocked: 2, indeterminate: 0 },
   rows: { open: 4, closed: 2, total: 6 },
-  panel: { occ: 0, bug: 0, triage: 0, frontierCount: 0, kpiTakeable: 4 }, // issues 空 → 面板口径全 0/退后端数
+  // U04 勘正:面板 issues = 全量域(6 票 + 2 开容器 = 8 行,open 6);KPI 可接 = 后端 open − 池占用
+  panel: { occ: 3, bug: 1, triage: 5, frontierCount: 3, kpiTakeable: 1 }, // triage 5 = 票 3 + 两个无标签容器(上游 isTriageLike)
   containers: [1, 1], // [maps, specs] 手数:explore-login 图 + m1-core-board 规格
 };
 // cards:cardsdemo(开图,12 子票:01 needs-triage open、02 bug open、03-10 各色 open、
@@ -61,7 +62,7 @@ const CARDS = {
   ours: { total: 12, open: 11, closed: 1, frontier: 10, occupied: 1, claimed: 0, blocked: 1, bug: 2, triage: 1 },
   derive: { total: 12, open: 11, closed: 1, frontier: 10, claimed: 0, blocked: 1, indeterminate: 0 },
   rows: { open: 11, closed: 1, total: 12 },
-  panel: { occ: 0, bug: 0, triage: 0, frontierCount: 0, kpiTakeable: 11 },
+  panel: { occ: 1, bug: 2, triage: 3, frontierCount: 12, kpiTakeable: 10 }, // 全量域 14 行 open 13;triage 3 = 票 1 + 两个无标签容器
   containers: [1, 1], // cardsdemo 图 + specdemo 规格
 };
 // broken:demo(普通票目录,无容器 → 全部行都是孤儿,parentKey null):01 无 Status 行
@@ -138,8 +139,11 @@ const ingest = await import(pathToFileURL(join(ROOT, "src", "ui", "upstream", "i
     }
   );
   eq("ingestSnapshot:关容器 tickets 为空", st.snapshot.maps[0].tickets.length, 0);
-  eq("ingestSnapshot:关容器的 open 子票回落 issues,closed 子票隐藏(#691/#1291)", st.snapshot.issues.map((r) => r.key), ["01", "03"]);
-  eq("ingestSnapshot:行已归一成面板形状(大写态)", st.snapshot.issues.map((r) => r.state), ["OPEN", "OPEN"]);
+  // U04 勘正:面板 issues = 全量行域(上游 buildSnapshot,容器行也在,ListTab 从池分桶);
+  // 唯一剔除 = #1291 关容器里已关的子票(02)。开子票(01)与孤儿(03)照常在池。
+  eq("ingestSnapshot:关容器的已关子票隐藏,其余全量在池(#691/#1291)", st.snapshot.issues.map((r) => r.key), ["00", "01", "03"]);
+  eq("ingestSnapshot:行已归一成面板形状(大写态)", st.snapshot.issues.map((r) => r.state), ["CLOSED", "OPEN", "OPEN"]);
+  eq("ingestSnapshot:关容器 stats 仍算好(环/三态读它)", st.snapshot.maps[0].stats, { total: 2, closed: 1 });
   eq("ingestSnapshot:repository 记本地后端与根", [st.snapshot.repository.backend, st.snapshot.repository.path], ["markdown", "X:/ws"]);
   eq("ingestSnapshot:deck.counts 走注入的 planDeckCounts", [st.snapshot.deck.counts.source, st.snapshot.deck.counts.total], ["stub", 4]);
   eq("ingestSnapshot:selection 指向本地后端", st.selection.backendId, "markdown");
@@ -205,12 +209,14 @@ if (K) {
       { rows: scan.rows, counts: { open: ours.open, closed: ours.closed, total: ours.total }, workspaceRoot: "X:/ws", atMs: 1700000000000 },
       { planDeckCounts: K.planDeckCounts, rowCountsOf: K.rowCountsOf }
     );
-    eq(`${fx} 对拍 rowCountsOf 三数(并集去重)`, K.rowCountsOf(st.snapshot), exp.rows);
-    eq(`${fx} 对拍 planDeckCounts:本地三数可信走 backend 口径`, K.planDeckCounts({ backendCounts: { open: ours.open, closed: ours.closed, total: ours.total }, rows: K.rowCountsOf(st.snapshot), rowsComplete: true, nowMs: 1700000000000 }), { counts: { open: exp.rows.open, closed: exp.rows.closed, total: exp.rows.total, source: "backend", atMs: 1700000000000 }, pending: false, partial: false });
+    // 计数行视图 = 非容器票(容器不进计数,与 ingest 内部 planDeckCounts 喂法同口径)
+    const ticketView = { issues: st.snapshot.issues.filter((r) => r.type !== "map" && r.type !== "spec") };
+    eq(`${fx} 对拍 rowCountsOf 三数(非容器票)`, K.rowCountsOf(ticketView), exp.rows);
+    eq(`${fx} 对拍 planDeckCounts:本地三数可信走 backend 口径`, K.planDeckCounts({ backendCounts: { open: ours.open, closed: ours.closed, total: ours.total }, rows: K.rowCountsOf(ticketView), rowsComplete: true, nowMs: 1700000000000 }), { counts: { open: exp.rows.open, closed: exp.rows.closed, total: exp.rows.total, source: "backend", atMs: 1700000000000 }, pending: false, partial: false });
     const dc = K.deckCountsOf(st, false);
     eq(`${fx} deckCountsOf(st) 读到接驳的 deck.counts`, [dc.open, dc.closed, dc.total, dc.source], [exp.rows.open, exp.rows.closed, exp.rows.total, "backend"]);
 
-    // —— 面板口径留档:occCount 等读 snapshot.issues(上游孤儿域)——
+    // —— 面板口径留档:occCount 等读 snapshot.issues(U04 勘正:上游全量面板域,含容器行)——
     eq(`${fx} 面板口径留档:occCount(issues 域)`, K.occCount(st), exp.panel.occ);
     eq(`${fx} 面板口径留档:bugCount(issues 域)`, K.bugCount(st), exp.panel.bug);
     eq(`${fx} 面板口径留档:triageCount(issues 域)`, K.triageCount(st), exp.panel.triage);
@@ -313,12 +319,13 @@ if (K) {
       check("boot(工具桥)成功", !!ctx);
       const regs = ctx.get("slots").registered();
       check("面板壳仍注册", regs.length === 1, JSON.stringify(regs.map((r) => r.def)));
-      const provider = regs[0].Component({});
-      const shell = provider.props.children.type();
-      const text = JSON.stringify(shell);
-      check("壳内显示上游 kernel 算出的可接数(面板口径:后端 open - 占用)", text.includes('"4"'), text.slice(0, 400));
-      check("壳内 counts 标签来自上游 locale 词表(可接)", text.includes("可接"));
-      check("壳内显示已关闭数", text.includes("已关闭") && text.includes('"2"'));
+      // U04 门组件后,壳 vnode 不再内联 counts 文案;数据接通改从 store 本体断言
+      // (渲染面的可接/已关闭文案由 upstream-list 套件覆盖)
+      const stLive = U.list && U.list.storeOf ? U.list.storeOf() : null;
+      const liveCounts = stLive && stLive.snapshot && stLive.snapshot.deck && stLive.snapshot.deck.counts;
+      check("接驳后的 store.deck.counts(后端口径)", !!liveCounts && [liveCounts.open, liveCounts.closed, liveCounts.total] === undefined ? false : [liveCounts.open, liveCounts.closed, liveCounts.total].join("/") === [counts.open, counts.closed, counts.total].join("/"), JSON.stringify(liveCounts));
+      check("counts 来源 = backend(可信)", liveCounts && liveCounts.source === "backend", String(liveCounts && liveCounts.source));
+      check("KPI 可接投影 = 后端 open − 池占用", liveCounts && K.kpiCountsOf(stLive, false, { open: liveCounts.open, occupied: K.occCount(stLive), closed: liveCounts.closed }).takeable === 1, String(liveCounts && K.kpiCountsOf(stLive, false, { open: liveCounts.open, occupied: K.occCount(stLive), closed: liveCounts.closed }).takeable));
     } catch (e) {
       check("boot(工具桥)成功", false, e && e.stack ? e.stack.split("\n").slice(0, 4).join(" | ") : String(e));
     }

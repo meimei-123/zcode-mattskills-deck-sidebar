@@ -326,9 +326,44 @@ const doc = createFakeDom();
   }
 }
 if (U) {
-  const surface = doc.body.children[0]; // #dsws-surface
-  const cards = qsa(surface, "cd-card");
-  check("壳 body 装配段渲染出卡(至少两张)", cards.length >= 2, String(cards.length));
+  // U04 撤了壳内临时挂点 —— 卡面在大卡组件上直测:store 取真数据,renderInto 挂两张
+  // (投影口径 = 上游 ticketCardFacts 同构裁剪,U03 临时挂点同款)
+  const st = U.list && U.list.storeOf ? U.list.storeOf() : null;
+  const snap = (st && st.snapshot) || {};
+  const container = (snap.maps || []).filter((m) => (m.tickets || []).length > 0)[0];
+  const tickets = (container && container.tickets) || [];
+  const colorOf = st ? U.kernel.buildColorOf(st) : {};
+  const ACT = { bug: "fix", "needs-triage": "diagnose", "needs-info": "supplement", "ready-for-human": "claim", "ready-for-agent": "execute" };
+  const actionOf = (row) => { for (const l of row.labels || []) if (ACT[l && l.name]) return ACT[l.name]; return "execute"; };
+  const dayOf = (row) => String((row && (row.updatedAt || row.createdAt)) || "").slice(0, 10);
+  const dotOf = (t2) => {
+    const closed = String(t2.state || "").toUpperCase() === "CLOSED";
+    const blocked = Array.isArray(t2.blockedBy) && t2.blockedBy.length > 0;
+    const claimed = !!(t2.claimedBy && t2.claimedBy !== "");
+    return { no: String(t2.key), cls: closed ? "c" : blocked ? "b" : claimed ? "w" : "f", stateText: closed ? "已结案" : blocked ? "被挡" : claimed ? "在办" : "可接", title: t2.title || "" };
+  };
+  // render() 每次替换容器内容 —— 两张卡各挂各的盒子
+  const box = doc.createElement("div");
+  const box2 = doc.createElement("div");
+  doc.body.appendChild(box);
+  doc.body.appendChild(box2);
+  const t = tickets[0];
+  if (container && t) {
+    U.cards.renderInto(U.cards.PixelIssueCard, box, {
+      noText: String(t.key), title: t.title, action: actionOf(t),
+      closed: String(t.state || "").toUpperCase() === "CLOSED",
+      bugCorner: (t.labels || []).some((l) => l && l.name === "bug"),
+      tags: (t.labels || []).map((l) => ({ text: l.name, color: colorOf[l.name] || "" })),
+      claimedBy: t.claimedBy || "", blockedBy: null, updatedText: dayOf(t), colorOf: colorOf,
+    });
+    U.cards.renderInto(U.cards.PixelMapCard, box2, {
+      mapNo: String(container.key), title: container.title,
+      open: String(container.state || "").toUpperCase() !== "CLOSED",
+      updatedText: dayOf(container), dateText: "", dots: tickets.map(dotOf),
+    });
+  }
+  const cards = [...qsa(box, "cd-card"), ...qsa(box2, "cd-card")];
+  check("renderInto 渲染出大卡两张(票卡+地图卡)", cards.length >= 2, String(cards.length));
 
   // ---- PixelIssueCard(m1 子票 01:open + bug 标签 → action=fix,BUG 角标) ----
   const issueCard = cards.find((c) => String(c.attributes["class"]).startsWith("cd-card") && !String(c.attributes["class"]).includes("mapcard"));

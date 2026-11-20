@@ -28,11 +28,12 @@
 //
 // ── 两个投影 ──────────────────────────────────────────────────────────────
 //   panelRowOf / ingestSnapshot → 面板快照(大写态、claimedBy、deck.counts):
-//     上游 assembleSnapshot 语义:容器(type map|spec)收同 effort 内 parentKey===容器 key 的
-//     子票;开容器 tickets=子票 copies;关容器 tickets=[],其 open 子票回落 issues、closed 子票
-//     隐藏(#691/#907/#1291 首屏口径);issues = 未挂任何开容器的非容器行。
+//     上游面板线(refresh/rooms/host/snapshot-build.ts)的口径:issues = 原始列表全量行
+//     (容器行也在内 —— ListTab 三段列表从这个池分桶,容器行不进池就画不出地图/规格行);
+//     maps = 容器装配(开容器 tickets=子票 copies、关容器 tickets=[] 留空壳,环/三态从这读)。
 //   trackerDeckOf → tracker 形状({maps, issues},小写态、保留 body):
-//     上游 deck-derive.ts 的输入口径(宿主/工具共用的整池投影),deriveDeck/rowCountsOf 吃它。
+//     上游 deck-derive.ts 的输入口径(assembleSnapshot 的父子/孤儿规则;宿主/工具共用的
+//     整池投影),deriveDeck/rowCountsOf 吃它。与面板快照是两个口径,别混。
 //
 // ── 如实缺口(不造假数据)─────────────────────────────────────────────────
 //   · 上游 assembleSnapshot 会解析容器正文(map 五区块 destination/notes/decisions/fog/
@@ -57,6 +58,10 @@ export function panelRowOf(row) {
     const owners = t.assignees;
     t.claimedBy = Array.isArray(owners) && owners.length ? (owners[0] && owners[0].login) || "" : "";
   }
+  // 上游行组件(ListTabRow)读 x.author.login 画认领人头像环;本地后端无独立作者 → 认领人即作者
+  if (t.author == null && t.claimedBy) {
+    t.author = { login: t.claimedBy, name: null, avatarUrl: null };
+  }
   if (Array.isArray(t.blockedBy)) {
     t.blockedBy = t.blockedBy.map((ref) => {
       if (typeof ref === "number" || typeof ref === "string") return ref;
@@ -70,7 +75,11 @@ export function panelRowOf(row) {
   return t;
 }
 
-/** 同池分组(上游 assembleSnapshot 的父子规则,不转大小写、不剥正文):容器嵌子票、issues 收孤儿。 */
+/** 同池分组(上游 assembleSnapshot 的父子规则,不转大小写、不剥正文):容器嵌子票、issues 收孤儿。
+ *  仅 tracker 投影(trackerDeckOf)用;面板快照(ingestSnapshot)自 U04 起改走 panelSnapshotOf
+ *  —— 上游面板那条线(refresh/rooms/host/snapshot-build.ts 的 buildSnapshot)的 issues 域是
+ *  「原始列表全量行」(容器行也在内:ListTab 的三段列表从 issues 池分桶,地图/规格行不进池就
+ *  一行都画不出来),与 assembleSnapshot 的孤儿域是两个口径,别混。 */
 function groupDeck(rows, wrapRow) {
   const list = Array.isArray(rows) ? rows : [];
   const containers = list.filter((r) => r && (r.type === "map" || r.type === "spec"));
@@ -98,11 +107,34 @@ function groupDeck(rows, wrapRow) {
         hidden.add(`${String(t.effortId || "")}\u0000${String(t.key)}`);
       }
     }
-    return Object.assign({}, wrapRow(m), { tickets });
+    // stats 与 tickets 同源算好(上游宿主 session-snapshot-cache 只在 GitHub 通路补 stats;
+    // 本地通路由我们补:containerStateOf 判据 stats.total 缺席即 empty,环也读它)
+    const stats = { total: own.length, closed: own.filter((t) => isClosed(t)).length };
+    return Object.assign({}, wrapRow(m), { tickets, stats });
   });
   const issues = nonContainers
     .filter((r) => !attached.has(`${String(r.effortId || "")}\u0000${String(r.key)}`) && !hidden.has(`${String(r.effortId || "")}\u0000${String(r.key)}`))
     .map((r) => Object.assign({}, wrapRow(r)));
+  return { maps, issues };
+}
+
+/** 面板快照分组(上游 buildSnapshot 口径,U04 立):issues = 原始列表全量行(容器行也在内,
+ *  ListTab 从这个池分出 探索地图→规格→普通票 三段);maps = 容器装配(开容器嵌子票、
+ *  关容器不装 —— 容器行的环与三态从 maps 读,见 mapBlockOf/containerTriState)。 */
+function panelSnapshotOf(rows) {
+  // maps 的容器与子票也走 panelRowOf 归一(大写态/补号/认领人→作者):
+  // isOccupied 的阻塞判定按 state === 'OPEN' 查 maps.tickets,原始小写行永远判不中(真机症状:占用少 1)
+  const { maps } = groupDeck(rows, panelRowOf);
+  // #1291:关容器里自己已关闭的子票在列表隐藏(开容器子票仍进 issues 行池,上游 buildSnapshot 全量域)
+  const closedContainers = maps.filter((m) => String(m.state || "") === "CLOSED");
+  const hiddenKeys = new Set();
+  for (const m of closedContainers) {
+    const own = (Array.isArray(rows) ? rows : []).filter((r) => r && r.type !== "map" && r.type !== "spec" && r.parentKey != null && String(r.effortId || "") === String(m.effortId || "") && String(r.parentKey) === String(m.key) && String(r.state || "").toUpperCase() === "CLOSED");
+    for (const r of own) hiddenKeys.add(`${String(r.effortId || "")} ${String(r.key)}`);
+  }
+  const issues = (Array.isArray(rows) ? rows : [])
+    .filter((r) => !hiddenKeys.has(`${String((r && r.effortId) || "")} ${String((r && r.key) || "")}`))
+    .map(panelRowOf);
   return { maps, issues };
 }
 
@@ -122,7 +154,7 @@ export function trackerDeckOf(rows) {
  * 同一套判定:后端可信走 backend 口径,行并集重算,拿不到不猜)。
  */
 export function ingestSnapshot({ rows, counts, workspaceRoot, labels, atMs }, k) {
-  const { maps, issues } = groupDeck(rows, panelRowOf);
+  const { maps, issues } = panelSnapshotOf(rows);
   const snapshot = {
     repository: {
       backend: "markdown",
@@ -132,7 +164,7 @@ export function ingestSnapshot({ rows, counts, workspaceRoot, labels, atMs }, k)
     },
     maps,
     issues,
-    thinTickets: [], // 关容器里已关子票的瘦身行:面板壳不消费,U03 视图需要时补
+    thinTickets: [], // 关容器里已关子票的瘦身行:U05 详情/工作路线需要时补
     labels: Array.isArray(labels) && labels.length
       ? labels.map((l) => ({ name: String(l.name || ""), color: String(l.color || "").replace(/^#/, "") }))
       : aggregateRowLabels(rows),
@@ -145,7 +177,9 @@ export function ingestSnapshot({ rows, counts, workspaceRoot, labels, atMs }, k)
   const deck = {};
   const plan = k.planDeckCounts({
     backendCounts: tripleOf(counts),
-    rows: k.rowCountsOf(snapshot),
+    // 计数行 = 非容器票(容器是看板容器不是工单;上游 GitHub 通路里地图是带标签 issue 才进后端计数,
+    // 本地后端的 counts 契约本就不含容器 —— 两边对齐,别让 rowCountsOf 把容器当开放行掺进去)
+    rows: k.rowCountsOf({ issues: (Array.isArray(rows) ? rows : []).filter((r) => r && r.type !== "map" && r.type !== "spec").map(panelRowOf) }),
     rowsComplete: true, // 本地枚举:scanWorkspace 全量清点,无分页截断
     previousCounts: null,
     previousAtMs: 0,

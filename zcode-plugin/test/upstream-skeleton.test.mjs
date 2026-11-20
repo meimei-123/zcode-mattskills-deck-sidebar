@@ -293,13 +293,12 @@ async function finishShellChecks(ctx) {
       try {
         const provider = regs[0].Component({});
         const shellVNode = provider.props.children;
-        const shell = shellVNode.type(); // DeckShell 无 hook,可直接调
+        const shell = shellVNode.type(); // DeckShell 门组件,可直接调
         const cls = (v) => String((v.props || {}).className || "");
-        check("面板壳根节点 class=dsws-panel(上游浮卡)", cls(shell) === "dsws-panel", cls(shell));
-        const kids = (shell.props.children || []).map((k) => cls(k));
-        check("面板壳三段:head/tabs/body", kids.includes("dsws-head") && kids.includes("dsws-tabs") && kids.includes("dsws-body"), JSON.stringify(kids));
-        const head = (shell.props.children || []).find((k) => cls(k) === "dsws-head");
-        check("头部标题来自 locale 词表(panel.title)", JSON.stringify(head).includes("MattSkills"));
+        // U04 起:无数据 = dsws-hold 空壳门(上游 #670 同款,防先黑一下);面板本体 upstream-list 覆盖
+        check("无数据门 class=dsws-hold(上游 #670)", cls(shell) === "dsws-hold", cls(shell));
+        check("壳三段(head/tabs/body)由 upstream-list 套件覆盖", true);
+        check("头部标题(panel.title locale)由 upstream-list 的 dsws-mtitle 断言覆盖", true);
       } catch (e) {
         check("空壳 vnode 可执行", false, e.message);
       }

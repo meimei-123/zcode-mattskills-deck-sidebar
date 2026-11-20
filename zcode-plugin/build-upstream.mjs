@@ -231,19 +231,22 @@ export function stripTsToSpliceable(tsCode, { source }) {
 // 拼接管线:叶子清单(后续工单往这里加)+ 骨架标记序校验 + 拼接
 // ---------------------------------------------------------------------------
 
-/** 本票叶子清单(工单 U02 扩 kernel 域、U03 扩视觉层):id 即上游 index.ts 的标记名;file 相对
- *  上游仓库根,own:true 表示 file 相对本仓 ROOT(.tmp 生成物)。kernel:ctx 不在此列 —— 它与
- *  上游 wireCtx 同位:apply 头部注入,不走标记。登记序即上游标记序(骨架与测试都按这个序对
- *  上游 index.ts 校验,见 spliceSkeleton 三道对账)。 */
+/** 本票叶子清单(工单 U02 扩 kernel 域、U03 扩视觉层、U04 扩列表页全家):id 即上游 index.ts 的
+ * 标记名;file 相对上游仓库根,own:true 表示 file 相对本仓 ROOT(.tmp 生成物)。kernel:ctx 不在
+ * 此列 —— 它与上游 wireCtx 同位:apply 头部注入,不走标记。登记序即上游标记序(骨架与测试都按
+ * 这个序对上游 index.ts 校验,见 spliceSkeleton 三道对账)。 */
 export const LEAVES = [
   { id: "leaf:hostShim", file: "src/client/hostShim.ts" },
-  // ---- 工单 U03:中央时间参数(上游 shared:timeConfig 的拼接输入,本仓生成物按需摘名,
-  //      见 generateUpstreamLeaves 的 CLIENT_TIME_NAMES)与挂顶底座(HoverTip 的 portalTop,
-  //      ReactDOM 缺席时退化为原地渲染不抛)----
+  // ---- 工单 U03:中央时间参数(上游 shared:timeConfig 的拼接输入,U04 起按上游同口径摘全量名,
+  //      见 generateUpstreamLeaves)与挂顶底座(HoverTip 的 portalTop,ReactDOM 缺席时退化为
+  //      原地渲染不抛)----
   { id: "shared:timeConfig", file: ".tmp/upstream-leaves/time-config.client.js", own: true },
   { id: "kernel:portal", file: "src/client/kernel/portal.ts" },
   { id: "kernel:containerView", file: "src/client/kernel/container-view.ts" },
   { id: "kernel:ticketLabel", file: "src/client/kernel/ticket-label.ts" },
+  // ---- 工单 U04:kernel 依赖缺口(目标叶子的 declare 差集逐个追闭;上游标记序原位) ----
+  { id: "kernel:backendList", file: "src/client/kernel/builtin-backends.ts" },
+  { id: "kernel:link", file: "src/client/kernel/link.ts" },
   { id: "kernel:motion", file: "src/client/kernel/motion.ts" },
   { id: "kernel:styles", file: "src/client/kernel/styles.ts" },
   // localeData/promptData 是上游构建现场生成、不入库的生成物(config/ YAML → 生成器)。
@@ -252,13 +255,48 @@ export const LEAVES = [
   { id: "kernel:localeData", file: ".tmp/upstream-leaves/locale-data.ts", own: true },
   { id: "kernel:locale", file: "src/client/kernel/locale.ts" },
   { id: "shared:trackerConstants", file: ".tmp/upstream-leaves/vocabulary.client.js", own: true },
+  // 会话命名(Tabs 的 + bug 预填标题 newSessionTitleNew;上游 shared: 片段直取)
+  { id: "shared:namingTitles", file: "src/shared/naming-titles.ts" },
   // 通用图标集(工单 U03:chips 的 TypeChip 用 Ic)
   { id: "kernel:icons", file: "src/client/kernel/icons.ts" },
+  // KPI 头右端的「体检」按钮三件(healthCheckVisible/CountOf/openHealthCheck)
+  { id: "kernel:healthCheck", file: "src/client/kernel/health-check.ts" },
   { id: "kernel:promptData", file: ".tmp/upstream-leaves/prompt-data.ts", own: true },
   { id: "kernel:prompts", file: "src/client/kernel/prompts.ts" },
+  // 行内主按钮的提示词族(promptTextFor/completePrompt/inspectPrompt;kernel:prompts 同位在后)
+  { id: "kernel:promptsBackend", file: "src/client/kernel/prompts-backend.ts" },
+  // 动作模板(renderTemplate:ListTabRow 主按钮文案真源)
+  { id: "kernel:config", file: "src/client/kernel/config.ts" },
+  // 日志内核(上游 #564 起为包派生物,生成物按注册表路径直取;isEnabled/declaredLangPick 等在)
+  { id: "kernel:log", file: "scripts/generated/logKernel.derived.js" },
+  // 刷新额度档位(freshnessLevel/lagPromiseFor/tierFor:truthLines 的真相行档位真源)
+  { id: "shared:refreshBudget", file: "src/refresh/kernel/host-budget.ts" },
+  // 列表筛选记忆 + 导航栈 + 行点击(setActiveIssue/setActiveMap;saveUiPrefs typeof 守卫缺席走 legacy)
+  { id: "kernel:storePrefs", file: "src/client/kernel/store-prefs.ts" },
   { id: "kernel:deckState", file: "src/client/kernel/deck-state.ts" },
+  // 会话 store 表(shared/stores/emit/flash/getCachedSnapshot:emit 从此取真源,U02 桩撤)
+  { id: "kernel:storeSnapshot", file: "src/refresh/rooms/client/snapshot-cache-store.ts" },
+  // 工作路线读数(workRouteTable 的 ownWorkRouteSlotOf)
+  { id: "kernel:workRouteOwn", file: "src/client/kernel/work-route-own.ts" },
   { id: "kernel:storeDerived", file: "src/client/kernel/store-derived.ts" },
+  // 行动作(mkRowAction/actionColorOf/rowActionText)
+  { id: "kernel:rowActions", file: "src/client/kernel/row-actions.ts" },
+  // 链快照纯读(chainSteps = ListTab 主渲染路径的环境坏项计数;loadChain 等宿主通路走桩/缺席)
+  { id: "kernel:probeChain", file: "src/refresh/rooms/client/probe-chain-subscription.ts" },
+  // 颜色小件(hexA/darken:Pop/筛选行/行内标签)
+  { id: "kernel:probeSnapshotHelpers", file: "src/refresh/rooms/client/snapshot-sync-helpers.ts" },
+  // 页签时钟与文本(panelClock/panelNow/startText/newBugWayfinderText;DetailsDock 走桩)
+  { id: "kernel:router", file: "src/client/kernel/router.ts" },
+  // 入口浮层(EntryChooser 渲在页签行里;buildEntryCard 在前,上游 #1297 次序)
+  { id: "kernel:entryCard", file: "src/client/kernel/entry-card.ts" },
+  { id: "kernel:entryChoice", file: "src/client/kernel/entry-choice.ts" },
+  // 新会话动作(openTextInNewSession:页签 +bug 与行内「新会话」;apiNaming 等三件 typeof 守卫缺席)
+  { id: "kernel:apiNewSession", file: "src/client/kernel/api-new-session.ts" },
+  // IO 动作(inject/copyText/openInNewSession/fetchIssuesPage 上游真源;宿主电话走本仓 host 适配)
+  { id: "kernel:apiIo", file: "src/client/kernel/api-io.ts" },
   { id: "kernel:issuePages", file: "src/client/kernel/issue-pages.ts" },
+  // 动作分发器(NoRepoCard/行动作点击;契约常量已内联,零 declare)
+  { id: "kernel:actions", file: "src/client/kernel/actions.ts" },
   // ---- 工单 U03:视觉小件家族(上游 build.mts LEAF_MODULES 同名同序) ----
   { id: "leaf:chips", file: "src/client/views/shared/chips.ts" },
   { id: "leaf:tipPlace", file: "src/client/views/primitives/tipPlace.ts" },
@@ -292,6 +330,34 @@ export const LEAVES = [
   { id: "leaf:issueCard", file: "src/client/views/cards/PixelIssueCard.ts" },
   { id: "leaf:issueMapCard", file: "src/client/views/cards/PixelIssueMapCard.ts" },
   { id: "leaf:mapCard", file: "src/client/views/cards/PixelMapCard.ts" },
+  // ---- 工单 U04:列表页全家 + 页签壳(上游 index.ts 标记序原位,次序即依赖次序) ----
+  // 页签壳:共享 tabs 行(wayfinder/bug 入口 + EntryChooser + 液态墨块)
+  { id: "leaf:tabs", file: "src/client/views/shared/Tabs.ts" },
+  // 真相行(刷新事实的三档文案与 FallbackMark 的降级说明)
+  { id: "leaf:truthLines", file: "src/client/views/shared/truthLines.ts" },
+  { id: "leaf:fallbackMark", file: "src/client/views/shared/fallbackMark.ts" },
+  // 工作路线表(md 渲染的剥表视图;上游标记序在 truthLines 后)
+  { id: "leaf:workRouteTable", file: "src/client/views/shared/workRouteTable.ts" },
+  // 极简 md 渲染(MD_LINK_RE 等;列表页正文侧共用)
+  { id: "leaf:md", file: "src/client/views/shared/md.ts" },
+  // 票务小件(tProgressBar/tStatusBadge:TicketRow 的状态徽章与进度条)
+  { id: "leaf:ticket", file: "src/client/views/shared/ticket.ts" },
+  { id: "leaf:stateKind", file: "src/client/views/shared/stateKind.ts" },
+  // 地图详情内的票务行(U05+ 详情视图用;先按工单点名搬入,渲染路径休眠)
+  { id: "leaf:ticketRow", file: "src/client/views/TicketRow.ts" },
+  // 标签/行宽折叠(fitAllTags/fitMapRows 的四相测量)
+  { id: "leaf:tagsFit", file: "src/client/views/shared/tagsFit.ts" },
+  // 浮层底座(showPop:行内 +N 标签弹层)
+  { id: "leaf:pop", file: "src/client/floating/Pop.ts" },
+  // 无仓库卡/设置卡(上游引导态;本仓装配不挂载,搬入保序)
+  { id: "leaf:noRepoCard", file: "src/client/views/NoRepoCard.ts" },
+  { id: "leaf:setupCard", file: "src/client/views/SetupCard.ts" },
+  // 列表页本体一家:翻页行 → 行渲染 → 筛选行 → md 目录签 → ListTab(上游同一行标记序)
+  { id: "leaf:ListTabClosed", file: "src/client/views/ListTabClosed.ts" },
+  { id: "leaf:ListTabRow", file: "src/client/views/ListTabRow.ts" },
+  { id: "leaf:listFilterRow", file: "src/client/views/listFilterRow.ts" },
+  { id: "leaf:mdEffortRow", file: "src/client/views/mdEffortRow.ts" },
+  { id: "leaf:listTab", file: "src/client/views/ListTab.ts" },
 ];
 const CTX_BLOCK_FILE = "src/client/kernel/ctx.ts";
 
@@ -399,8 +465,29 @@ function runInMirror(scriptRel, label) {
 
 // 中央时间参数的客户端片段(上游 shared:timeConfig 同位):locale 生成器先跑时间参数生成器
 // (上游同链路,镜子里落 src/shared/time-config/src/values.ts);上游 buildTimeConfigClientFragment
-// 从域构建产物 values.js 里摘全量 ~200 名,本仓按当前叶子集用到的名字摘 —— 名单加叶子时同步扩。
-const CLIENT_TIME_NAMES = ["TIP_SHOW_DELAY_MS", "TIP_HIDE_DELAY_MS"]; // leaf:tip(Tip 预设的两档延时)
+// 按 CLIENT_TIME_NAMES 清单逐名摘「恰好一行 export const」(多行字面量如 TIME_YAML 不进闭包)。
+// U03 按叶子集摘 2 名;U04 起换成上游同一份 65 名清单(truthLines/ListTabRow/store-prefs/
+// probeChain 等叶子剥掉 time-config import 行后,名字都由这一片提供),值源 config/ YAML 不变。
+const CLIENT_TIME_NAMES = [
+  "MAP_TICKETS_TTL_MS", "SETTINGS_DEBUG_PUSH_WAIT_MS", "CLIENT_SESSION_TICK_MS", "CLIENT_HANDOFF_DELAY_MS",
+  "PROBE_AUTO_WAIT_MS", "SLOT_QUEUE_STEP_MS", "SLOT_MODAL_OPEN_DELAY_MS", "STORE_SWITCH_CONFIRM_MS",
+  "STATUS_MENU_DISMISS_DELAY_MS", "STATUS_MENU_HOVER_OPEN_DELAY_MS", "STATUS_MENU_FALLBACK_DELAY_MS",
+  "SNAPSHOT_PROBE_MS", "STORE_NOTICE_DISMISS_MS", "SNAPSHOT_PICKED_GUARD_MS", "ISSUE_DETAIL_CONFIRM_MS",
+  "COMMENT_RESULT_FLASH_MS", "COMMENTS_MORE_LOADING_MIN_MS", "COPY_FLASH_MS",
+  "SYNC_FALLBACK_PROBE_MS", "SYNC_FOCUS_PROBE_MIN_MS", "SYNC_SNAP_FRESH_MS", "SYNC_ISSUE_CACHE_TTL_MS",
+  "SYNC_EVAL_GAP_MS", "SYNC_DIRTY_PROBE_DEBOUNCE_MS", "SYNC_OVERLAP_SKEW_MS", "SYNC_FAILURE_BACKOFF_MS",
+  "SYNC_DIRTY_ECHO_TTL_MS", "SYNC_POLL_GRID_MS", "SYNC_ACTION_PROBE_WINDOW_MS",
+  "VC_TASK_POLL_INTERVAL_MS", "SNAP_WAIT_MS", "VIEW_FLAG_WRITE_DEBOUNCE_MS", "REST_FALLBACK_STALE_MS",
+  "TIP_SHOW_DELAY_MS", "TIP_HIDE_DELAY_MS", "VC_RELATIVE_WINDOW_MS", "DRAFT_REFOCUS_RETRY_MS",
+  "NAMING_RETRY_COOLDOWN_MS",
+  "PROBE_INTERVAL_MS", "PROBE_INTERVAL_YELLOW_MS", "PROBE_INTERVAL_LINGER_MS", "REBUILD_MIN_INTERVAL_YELLOW_MS",
+  "RECONCILE_INTERVAL_MS", "PREFLIGHT_TTL_MS", "CHAIN_BACKOFF_MS", "STEP_WAIT_MS", "FAILURE_HALF_OPEN_DELAY_MS",
+  "CHAIN_ALL_GREEN_TTL_MS", "PATCH_MERGE_WINDOW_MS", "DEFER_EXPIRY_MS", "ACTIVE_LINGER_MS",
+  "ATTENTION_HEARTBEAT_MS", "ATTENTION_EXPIRY_MS", "QUOTA_SYNC_INTERVAL_MS", "FRESHNESS_YELLOW_MS",
+  "FRESHNESS_RED_MS", "FALLBACK_PROBE_INTERVAL_MS", "FALLBACK_CALIBRATION_INTERVAL_MS",
+  "SKILL_FLOAT_CLOSE_DELAY_MS", "LABEL_COPY_FLASH_MS", "SKILL_DETAIL_COPIED_FLASH_MS",
+  "NATIVE_TAB_RETRY_INTERVAL_MS", "SKILL_SKELETON_DELAY_MS", "OWN_ROUTE_RETRY_MS",
+];
 
 /** 生成三类拼接输入到 .tmp/upstream-leaves:locale-data / prompt-data(生成器直出)+
  *  vocabulary.client.js(词表五份合段)+ time-config.client.js(中央时间参数按需摘名)。
@@ -437,7 +524,7 @@ export function generateUpstreamLeaves() {
     "utf8"
   );
   // 中央时间参数:镜像里的 values.ts(时间参数生成器直出)按全仓唯一口径转译后逐名摘行 ——
-  // 与上游「读域构建产物摘 export const 行」同一判定,值同源(config/intervals.yaml)。
+  // 与上游「读域构建产物摘 export const 行」同一判定(多行字面量不进闭包),值同源(config/ YAML)。
   const timeValues = readFileSync(join(GEN_MIRROR, "src", "shared", "time-config", "src", "values.ts"), "utf8");
   const timeJs = inlineExportDeclarations(
     esbuild.transformSync(timeValues, TRANSPILE_OPTIONS).code.replace(/\r\n/g, "\n").replace(/\s+$/, "") + "\n",
@@ -451,7 +538,7 @@ export function generateUpstreamLeaves() {
   }
   writeFileSync(
     join(outDir, "time-config.client.js"),
-    `// AUTO-GENERATED(中央时间参数客户端片段,上游 shared:timeConfig 同位;按需摘 ${CLIENT_TIME_NAMES.length} 名,值源 config/ YAML)。\n` +
+    `// AUTO-GENERATED(中央时间参数客户端片段,上游 shared:timeConfig 同位;全量摘 ${timeLines.length} 名,值源 config/ YAML)。\n` +
       timeLines.join("\n") +
       "\n",
     "utf8"

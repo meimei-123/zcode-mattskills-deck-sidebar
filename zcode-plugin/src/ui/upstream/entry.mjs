@@ -1,24 +1,28 @@
 // entry.mjs —— 上游 src/client/index.ts 的骨架裁剪段(U01 立;U02 扩 kernel 域与数据接驳;
-// U03 扩视觉层:timeConfig/portal/icons + 视觉小件 + cards 家族,卡面临时挂点见下)。
+// U03 扩视觉层;U04 撤卡面临时挂点,列表页全家 + 页签壳上线为主视图)。
 //
 // 本文件由 build-upstream.mjs 拼接后进 bundle:
 //   - `// ==== <kind>:<name> (spliced by build) ====` 标记处换上游叶子真源
 //     (标记名与次序对上游 index.ts 校验,是上游标记序的保序子序列);
 //   - apply 头部注入 kernel:ctx(上游 wireCtx 同位);
 //   - 「@splice-anchor: trackerDeck」行是本仓自有锚点(上游无此标记):tracker 侧真源
-//     (progress/deck-counts/tabsfold/deck-derive)经它注入同一闭包 —— 上游客户端闭包不含
-//     这几份(宿主在服务侧消费),本仓把数据面接进闭包,不冒充上游标记名;
+//     (progress/deck-counts/tabsfold/deck-derive)经它注入同一闭包;
 //   - 标记之间的装配段:上游 index.ts 已有装配段(locale/tr 回退、TYPE_ICON、
-//     styles.insert(PIXEL_CARDS_STYLE_TEXT))按原文搬;其余是本仓自有段(后续工单继续换
-//     leaf:panelAssembly 等上游叶子)。
+//     styles.insert(PIXEL_CARDS_STYLE_TEXT))按原文搬;其余是本仓自有段。
 //
 // 方言(上游动态版方言同款):apply 闭包里的 React/styles/timer/h 等自由变量解析到
 // 模块作用域 —— 上游由 DSH 宿主提供;本 bundle 用 preact/compat 充当 React(ADR-0002
 // 修订),styles 走上游 pkg 产物同款 B2 接缝 shim。
+//
+// 工单 U04 的宿主面口径(装配段里有对应注释,报告里列明):
+//   - host:上游叶子对 DSH 宿主电话的出口统一是 host.call('wf.*');ZCode 这边唯一接通的是
+//     wf.issuesPage(历史票翻页 → deck_issue_list 客户端分页),其余电话回 unsupported 形状;
+//   - snapFresh/loadSnapshot/scheduleActionProbe/DetailsDock 四个名字是最小桩(refresh rooms
+//     家族与 Dock 不搬:数据面是 boot/ingest,详情视图是 U05+)。
 import * as PreactCompat from "preact/compat";
 import { h, render } from "preact";
 import { createSeamCtx, SEAM_SERVICE_IDS } from "./seam.mjs";
-import { ingestSnapshot, trackerDeckOf } from "./ingest.mjs";
+import { ingestSnapshot, trackerDeckOf, panelRowOf } from "./ingest.mjs";
 
 const React = PreactCompat;
 // ReactDOM 名字给 kernel:portal 的挂顶底座(上游由宿主注入 react-dom;preact/compat 的
@@ -45,15 +49,92 @@ const styles = {
 const deckPanelState = { st: null };
 // apply 内装配段设置的接线口(闭包内的上游 kernel 名字只有 apply 里看得见,boot 经它回调)
 let showDeckDataRef = null;
+// 工具桥位(U04):host 适配的 wf.issuesPage 要打 deck_issue_list,boot 握到 client 后存这儿。
+let clientRef = null;
 
 function apply(ctx) {
   const slots = ctx.get("slots");
   if (slots === undefined) return;
+  // localStorage 兜底(kernel:log 求值期直取;真实沙箱 allow-same-origin 下存在,Node 测试环境给内存桩)
+  const localStorage = (typeof globalThis.localStorage === "object" && globalThis.localStorage) || {
+    _m: {},
+    getItem(k) { return Object.prototype.hasOwnProperty.call(this._m, k) ? this._m[k] : null; },
+    setItem(k, v) { this._m[k] = String(v); },
+    removeItem(k) { delete this._m[k]; },
+  };
+  // ---- U04 宿主适配与桩(提前到首标记之前:kernel:log 等叶子在求值期就抓 host,TDZ 防护) ----
+  // ---- U04 装配段(本仓自有) ----
+  // 宿主适配(U04):上游叶子对 DSH 宿主的电话出口统一是 host.call('wf.*')。ZCode 这边唯一
+  // 接通的是 wf.issuesPage(历史票翻页,上游契约见 api-io.ts 的 fetchIssuesPage)—— 按我们
+  // list 工具口径接:deck_issue_list 全量枚举 + state 过滤,游标做客户端分页(偏移量语义,
+  // nextCursor = 下一页起点的十进制串);effortId 在客户端过滤(md 目录签换工作单元时换页)。
+  // 其余 wf.* 电话(ZCode 数据面没有对应物)回八档里的 unsupported 形状,上游消费方按各自
+  // 兜底分支走,不抛。
+  const issuesPageOverList = function (args) {
+    const o = args || {};
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") {
+      return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
+    }
+    const state = o.state === "open" || o.state === "closed" ? String(o.state) : "all";
+    return client
+      .callTool("deck_issue_list", { state: state })
+      .then(function (res) {
+        const rows = (res && res.structuredContent && res.structuredContent.rows) || [];
+        let pool = rows.slice();
+        if (o.effortId) pool = pool.filter(function (r) { return String((r && r.effortId) || "") === String(o.effortId); });
+        // 页内顺序与上游「后端给什么用什么」同理:全量枚举按编号升序,稳定可复现
+        pool.sort(function (a, b) { return (a && a.key ? String(a.key) : "").localeCompare(b && b.key ? String(b.key) : ""); });
+        const limit = typeof o.limit === "number" && o.limit > 0 ? o.limit : 50;
+        const offset = parseInt(o.cursor, 10) || 0;
+        const items = pool.slice(offset, offset + limit).map(panelRowOf);
+        const total = pool.length;
+        const nextCursor = offset + items.length < total ? String(offset + items.length) : null;
+        return { ok: true, items: items, nextCursor: nextCursor, total: total };
+      })
+      .catch(function (e) {
+        return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
+      });
+  };
+  const host = {
+    // ZCode 宿主适配(wf.* → 工具桥;未接的电话一律 unsupported,不抛)
+    call: function (method, args) {
+      if (method === "wf.issuesPage") return issuesPageOverList(args);
+      return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U04)", raw: "" } });
+    },
+  };
+
+  // 宿主专属名最小桩(U02 惯例;与被搬叶子的关系逐条列明,缺一即崩的点都有对应上游真源):
+  //   snapFresh / loadSnapshot —— 上游住在 refresh rooms 家族(refresh-timer/snapshot-sync),
+  //     服务 DSH 宿主的快照刷新;ZCode 数据面是 boot({fetchData}) → ingest,不存在「过期重拉」
+  //     这条通路。页签点击时上游逻辑是 `if (!snapFresh(s)) loadSnapshot(s, false)`,桩给
+  //     snapFresh=true(永远新鲜 → loadSnapshot 不被调),loadSnapshot 给无操作兜底。
+  //   scheduleActionProbe —— 上游 api-io 的 inject 后排一次探测刷新(refresh-timer);ZCode 无
+  //     刷新回合,给空函数(调用点 api-io inject 与 348 行的 typeof 守卫各得其所)。
+  //   DetailsDock —— 上游 router 的 DeckSidebarTab 渲的是整套 Dock(U05+ 的详情/页签内容分发);
+  //     本票给 null 组件占位,U05 详情视图接手后撤。
+  const snapFresh = function (st) {
+    void st; // U04 桩:数据面是 boot/ingest,页签点击不触发快照重拉
+    return true;
+  };
+  const loadSnapshot = function (st, force) {
+    void st;
+    void force; // U04 桩:snapFresh 恒真,此函数不会被调到;留兜底防其它路径
+    return Promise.resolve(null);
+  };
+  const scheduleActionProbe = function () {}; // U04 桩:无刷新回合
+  const DetailsDock = function () {
+    return null; // U04 桩:U05 详情视图挂点(行点击 setActive* 后的路由目标)
+  };
+
   // ==== leaf:hostShim (spliced by build) ====
   // ==== shared:timeConfig (spliced by build) ====
   // ==== kernel:portal (spliced by build) ====
   // ==== kernel:containerView (spliced by build) ====
   // ==== kernel:ticketLabel (spliced by build) ====
+  // ---- 工单 U04:kernel 依赖缺口(declare 差集追闭;次序 = 上游 index.ts 标记序) ----
+  // ==== kernel:backendList (spliced by build) ====
+  // ==== kernel:link (spliced by build) ====
   // ==== kernel:motion (spliced by build) ====
   // ==== kernel:styles (spliced by build) ====
   styles.insert(STYLE_TEXT);
@@ -80,16 +161,35 @@ function apply(ctx) {
 
   // ---- 词表五份(票身份算法:effortOf/idOf/idOfParts/refKeyOf + 常量) ----
   // ==== shared:trackerConstants (spliced by build) ====
+  // ---- 会话命名(Tabs 的 + bug 预填标题;上游 shared: 片段,标记序在 icons 之前) ----
+  // ==== shared:namingTitles (spliced by build) ====
   // ---- TYPE_ICON 装配行(上游 index.ts §1 段原文照搬:chips 的 TypeChip 读它) ----
   // 图标按类型分发。issue(普通票:没有 wayfinder 类型标签的票)故意没有图标 —— 徽章只出文字、灰底,
   // 前面挂一个圆点像多出来的项目符号,去掉后文字才左右对称;齿轮必须留给任务票,不让普通票兜底落进去(#626)
   const TYPE_ICON = { research: 'search', prototype: 'hammer', grilling: 'chat', task: 'gear', map: 'map' }
   // ==== kernel:icons (spliced by build) ====
+  // ==== kernel:healthCheck (spliced by build) ====
   // ==== kernel:promptData (spliced by build) ====
   // ==== kernel:prompts (spliced by build) ====
+  // ==== kernel:promptsBackend (spliced by build) ====
+  // ==== kernel:config (spliced by build) ====
+  // ==== kernel:log (spliced by build) ====
+  // ==== shared:refreshBudget (spliced by build) ====
+  // ==== kernel:storePrefs (spliced by build) ====
   // ==== kernel:deckState (spliced by build) ====
+  // ==== kernel:storeSnapshot (spliced by build) ====
+  // ==== kernel:workRouteOwn (spliced by build) ====
   // ==== kernel:storeDerived (spliced by build) ====
+  // ==== kernel:rowActions (spliced by build) ====
+  // ==== kernel:probeChain (spliced by build) ====
+  // ==== kernel:probeSnapshotHelpers (spliced by build) ====
+  // ==== kernel:router (spliced by build) ====
+  // ==== kernel:entryCard (spliced by build) ====
+  // ==== kernel:entryChoice (spliced by build) ====
+  // ==== kernel:apiNewSession (spliced by build) ====
+  // ==== kernel:apiIo (spliced by build) ====
   // ==== kernel:issuePages (spliced by build) ====
+  // ==== kernel:actions (spliced by build) ====
   /* @splice-anchor: trackerDeck */
 
   // ---- 视觉小件 + cards 家族(工单 U03;上游 index.ts 标记序原位) ----
@@ -126,23 +226,26 @@ function apply(ctx) {
   // ==== leaf:mapCard (spliced by build) ====
   styles.insert(PIXEL_CARDS_STYLE_TEXT);
 
-  // ---- U02 装配段(本仓自有) ----
-  // 宿主专属名字的最小桩(上游由 DSH 宿主在闭包外提供;此处记录缺口,不删上游代码):
-  //   emit/stores/shared/keyOf —— 上游宿主广播与按会话 store 表;ZCode 页签没有对应物,
-  //     emit 给空广播(deck-state 写开关后的重画、issuePages 的加载通知静默),其余三名字
-  //     上游叶子全部 typeof 守卫,缺席即按缺省分支走,无需占位。
-  //   fetchIssuesPage —— 上游住在 kernel:apiIo(listPage 分页通路);ZCode 数据面暂无分页,
-  //     回 unsupported(loadIssuePage 按上游口径记 notice='noweb',不撞)。
-  const emit = function (st) {
-    void st; // U02 桩:无宿主广播;数据刷新由本段 rerenderPanels 承担
-  };
-  const fetchIssuesPage = function (st, args) {
-    void st;
-    void args;
-    return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 数据面暂无 listPage 分页通路(U02 桩)" } });
-  };
+  // ---- 列表页全家 + 页签壳(工单 U04;上游 index.ts 标记序原位) ----
+  // ==== leaf:tabs (spliced by build) ====
+  // ==== leaf:truthLines (spliced by build) ====
+  // ==== leaf:fallbackMark (spliced by build) ====
+  // ==== leaf:workRouteTable (spliced by build) ====
+  // ==== leaf:md (spliced by build) ====
+  // ==== leaf:ticket (spliced by build) ====
+  // ==== leaf:stateKind (spliced by build) ====
+  // ==== leaf:ticketRow (spliced by build) ====
+  // ==== leaf:tagsFit (spliced by build) ====
+  // ==== leaf:pop (spliced by build) ====
+  // ==== leaf:noRepoCard (spliced by build) ====
+  // ==== leaf:setupCard (spliced by build) ====
+  // ==== leaf:ListTabClosed (spliced by build) ====
+  // ==== leaf:ListTabRow (spliced by build) ====
+  // ==== leaf:listFilterRow (spliced by build) ====
+  // ==== leaf:mdEffortRow (spliced by build) ====
+  // ==== leaf:listTab (spliced by build) ====
 
-  // Ctx 接线(上游 panelAssembly §5.11 同款,八字段冻结清单)
+  // Ctx 接线(上游 panelAssembly §5.11 同款,八字段冻结清单;router 接真源 store-prefs)
   const cx = createCx({
     ctx: ctx,
     h: h,
@@ -151,7 +254,7 @@ function apply(ctx) {
     localeSvc: localeSvc,
     timer: timer,
     api: null,
-    router: null,
+    router: { setActiveIssue: setActiveIssue, setActiveMap: setActiveMap, pushNav: pushNav, panelClock: panelClock },
   });
   const withCx = function (Comp) {
     return function (props) {
@@ -159,100 +262,40 @@ function apply(ctx) {
     };
   };
 
-  // 面板壳:上游 dsws-panel 浮卡(460px、深色 --dsw-* 令牌回退值),结构对应上游 Dock 的
-  // 头/页签/正文三段;U02 起正文头部显示上游 kernel 算出的 counts(checksumsOf/ListTab 的
-  // 面板口径:可接 = 后端 open - 占用;占用/故障/诊断读 issues 域,见 ingest 头注与对拍测试)。
-  // ---- U03 卡面临时挂点(本仓自有段;U04 由列表/地图视图层接手后撤) ----
-  // 投影口径是上游 mapDetailV2/model/tickets/ticketCardFacts.ts 的同构裁剪:动作映射取
-  // 标签→样张键的小表,墙格四态色点(c 已关/f 可接/w 已认领/b 被挡)。挑第一个带子票的
-  // 容器画一张 PixelMapCard,其第一张子票画一张 PixelIssueCard。
-  const DEMO_LABEL_ACTION = { bug: "fix", "needs-triage": "diagnose", "needs-info": "supplement", "ready-for-human": "claim", "ready-for-agent": "execute" };
-  const demoActionOf = function (row) {
-    for (const l of row.labels || []) if (DEMO_LABEL_ACTION[l && l.name]) return DEMO_LABEL_ACTION[l.name];
-    return "execute";
-  };
-  const demoDayOf = function (row) {
-    return String((row && (row.updatedAt || row.createdAt)) || "").slice(0, 10);
-  };
-  const demoBlockedBy = function (row, sib) {
-    const first = Array.isArray(row.blockedBy) ? row.blockedBy[0] : null;
-    if (first == null) return null;
-    const no = typeof first === "object" && first.key != null ? String(first.key) : String(first);
-    const hit = (sib || []).filter(function (t) { return String(t.key) === no; })[0];
-    return { no: no, title: (hit && hit.title) || "" };
-  };
-  const demoDotOf = function (t) {
-    const closed = String(t.state || "").toUpperCase() === "CLOSED";
-    const blocked = Array.isArray(t.blockedBy) && t.blockedBy.length > 0;
-    const claimed = !!(t.claimedBy && t.claimedBy !== "");
-    const cls = closed ? "c" : blocked ? "b" : claimed ? "w" : "f";
-    const stateText = closed ? tr("card.closedState") : blocked ? tr("card.blockedCount") : claimed ? tr("card.doing") : tr("card.pickReady");
-    return { no: String(t.key), cls: cls, stateText: stateText, title: t.title || "" };
-  };
-  const demoCardsNodes = function (st) {
-    if (!st || !st.snapshot) {
-      return ["U03:等待工具数据(deck_issue_list / deck_issue_counts)…"];
-    }
-    const maps = st.snapshot.maps || [];
-    const container = maps.filter(function (m) { return (m.tickets || []).length > 0; })[0];
-    if (!container) return ["快照里没有带子票的容器,卡面待机"];
-    const tickets = container.tickets || [];
-    const colorOf = buildColorOf(st);
-    const t = tickets[0];
-    return [
-      h(PixelIssueCard, {
-        noText: String(t.key),
-        title: t.title,
-        action: demoActionOf(t),
-        closed: String(t.state || "").toUpperCase() === "CLOSED",
-        bugCorner: (t.labels || []).some(function (l) { return l && l.name === "bug"; }),
-        tags: (t.labels || []).map(function (l) { return { text: l.name, color: colorOf[l.name] || "" }; }),
-        claimedBy: t.claimedBy || "",
-        blockedBy: demoBlockedBy(t, tickets),
-        updatedText: demoDayOf(t),
-        colorOf: colorOf,
-      }),
-      h(PixelMapCard, {
-        mapNo: String(container.key),
-        title: container.title,
-        open: String(container.state || "").toUpperCase() !== "CLOSED",
-        updatedText: demoDayOf(container),
-        dateText: "",
-        dots: tickets.map(demoDotOf),
-      }),
-    ];
-  };
-
-  const kpiSpan = function (num, label, color) {
-    return h("span", { style: { fontSize: 11, color: color || "var(--dsw-alias-label-secondary,#a1a1aa)" } }, [
-      h("b", { style: { fontWeight: 700 } }, [String(num == null ? tr("list.countsUnknown") : num)]),
-      " " + label,
-    ]);
-  };
+  // ---- 主视图(工单 U04:页签壳 + KPI 头 + 筛选 + 三段列表 + 关闭票折叠,全部来自上游叶子;
+  //      U03 的卡面临时挂点在此撤销,卡面组件仍经 cards 自检面供给) ----
+  // 结构对上游 panel/Dock.ts 的头部三段:dsws-head(标题)/dsws-tabs(useTabsRow 的墨块 + 页签
+  // 与 wayfinder、bug 入口、EntryChooser)/dsws-body(按 st.tab 分发;本票只有 list 是真视图,
+  // 其余页签占位待后续工单搬入)。
+  // 门组件(上游 #670 同款):无数据先画 dsws-hold 空壳,有数据才挂 DeckBody ——
+  // hooks(useTabsRow 等)只在 DeckBody 里调,渲染次数变化不破坏 hook 次序。
   const DeckShell = function () {
+    if (!deckPanelState.st) return h("div", { className: "dsws-hold" });
+    return h(DeckBody, null);
+  };
+  const DeckBody = function () {
     const st = deckPanelState.st;
-    const countsRow = st
-      ? (function () {
-          const dc = deckCountsOf(st, false);
-          const occ = occCount(st);
-          const takeable = dc ? Math.max(0, dc.open - occ) : frontierCount(st);
-          return h("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } }, [
-            kpiSpan(takeable, tr("list.kpi.takeable"), "#4ade80"),
-            kpiSpan(occ, tr("list.kpi.occupied"), "#f0883e"),
-            kpiSpan(dc ? dc.closed : null, tr("list.kpi.closed"), "#52525b"),
-            kpiSpan(bugCount(st), tr("nav.bug"), "#f85149"),
-            kpiSpan(triageCount(st), tr("nav.triage"), "#d29922"),
-          ]);
-        })()
-      : h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, [
-          "U02:等待工具数据(deck_issue_list / deck_issue_counts)…",
-        ]);
+    const [, setTick] = React.useState(0);
+    React.useEffect(function () {
+      // emit→重画已由骨架层 sub(st, rerenderPanels) 承担(U04);组件内再订阅会双渲染竞态
+      return undefined;
+    }, [st]);
+    const tabsRef = React.useRef(null);
+    const tabs = st ? useTabsRow(st, tabsRef) : { items: [] };
+    const narrow = false;
     return h("div", { className: "dsws-panel" }, [
       h("div", { className: "dsws-head" }, [h("span", { className: "dsws-mtitle" }, [tr("panel.title")])]),
-      h("div", { className: "dsws-tabs" }),
+      h(
+        "div",
+        { className: "dsws-tabs dsws-ink-host", ref: function (el) { tabsRef.current = el; tabs.inkHostRef.current = el; }, style: { padding: "0 12px 7px", borderBottom: "1px solid var(--dsw-alias-border-l1,#2a2d35)", flex: "none", display: "flex", alignItems: "center", gap: 4 } },
+        [tabs.inkEl].concat(tabs.items)
+      ),
       h("div", { className: "dsws-body" }, [
-        h("div", { className: "dsws-cgroup" }, [countsRow]),
-        h("div", { className: "dsws-cgroup" }, demoCardsNodes(st)),
+        !st
+          ? h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)" } }, ["U04:等待工具数据(deck_issue_list / deck_issue_counts)…"])
+          : st.tab === "list"
+            ? h(ListTab, { st: st, narrow: narrow })
+            : h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tab" + (st.tab === "skills" ? "Skills" : st.tab === "checks" ? "Checks" : "Pr")) + " 页:U06+ 搬入"]),
       ]),
     ]);
   };
@@ -261,7 +304,8 @@ function apply(ctx) {
     return slots.register({ name: "sidebar.right.pane.tab", key: "zcode-mattpocock-skills-deck/deck:map" }, withCx(DeckShell));
   });
 
-  // 数据接驳:boot 拉回工具数据后回调 —— ingest 进上游状态机,重画面板,控制台留档
+  // 数据接驳:boot 拉回工具数据后回调 —— ingest 进上游状态机(makeStore 的上游初值 + 面板快照,
+  // snapMode 拨 real),重画面板,控制台留档。
   const rerenderPanels = function () {
     try {
       for (const rec of slots.registered()) {
@@ -272,17 +316,22 @@ function apply(ctx) {
     }
   };
   showDeckDataRef = function (data) {
-    const st = ingestSnapshot(
+    const st = Object.assign(makeStore(), ingestSnapshot(
       { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: data.workspaceRoot },
       { planDeckCounts: planDeckCounts, rowCountsOf: rowCountsOf }
-    );
+    ));
+    st.snapMode = "real"; // 快照已到手(上游 hydrateFromCache 同款拨位)
+    st.workspaceRoot = data.workspaceRoot || st.cwd;
     deckPanelState.st = st;
+    // emit→重画订阅挂在骨架层(不等组件 useEffect:上游面板在组件里订阅,本骨架单壳等价、更稳)
+    try { sub(st, rerenderPanels); } catch (eSub) { /* 订阅失败不挡首渲 */ }
     // 控制台留档(工单验收:数据接通可见) —— 同池九口径 + 面板口径一起打出
     try {
       const stats = deriveDeck(trackerDeckOf(data.rows)).stats;
       const dc = deckCountsOf(st, false);
+      const occ = occCount(st);
       console.log("[upstream] kernel counts(整池 deriveDeck):", JSON.stringify(stats));
-      console.log("[upstream] kernel counts(面板口径):", JSON.stringify({ takeable: dc ? Math.max(0, dc.open - occCount(st)) : null, occupied: occCount(st), closed: dc ? dc.closed : null, bug: bugCount(st), triage: triageCount(st), source: dc ? dc.source : null }));
+      console.log("[upstream] kernel counts(面板口径):", JSON.stringify({ takeable: dc ? Math.max(0, dc.open - occ) : null, occupied: occ, closed: dc ? dc.closed : null, bug: bugCount(st), triage: triageCount(st), source: dc ? dc.source : null }));
     } catch (e) {
       if (typeof console !== "undefined" && console.warn) console.warn("[upstream] counts 留档失败:", e);
     }
@@ -319,7 +368,7 @@ function apply(ctx) {
     uiText: uiText, langChainOf: langChainOf, promptText: promptText, promptLanguages: promptLanguages,
   };
 
-  // 视觉层自检面(工单 U03;U04 视图层的接口约定):
+  // 视觉层自检面(工单 U03;视图层的接口约定):
   //   cards.PixelIssueCard / PixelIssueMapCard / PixelMapCard —— 三张大卡组件(props 契约见
   //     上游 views/cards/cardProps.d.ts,全字段可选);
   //   cards.atoms —— 共享小件(Pin/Title/No/Tags/Note/Foot/角标与封条/按钮组/点墙/卡头);
@@ -357,12 +406,38 @@ function apply(ctx) {
       render(h(withCx(Component), props || {}), container);
     },
   };
+
+  // 列表层自检面(工单 U04;U05 详情视图的接口约定):
+  //   list.ListTab —— 主列表组件(props {st, narrow});list.useTabsRow —— 页签行 hook;
+  //   list.rowHelpers —— 行渲染三件(listIssueRow/TicketRow/listFilterRowNode/closedPagesNode/
+  //     mdEffortRowNode/truthNoticeLines)供 U05+ 详情页复用;
+  //   list.storeOf() —— 面板 store(deckPanelState.st;boot 接驳后非空);
+  //   list.renderInto —— 与 cards.renderInto 同款挂载助手。
+  window.MattSkillsUpstream.list = {
+    ListTab: ListTab,
+    useTabsRow: useTabsRow,
+    rowHelpers: {
+      listIssueRow: listIssueRow, TicketRow: TicketRow, listFilterRowNode: listFilterRowNode,
+      closedPagesNode: closedPagesNode, mdEffortRowNode: mdEffortRowNode, truthNoticeLines: truthNoticeLines,
+      setActiveIssue: setActiveIssue, setActiveMap: setActiveMap, pushNav: pushNav,
+    },
+    storeOf: function () {
+      return deckPanelState.st;
+    },
+    // 上游点击记忆是闭包级内存表(store-prefs 的 labelClicks,非 st 字段);经此读给缝 2 断言
+    labelClicksOf: function () {
+      return labelClicks;
+    },
+    renderInto: function (Component, container, props) {
+      render(h(withCx(Component), props || {}), container);
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
 // 引导(本仓自有段):panel.html 内联脚本注入本 bundle 后调 boot —— 复用同一条桥,
-// 握手两拍(panel.html 侧已定);U02 起再把工具数据(deck_issue_list/counts)拉回、
-// 经 ingest 喂给上游 kernel,面板壳显示 kernel 算出的 counts。
+// 握手两拍(panel.html 侧已定);fetchData:true(配置翻 on)或显式 deckData 才接数据
+// (共存纪律:默认只起壳,旧 UI 的桥流量是它自己的测试契约,上游壳不偷跑)。
 // ---------------------------------------------------------------------------
 const WORKSPACE_URI = "ui://zcode-mattpocock-skills-deck/workspace.json";
 
@@ -411,6 +486,7 @@ async function fetchDeckData(client) {
 async function boot(deps) {
   const d = deps || {};
   const client = d.client || null;
+  clientRef = client; // host 适配(wf.issuesPage → deck_issue_list)经它打电话
   const doc = d.doc || (typeof document !== "undefined" ? document : null);
   const workspace = d.workspace || (await fetchWorkspace(client));
   // surface 根:上游面板挂宿主右栏;这里自建根元素承载(seam 把槽位组件渲进去)
@@ -422,8 +498,6 @@ async function boot(deps) {
   }
   const ctx = createSeamCtx({ client: client, doc: doc, root: root, workspace: workspace });
   apply(ctx);
-  // 共存纪律(panel.html 同款约定):默认只起壳不拉数据 —— 旧 UI 的桥流量(如 deck_issue_list
-  // 的调用次数)是它自己的测试契约,上游壳不偷跑;fetchData:true(配置翻 on)或显式 deckData 才接数据。
   const data = d.deckData || (d.fetchData === true ? await fetchDeckData(client) : null);
   if (data && showDeckDataRef) {
     try {
