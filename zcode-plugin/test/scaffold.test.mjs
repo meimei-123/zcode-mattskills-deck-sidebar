@@ -11,7 +11,6 @@ const require = createRequire(import.meta.url);
 
 const PLUGIN_NAME = "zcode-mattpocock-skills-deck";
 const PANEL_URI = `ui://${PLUGIN_NAME}/panel.html`;
-const GUIDE_TEXT = "此工作区还没有 .scratch/ 工单目录";
 
 let failures = 0;
 function check(name, cond, detail = "") {
@@ -74,7 +73,7 @@ if (existsSync(mkPath)) {
 // --- 4. panel.html 是小引导页:经 __pluginClient 资源机制拉真 UI 资产(ui-host.md 引导五步)。
 //        引导态/列表文案随应用进 bundle,深色兜底留在页内。 ---
 const panelPath = join(ROOT, "dist", "ui", "panel.html");
-const bundlePath = join(ROOT, "dist", "ui", "bundle-0.txt");
+const bundlePath = join(ROOT, "dist", "ui", "bundle-1.txt");
 if (existsSync(panelPath)) {
   const html = readFileSync(panelPath, "utf8");
   check("panel 是引导页:内置 __pluginClient", html.includes("__pluginClient"));
@@ -85,15 +84,19 @@ if (existsSync(panelPath)) {
   check("panel 深色背景", /background(-color)?:\s*#0|background(-color)?:\s*#1/.test(html));
   const body = html.replace(/<script[\s\S]*?<\/script>/g, "");
   check("panel 无演示卡片数据", !/TODO-\d|ticket-\d|MS-\d/i.test(body));
+  // U06 收口:旧 ms-* 层退役 —— 诊断金丝雀与双 bundle 切换不得还魂
+  check("panel 无诊断金丝雀(#diag / boot 日志)", !html.includes("#diag") && !html.includes("diag"));
+  check("panel 无 bundle-0 / panel.css / 切换开关", !html.includes("bundle-0") && !html.includes("panel.css") && !html.includes("mattskills-upstream"));
 } else {
   check("panel.html 可读(供文案断言)", false);
 }
-check("dist/ui/bundle-0.txt 存在(app.js 换名产物)", existsSync(bundlePath));
-check("dist/ui/panel.css 存在", existsSync(join(ROOT, "dist", "ui", "panel.css")));
+check("dist/ui/bundle-1.txt 存在(上游复刻 bundle)", existsSync(bundlePath));
+check("dist/ui/bundle-0.txt 已随旧层退役", !existsSync(join(ROOT, "dist", "ui", "bundle-0.txt")));
+check("dist/ui/panel.css 已随旧层退役", !existsSync(join(ROOT, "dist", "ui", "panel.css")));
 check("dist/ui/assets.json 存在", existsSync(join(ROOT, "dist", "ui", "assets.json")));
 if (existsSync(bundlePath)) {
   const bundle = readFileSync(bundlePath, "utf8");
-  check("bundle 含中文引导文案(空工作区引导态)", bundle.includes(GUIDE_TEXT));
+  check("bundle 定义 MattSkillsUpstream(上游复刻壳)", bundle.includes("MattSkillsUpstream"));
   check("bundle 指向 setup 技能", bundle.includes("/setup-matt-pocock-skills"));
   check("bundle 指向 to-tickets 技能", bundle.includes("/to-tickets"));
   check("bundle 无 import(资源通道只搬文本)", !/\bimport\s*["'"]/.test(bundle));
@@ -160,16 +163,17 @@ async function smoke() {
     check("resources/read 返回 panel HTML(引导页)", text.includes("__pluginClient"));
 
     // 资产模板(工单 03):白名单内可读,白名单外与未知 URI 都拒绝
-    const css = await rpc("resources/read", { uri: "ui://zcode-mattpocock-skills-deck/assets/panel.css" });
-    check("assets/read panel.css(text/plain)",
-      css.result?.contents?.[0]?.mimeType === "text/plain" && /\.ms-/.test(css.result?.contents?.[0]?.text || ""),
-      JSON.stringify(css.error || css.result?.contents?.[0]?.mimeType));
-    const bundle = await rpc("resources/read", { uri: "ui://zcode-mattpocock-skills-deck/assets/bundle-0.txt" });
-    check("assets/read bundle-0.txt", !bundle.error && /MattSkillsPanel/.test(bundle.result?.contents?.[0]?.text || ""));
+    const bundle = await rpc("resources/read", { uri: "ui://zcode-mattpocock-skills-deck/assets/bundle-1.txt" });
+    check("assets/read bundle-1.txt(text/plain,含上游壳)",
+      bundle.result?.contents?.[0]?.mimeType === "text/plain" && /MattSkillsUpstream/.test(bundle.result?.contents?.[0]?.text || ""),
+      JSON.stringify(bundle.error || bundle.result?.contents?.[0]?.mimeType));
+    const gone = await rpc("resources/read", { uri: "ui://zcode-mattpocock-skills-deck/assets/bundle-0.txt" });
+    check("assets/read bundle-0.txt 已随旧层退役(读不到)", !!gone.error, JSON.stringify(gone.result?.contents?.[0]?.uri || gone.error));
     const manifest = await rpc("resources/read", { uri: "ui://zcode-mattpocock-skills-deck/assets/assets.json" });
-    check("assets/read assets.json(application/json)",
+    check("assets/read assets.json(application/json,scripts 只有 bundle-1)",
       manifest.result?.contents?.[0]?.mimeType === "application/json" &&
-        JSON.parse(manifest.result?.contents?.[0]?.text || "{}")?.scripts?.[0] === "bundle-0.txt");
+        JSON.stringify(JSON.parse(manifest.result?.contents?.[0]?.text || "{}")?.scripts) === '["bundle-1.txt"]',
+      manifest.result?.contents?.[0]?.text);
     const evil = await rpc("resources/read", { uri: "ui://zcode-mattpocock-skills-deck/assets/server.mjs" });
     check("assets 白名单外文件拒绝", evil.error?.code === -32002, JSON.stringify(evil.error));
 
@@ -183,23 +187,6 @@ async function smoke() {
     check("server 冒烟无异常", false, e.message);
     child.kill();
   }
-}
-
-// ---- 文案表静态自检(copy.mjs 头注约定):键族前缀、占位符花括号平衡、九档动作键齐 ----
-await import(new URL("../src/ui/copy.mjs", import.meta.url).href); // 挂 globalThis.MattSkillsCopy
-{
-  const COPY = globalThis.MattSkillsCopy || {};
-  const keys = Object.keys(COPY);
-  check("copy 文案表非空", keys.length > 30, String(keys.length));
-  const badKey = keys.find((k) => !/^(panel|nav|list|card|detail|tip|act|writer)\./.test(k));
-  check("copy 键全带家族前缀", !badKey, badKey || "");
-  const badBrace = keys.find((k) => {
-    const v = String(COPY[k]);
-    return (v.match(/\{/g) || []).length !== (v.match(/\}/g) || []).length || /\{(?![A-Za-z0-9_]+\})/.test(v);
-  });
-  check("copy 占位符花括号平衡且形如 {n}", !badBrace, badBrace || "");
-  const nine = ["diagnose", "fix", "execute", "claim", "supplement", "research", "grill", "proto", "implement"];
-  check("copy 九档动作键齐(card.act.*)", nine.every((k) => typeof COPY["card.act." + k] === "string"));
 }
 
 await smoke();

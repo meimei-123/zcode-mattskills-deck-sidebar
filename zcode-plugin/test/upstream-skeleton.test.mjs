@@ -223,17 +223,16 @@ if (existsSync(BUNDLE)) {
 // (finishShellChecks 之后追加;server 侧用真 dist/server.mjs + fixtures 预录)
 // ---------------------------------------------------------------------------
 async function integrationChecks() {
-  // assets.json:bundle-1 进清单,bundle-0 仍居首(旧引导序不变)
+  // assets.json:U06 收口后清单只有 bundle-1(旧 bundle-0/panel.css 随层退役)
   const manifestPath = join(ROOT, "dist", "ui", "assets.json");
   if (existsSync(manifestPath)) {
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    check("assets.json scripts 仍以 bundle-0 开头(旧 UI 引导序不变)", manifest.scripts?.[0] === "bundle-0.txt");
-    check("assets.json scripts 含 bundle-1(上游壳 bundle)", manifest.scripts?.includes("bundle-1.txt"));
+    check("assets.json scripts 只列 bundle-1.txt", JSON.stringify(manifest.scripts) === '["bundle-1.txt"]', JSON.stringify(manifest.scripts));
   } else {
     check("dist/ui/assets.json 存在", false);
   }
 
-  // panel.html:并存入口 + 回退开关;握手两拍事故锁(第二拍绝不能丢,真机事故定案)
+  // panel.html:唯一入口(上游壳);握手两拍事故锁(第二拍绝不能丢,真机事故定案)
   const panelPath = join(ROOT, "dist", "ui", "panel.html");
   if (existsSync(panelPath)) {
     const html = readFileSync(panelPath, "utf8");
@@ -243,7 +242,12 @@ async function integrationChecks() {
       html.includes("ui/notifications/initialized")
     );
     check("panel.html 起上游壳(boot window.MattSkillsUpstream)", html.includes("MattSkillsUpstream") && html.includes(".boot"));
-    check("panel.html 回退开关(localStorage mattskills-upstream=off)", html.includes("mattskills-upstream"));
+    check("panel.html 无旧 UI 回退开关(mattskills-upstream 已随层退役)", !html.includes("mattskills-upstream"));
+    // ui/message 包络(excalidraw 0.3.4 实跑口径):{role:"user",content:[{type:"text",text}]}
+    check(
+      "panel.html sendMessage 包络 {role:user,content:[{type:text}]}",
+      /role:\s*"user"/.test(html) && /type:\s*"text"/.test(html)
+    );
   } else {
     check("dist/ui/panel.html 存在", false);
   }
@@ -264,6 +268,57 @@ async function integrationChecks() {
     );
   } catch (e) {
     check("server 集成冒烟无异常", false, e.message);
+  } finally {
+    await server.stop();
+  }
+
+  await bootstrapChecks();
+}
+
+// ---------------------------------------------------------------------------
+// 引导缝(工单 U06 从 panel-list 迁入):stub 桥宿主逐字执行 panel.html 内联脚本,
+// 断言桥包络与握手序 —— 真机事故锁(2026-11-19):宿主 oninitialized 靠 ui/notifications/
+// initialized 进入 running 并取消 15s 处决;漏发时面板功能全通但 15 秒后被 closeInstance。
+// 面板本体(dsws-* 结构/交互)由 upstream-list / upstream-detail 覆盖,这里只看引导流量。
+// ---------------------------------------------------------------------------
+async function bootstrapChecks() {
+  const { makeStubHost, startServer } = await import(pathToFileURL(join(ROOT, "test", "stub-host.mjs")).href);
+  const fixtureWs = join(ROOT, "test", "fixtures", "mixed");
+  const server = await startServer(fixtureWs);
+  try {
+    const host = makeStubHost({ server });
+    check("bootstrap: dist/ui/panel.html 含内联引导脚本", host.script.length > 50, String(host.script.length));
+    host.start();
+    // 引导成功可观测:fetchData:true 的工具流量到齐(deck_issue_list / counts;色板可缺席)
+    const t0 = Date.now();
+    while (Date.now() - t0 < 5000) {
+      const names = host.sent.map((m) => m.params?.name);
+      if (names.includes("deck_issue_list") && names.includes("deck_issue_counts")) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    const methods = host.sent.map((m) => m.method);
+    check("bootstrap: 先 ui/initialize 握手", methods[0] === "ui/initialize", JSON.stringify(methods));
+    const initIdx = host.sent.findIndex((m) => m.method === "ui/initialize");
+    const notifIdx = host.sent.findIndex((m) => m.method === "ui/notifications/initialized");
+    check(
+      "bootstrap: 握手后补发 ui/notifications/initialized(先于任何后续请求,事故锁)",
+      initIdx !== -1 && notifIdx === initIdx + 1 && notifIdx < host.sent.findIndex((m, i) => i > initIdx && m.method === "resources/read")
+    );
+    check(
+      "bootstrap: 包络是 JSON-RPC 2.0(请求帧带递增整数 id,通知帧无 id)",
+      host.sent.every((m) => m.jsonrpc === "2.0" && (m.method === "ui/notifications/initialized" || Number.isInteger(m.id)))
+    );
+    const ASSETS_BASE = "ui://zcode-mattpocock-skills-deck/assets/";
+    check("bootstrap: 经 readResource 拉 assets.json", host.sent.some((m) => m.method === "resources/read" && m.params?.uri === `${ASSETS_BASE}assets.json`));
+    check("bootstrap: 经 readResource 拉 bundle-1.txt", host.sent.some((m) => m.method === "resources/read" && m.params?.uri === `${ASSETS_BASE}bundle-1.txt`));
+    check("bootstrap: 不再拉 bundle-0/panel.css(旧层已退役)", !host.sent.some((m) => /bundle-0|panel\.css/.test(m.params?.uri || "")));
+    check("bootstrap: 经 readResource 拉 workspace.json(上游 uiWorkspace 垫片)", host.sent.some((m) => m.method === "resources/read" && /workspace\.json$/.test(m.params?.uri || "")));
+    const names = host.sent.map((m) => m.params?.name);
+    check("bootstrap: 上游壳真实调用 deck_issue_list", names.includes("deck_issue_list"));
+    check("bootstrap: 上游壳真实调用 deck_issue_counts", names.includes("deck_issue_counts"));
+    check("bootstrap: bundle-1 注入执行(window.MattSkillsUpstream 就绪)", typeof host.win.MattSkillsUpstream === "object" && typeof host.win.MattSkillsUpstream.boot === "function");
+  } catch (e) {
+    check("bootstrap 引导冒烟无异常", false, e.message);
   } finally {
     await server.stop();
   }

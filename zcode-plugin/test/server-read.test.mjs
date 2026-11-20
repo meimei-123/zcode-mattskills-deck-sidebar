@@ -313,7 +313,7 @@ await sliceFilter();
 // 切片 7:list_labels 规范标签 + 内置标签色表(纯常量查询,不读工作区)。
 //   期望值独立于实现:标签串 = docs/agents/triage-labels.md 五规范标签(与上游
 //   canonical-labels.ts 一字不差);色表 11 项 = 上游 defaultLabelPalette 直值,
-//   与面板色表(src/ui/app.js LABEL_COLORS)同源。
+//   与 server.mjs LABEL_COLORS(U06 起唯一色表副本,上游 defaultLabelPalette)同源。
 // ---------------------------------------------------------------------------
 async function sliceLabels() {
   const s = await startServer(join(FIXTURES, "no-scratch"));

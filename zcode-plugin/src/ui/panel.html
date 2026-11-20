@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>MattSkills</title>
-    <!-- 预刷深色底,panel.css 注入前的第一帧不闪白;正式样式全在 panel.css -->
+    <!-- 预刷深色底,上游 STYLE_TEXT 注入前的第一帧不闪白;正式样式全在 bundle-1 -->
     <style>
       html,
       body {
@@ -13,44 +13,19 @@
         color: #d7dae0;
         font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
       }
-      #diag {
-        font: 11px ui-monospace, Consolas, monospace;
-        color: #9aa3af;
-        white-space: pre-wrap;
-      }
-      #diag .ok { color: #4ade80; }
-      #diag .bad { color: #f87171; }
-      #diag .warn { color: #f0883e; }
     </style>
   </head>
   <body>
     <div id="root" style="font-family: system-ui; padding: 12px">正在加载看板…</div>
-    <pre id="diag"></pre>
     <script>
       "use strict";
       (function () {
         var ASSETS = "ui://zcode-mattpocock-skills-deck/assets/";
-        // 诊断金丝雀(真机排障):逐步点亮 boot 状态并记录前 3 个原始回包。
-        // 排障完成后可删 #diag 段,不影响正式流程。
-        var diag = document.getElementById("diag");
-        function say(msg, cls) {
-          if (!diag) return;
-          var line = document.createElement("div");
-          if (cls) line.className = cls;
-          var ts = typeof performance !== "undefined" && performance.now ? (performance.now() / 1000).toFixed(2) : "??";
-          line.textContent = "[" + ts + "s] " + msg;
-          diag.appendChild(line);
-        }
-        say("1 页面内联脚本已执行", "ok");
-        say("   window.parent === window: " + (window.parent === window) + " | top===window: " + (window === window.top));
-        say("   alias 注入: " + (document.querySelector ? (document.querySelector('script[src*="alias"]') ? "有" : "无") : "?"));
-        say("   __pluginClient 预存在: " + (window.__pluginClient ? "有(将复用)" : "无(自建)"));
 
         // 极小 ext-apps 客户端:postMessage JSON-RPC 2.0 到宿主(window.parent)。
         // 包络与握手对照官方插件(pdf 0.2.10 / excalidraw 0.3.4)内置客户端的实跑行为:
         // 先 ui/initialize(protocolVersion 2026-01-26),再 tools/call / resources/read /
         // ui/message;回包只认 source === parent。
-        var rawSeen = 0;
         function createClient() {
           var nextId = 1;
           var pending = new Map();
@@ -58,10 +33,6 @@
           window.addEventListener("message", function (ev) {
             if (ev.source !== window.parent) return;
             var msg = ev.data;
-            if (rawSeen < 3) {
-              rawSeen++;
-              say("   ← 原始消息 #" + rawSeen + ": " + JSON.stringify(msg).slice(0, 160), "ok");
-            }
             if (!msg || msg.jsonrpc !== "2.0" || msg.id === undefined) return;
             var p = pending.get(msg.id);
             if (!p) return;
@@ -74,13 +45,7 @@
               var id = nextId++;
               pending.set(id, { resolve: resolve, reject: reject });
               var payload = { jsonrpc: "2.0", id: id, method: method, params: params };
-              say("   → 发出 " + method + " (id=" + id + ")", "warn");
               window.parent.postMessage(payload, "*");
-              if (method === "ui/initialize") {
-                setTimeout(function () {
-                  if (pending.has(id)) say("   ⚠ ui/initialize 8s 无回包(桥不通或宿主未接)", "bad");
-                }, 8000);
-              }
             });
           }
           function ready() {
@@ -93,7 +58,6 @@
               protocolVersion: "2026-01-26",
             }).then(function (r) {
               window.parent.postMessage({ jsonrpc: "2.0", method: "ui/notifications/initialized" }, "*");
-              say("   ← ui/initialize 回包已收,已补发 initialized 通知", "ok");
               return r;
             });
             return initP;
@@ -120,9 +84,8 @@
           };
         }
 
-        // 引导(2026-11-20 默认翻转:U04 复刻成品直接示人):
-        //   默认(on) = 只注 bundle-1,上游面板带数据起 —— 不再与旧 UI 同屏(样式串染消解);
-        //   off      = 只注 bundle-0,纯旧 UI(回退逃生舱);切换按钮翻配置后重载生效。
+        // 引导(U06 收口:旧 ms-* UI 层退役,bundle-1 上游复刻是唯一面板):
+        //   注入 assets.json 清单里的脚本(现只有 bundle-1.txt),上游面板带数据起。
         window.__pluginClient ??= createClient();
         (async function () {
           var client = window.__pluginClient;
@@ -132,61 +95,20 @@
             if (!c || !("text" in c) || !c.text) throw Error("Empty asset " + name);
             return c.text;
           }
-          var mode = "";
-          try {
-            mode = (typeof localStorage !== "undefined" && localStorage.getItem("mattskills-upstream")) || "";
-          } catch (eL) {} // 沙箱 localStorage 禁访:当默认(上游版)
-          var upstreamOn = mode !== "off";
-          say("2 拉 assets.json …(模式: " + (upstreamOn ? "上游复刻" : "旧 UI") + ")", "warn");
           var manifest = JSON.parse(await load("assets.json"));
-          var scripts = (manifest.scripts || []).filter(function (n) {
-            return upstreamOn ? n !== "bundle-0.txt" : n !== "bundle-1.txt";
-          });
-          var fetched = await Promise.all([load("panel.css")].concat(scripts.map(load)));
-          var css = fetched[0];
-          var parts = fetched.slice(1);
-          var style = document.createElement("style");
-          style.textContent = css;
-          document.head.append(style);
-          say("4 注入 CSS+JS(" + scripts.join(",") + ")…", "warn");
-          for (var text of parts) {
+          var scripts = manifest.scripts || [];
+          var fetched = await Promise.all(scripts.map(load));
+          for (var text of fetched) {
             var s = document.createElement("script");
             s.textContent = text;
             document.body.append(s);
           }
-          if (upstreamOn) {
-            var root = document.getElementById("root");
-            if (root) root.remove(); // 旧 UI 的加载占位不再需要
-            var upstream = window.MattSkillsUpstream;
-            if (!upstream || typeof upstream.boot !== "function") throw Error("bundle-1 未定义 MattSkillsUpstream");
-            await upstream.boot({ client: client, doc: document, fetchData: true });
-            say("5 上游复刻看板已启动(接数据)", "ok");
-          } else {
-            var root2 = document.getElementById("root");
-            if (root2) root2.removeAttribute("style");
-            var app = window.MattSkillsPanel;
-            if (!app || typeof app.boot !== "function") throw Error("bundle-0 未定义 MattSkillsPanel");
-            await app.boot({ client: client, doc: document, root: root2 });
-            say("5 旧 UI 已启动(回退模式)", "ok");
-          }
-          // 新旧切换按钮(排障金丝雀区):翻配置并重载
-          if (diag && diag.parentNode && document.createElement) {
-            var tgl = document.createElement("button");
-            tgl.textContent = "切换上游面板壳(开/关,重载生效)";
-            tgl.style.cssText =
-              "margin-top:6px;font:11px ui-monospace,Consolas,monospace;color:#9aa3af;background:#16181d;border:1px solid #2a2d35;border-radius:6px;padding:3px 8px;cursor:pointer";
-            tgl.onclick = function () {
-              try {
-                var s = typeof localStorage !== "undefined" ? localStorage : null;
-                if (!s) return;
-                s.setItem("mattskills-upstream", s.getItem("mattskills-upstream") === "off" ? "on" : "off");
-                if (typeof location !== "undefined" && location.reload) location.reload();
-              } catch (e3) {}
-            };
-            diag.parentNode.appendChild(tgl);
-          }
+          var root = document.getElementById("root");
+          if (root) root.remove(); // 加载占位不再需要
+          var upstream = window.MattSkillsUpstream;
+          if (!upstream || typeof upstream.boot !== "function") throw Error("bundle-1 未定义 MattSkillsUpstream");
+          await upstream.boot({ client: client, doc: document, fetchData: true });
         })().catch(function (e) {
-          say("✗ 失败: " + (e && e.message ? e.message : String(e)), "bad");
           var root = document.getElementById("root");
           if (root) root.textContent = "看板加载失败 / Failed to load: " + (e && e.message ? e.message : String(e));
         });
