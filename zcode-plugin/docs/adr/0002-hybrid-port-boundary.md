@@ -23,3 +23,8 @@
 ## 修订(2026-11-19 夜,UI 保真度复刻)
 
 用户验收 T04 重画版后裁定"1:1 复刻上游素材"。自此 a′ 的"搬域逻辑与视觉"按字面执行:上游 `src/client/` 本体(骨架/kernel/视图/样式)经其 splice 构建整文件搬入,仅替换宿主接缝——ctx 8 服务垫片(timer/locale/slots/sidebarRight/sidebarRightTabs/sessions/workspaces/uiWorkspace)与 React 运行时(宿主注入 → bundle 内 Preact 兼容层)。T04 的"照笔记重画"版废弃,旧 ms-* 视图层在 ui-fidelity U06 删除。容器形态:先按上游原样(460px 浮动 dsws-panel)复刻看效果,适配裁决后置。工单:`.scratch/ui-fidelity/`(U01-U06)。
+
+## 实施修订记录(ui-fidelity U06 收口,2026-11-20)
+
+- **a′ 的"搬视觉"自 U01 起为字面搬运**:上游 client 本体 + ctx 八服务垫片 + Preact(上述修订的执行结果);T04 重画版废弃。
+- **U06 删旧 ms-* 层,双 UI 时代结束**:`src/ui/{app.js,copy.mjs,actions.mjs,detail.mjs,writer.mjs,panel.css,cards.mjs}` 与 bundle-0/panel.css 产物删除,panel.html 只注 bundle-1 起上游复刻(0.2.1 的 off 逃生舱随层退役);段间命名空间互调(`globalThis.MattSkills*`)与"域逻辑纯 JS IIFE"两条 M1 偏离随旧层一并归零——bundle-1 内部即上游原样的裸名 splice 共享作用域(esbuild IIFE),M1 有意偏离清单至此只剩服务端重复与散布类 smell 三条(不受本票影响)。
