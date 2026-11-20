@@ -202,6 +202,35 @@ function apply(ctx) {
         return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
       });
   };
+  // 技能文档(工单 02):上游 PixelSkillOps 的取数电话是 host.call('skill.readDoc', {name, file?})
+  // (上游宿主真源 src/host/skillDoc.ts),ZCode 这边映射到 deck_skill_doc(服务端按技能根顺序
+  // 读 SKILL.md 原文)。错误分层照上游 pixelFetch 的消费口径,三档不能混:
+  //   工具回 {structuredContent:{ok:true, md, path}} → resolve 同形状(上游画正文);
+  //   工具回 ok:false(技能不存在/读不到) → resolve {ok:false}(上游画「包里没有这一篇」,不画重试);
+  //   桥异常/工具 isError → reject(上游画「读失败」横幅 + 重试)。
+  // file 参数与 refs 名单本批不支持:前者直接回 ok:false(不伪造),后者不返回(正文里的
+  // md 文件名不变成可点,避免半成品链路)。
+  const skillReadDocOverTool = function (args) {
+    const o = args || {};
+    const name = typeof o.name === "string" ? o.name.trim() : "";
+    if (!name) return Promise.resolve({ ok: false, name: "", reason: "missing" });
+    if (o.file !== undefined && o.file !== null && String(o.file) !== "") {
+      return Promise.resolve({ ok: false, name: name, reason: "unsupported" });
+    }
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") {
+      return Promise.reject(new Error("ZCode 宿主适配:无工具桥"));
+    }
+    return client.callTool("deck_skill_doc", { name: name }).then(function (res) {
+      if (res && res.isError) {
+        const text = (res.content && res.content[0] && res.content[0].text) || "skill doc failed";
+        throw new Error(text);
+      }
+      const sc = res && res.structuredContent;
+      if (sc && sc.ok === true) return { ok: true, name: sc.name || name, md: sc.md, path: sc.path };
+      return { ok: false, name: name, reason: (sc && sc.reason) || "missing" };
+    });
+  };
   const host = {
     // ZCode 宿主适配(wf.* → 工具桥;未接的电话一律 unsupported,不抛)
     call: function (method, args) {
@@ -211,6 +240,7 @@ function apply(ctx) {
       if (method === "wf.commentIssue") return commentIssueOverWrite(args);
       if (method === "wf.chain") return envCheckOverTool(args);
       if (method === "wf.detect") return envCheckOverTool({ force: true });
+      if (method === "skill.readDoc") return skillReadDocOverTool(args);
       return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U05)", raw: "" } });
     },
   };
@@ -309,6 +339,10 @@ function apply(ctx) {
   // ==== kernel:motion (spliced by build) ====
   // ==== kernel:styles (spliced by build) ====
   styles.insert(STYLE_TEXT);
+  // ---- 技能详情像素风皮肤(工单 02;上游 index.ts 标记序在 kernel:styles 之后、locale 之前;
+  //      皮肤里引 MOTION,而 kernel:motion 已在本段之前) ----
+  // ==== leaf:pixelStyles (spliced by build) ====
+  styles.insert(PIXEL_STYLE_TEXT);
 
   // ---- locale 段(上游 index.ts §0.5 装配段原文照搬,仅去类型标注) ----
   // ==== kernel:localeData (spliced by build) ====
@@ -329,6 +363,10 @@ function apply(ctx) {
           if (params) s = s.replace(/\{(\w+)\}/g, function (m, name) { return name in params ? String(params[name]) : m; });
           return s;
         };
+
+  // ---- 技能目录数据表(工单 02;上游 §1 段原位:locale 之后、trackerConstants 之前。
+  //      SKILLS 是上游的静态展示目录(27 项),不是扫本机盘;技能原文走 deck_skill_doc) ----
+  // ==== shared:mattSkills (spliced by build) ====
 
   // ---- 词表五份(票身份算法:effortOf/idOf/idOfParts/refKeyOf + 常量) ----
   // ==== shared:trackerConstants (spliced by build) ====
@@ -426,7 +464,17 @@ function apply(ctx) {
   // ==== leaf:listFilterRow (spliced by build) ====
   // ==== leaf:mdEffortRow (spliced by build) ====
   // ==== leaf:listTab (spliced by build) ====
-  // 环境检查页本体(工单 03;上游标记序在 listTab 之后:#284 起链快照唯一渲染)
+
+  // ---- 技能页签 + 文档详情像素风家族(工单 02;上游 index.ts 标记序原位,leaf:prTab 本批跳过。
+  //      依赖次序:页签本体先声明,详情家族按 目录/正文/行/列表/弹窗/取数 次序) ----
+  // ==== leaf:skillsTab (spliced by build) ====
+  // ==== leaf:pixelContents (spliced by build) ====
+  // ==== leaf:pixelMarkdown (spliced by build) ====
+  // ==== leaf:pixelSkillRow (spliced by build) ====
+  // ==== leaf:pixelSkillList (spliced by build) ====
+  // ==== leaf:pixelSkillDetailModal (spliced by build) ====
+  // ==== leaf:pixelSkillOps (spliced by build) ====
+  // 环境检查页本体(工单 03;上游标记序在 skillsTab/pixel* 之后:#284 起链快照唯一渲染)
   // ==== leaf:checksTab (spliced by build) ====
 
   // Ctx 接线(上游 panelAssembly §5.11 同款,八字段冻结清单;router 接真源 store-prefs)
@@ -450,8 +498,8 @@ function apply(ctx) {
   //      U03 的卡面临时挂点在此撤销,卡面组件仍经 cards 自检面供给;工单 03 起「环境检查」
   //      页签也接真视图:ChecksTab 的链快照唯一渲染;#284 起九格 wf.status 视图已退役,不恢复) ----
   // 结构对上游 panel/Dock.ts 的头部三段:dsws-head(标题)/dsws-tabs(useTabsRow 的墨块 + 页签
-  // 与 wayfinder、bug 入口、EntryChooser)/dsws-body(按 st.tab 分发;本票只有 list 是真视图,
-  // 其余页签占位待后续工单搬入)。
+  // 与 wayfinder、bug 入口、EntryChooser)/dsws-body(按 st.tab 分发;list 与 skills 是真视图,
+  // checks 占位待 03 票搬入,pr 在本地后端无能力、兜底占位)。
   // 门组件(上游 #670 同款):无数据先画 dsws-hold 空壳,有数据才挂 DeckBody ——
   // hooks(useTabsRow 等)只在 DeckBody 里调,渲染次数变化不破坏 hook 次序。
   const DeckShell = function () {
@@ -490,9 +538,11 @@ function apply(ctx) {
                   return h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, ["地图详情页:mapV2 家族未搬(U06+ 候选)"]);
                 return h(ListTab, { st: st, narrow: narrow });
               })()
-            : st.tab === "checks"
-              ? h(ChecksTab, { st: st })
-              : h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tab" + (st.tab === "skills" ? "Skills" : "Pr")) + " 页:U06+ 搬入"]),
+            : st.tab === "skills"
+              ? h(SkillsTab, { st: st })
+              : st.tab === "checks"
+                ? h(ChecksTab, { st: st })
+                : h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tabPr") + " 页:U06+ 搬入"]),
       ]),
     ]);
   };

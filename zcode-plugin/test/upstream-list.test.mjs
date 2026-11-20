@@ -576,14 +576,16 @@ if (U) {
     check("排序翻转后方向标记出现在药丸文本(↑/↓)", /↑|↓/.test(textOf(numberChip)), textOf(numberChip));
   }
 
-  // ---- 页签切换:技能页签占位、切回列表(壳保序,内容层 U05+ 接手) ----
+  // ---- 页签切换:技能页签是真目录(工单 02 起)、切回列表(壳保序) ----
   if (tabsRow) {
     const tabBtn = (log) => walk(tabsRow).filter((n) => n.attributes["data-log"] === log && n.tagName === "BUTTON")[0];
     fireClick(tabBtn("panel.tab.skills"));
     await tick();
     if (st) eq("页签壳状态:st.tab = skills", st.tab, "skills");
     else check("页签壳状态:st.tab = skills", false, "st 缺席");
-    check("技能页签内容为占位(U06+ 搬入)", textOf(body).includes("U06"), textOf(body).slice(0, 40));
+    check("技能页签渲染上游技能目录(占位已撤)",
+      qsa(surface, ".pixel-skillrow").length === 27 && !textOf(body).includes("U06"),
+      `rows=${qsa(surface, ".pixel-skillrow").length} text=${textOf(body).slice(0, 40)}`);
     fireClick(tabBtn("panel.tab.list"));
     await tick();
     eq("切回列表恢复三段列表(开票行)", rowsNow().length, 9);

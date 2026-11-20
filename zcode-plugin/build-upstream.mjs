@@ -249,11 +249,16 @@ export const LEAVES = [
   { id: "kernel:link", file: "src/client/kernel/link.ts" },
   { id: "kernel:motion", file: "src/client/kernel/motion.ts" },
   { id: "kernel:styles", file: "src/client/kernel/styles.ts" },
+  // ---- 工单 02:技能详情像素风皮肤(887 样式叶子;上游标记序在 styles 与 localeData 之间) ----
+  { id: "leaf:pixelStyles", file: "src/client/views/skillDetail/PixelStyles.ts" },
   // localeData/promptData 是上游构建现场生成、不入库的生成物(config/ YAML → 生成器)。
   // 上游树只读,生成器写死输出在上游树内 —— 这里把生成器与其 config 镜像进本仓 .tmp
   // 再跑,产物落 .tmp(见 generateUpstreamLeaves);词表五份合段同上游 buildVocabularySpliceInput。
   { id: "kernel:localeData", file: ".tmp/upstream-leaves/locale-data.ts", own: true },
   { id: "kernel:locale", file: "src/client/kernel/locale.ts" },
+  // ---- 工单 02:技能目录数据表(上游静态展示目录 SKILLS,无运行时 import;标记序在 locale
+  //      之后、trackerConstants 之前。27 项是上游展示目录,不是扫本机盘) ----
+  { id: "shared:mattSkills", file: "src/shared/matt-skills.ts" },
   { id: "shared:trackerConstants", file: ".tmp/upstream-leaves/vocabulary.client.js", own: true },
   // 会话命名(Tabs 的 + bug 预填标题 newSessionTitleNew;上游 shared: 片段直取)
   { id: "shared:namingTitles", file: "src/shared/naming-titles.ts" },
@@ -381,7 +386,15 @@ export const LEAVES = [
   { id: "leaf:listFilterRow", file: "src/client/views/listFilterRow.ts" },
   { id: "leaf:mdEffortRow", file: "src/client/views/mdEffortRow.ts" },
   { id: "leaf:listTab", file: "src/client/views/ListTab.ts" },
-  // 环境检查页本体(工单 03;上游在 listTab 之后:#284 起链快照唯一渲染,九格视图退役)
+  // ---- 工单 02:技能页签 + 文档详情像素风家族(上游 index.ts 标记序原位;leaf:prTab 本批跳过) ----
+  { id: "leaf:skillsTab", file: "src/client/views/SkillsTab.ts" },
+  { id: "leaf:pixelContents", file: "src/client/views/skillDetail/PixelContents.ts" },
+  { id: "leaf:pixelMarkdown", file: "src/client/views/skillDetail/PixelMarkdown.ts" },
+  { id: "leaf:pixelSkillRow", file: "src/client/views/skillDetail/PixelSkillRow.ts" },
+  { id: "leaf:pixelSkillList", file: "src/client/views/skillDetail/PixelSkillList.ts" },
+  { id: "leaf:pixelSkillDetailModal", file: "src/client/views/skillDetail/PixelSkillDetailModal.ts" },
+  { id: "leaf:pixelSkillOps", file: "src/client/views/skillDetail/PixelSkillOps.ts" },
+  // 环境检查页本体(工单 03;上游在 skillsTab/pixel* 之后:#284 起链快照唯一渲染,九格视图退役)
   { id: "leaf:checksTab", file: "src/client/views/ChecksTab.ts" },
 ];
 const CTX_BLOCK_FILE = "src/client/kernel/ctx.ts";
