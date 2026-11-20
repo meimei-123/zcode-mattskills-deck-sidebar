@@ -1377,6 +1377,27 @@
         return { ok: false, error: { kind: "network", message: String(e3 && e3.message || e3), raw: "" } };
       });
     };
+    const skillReadDocOverTool = function(args) {
+      const o3 = args || {};
+      const name = typeof o3.name === "string" ? o3.name.trim() : "";
+      if (!name) return Promise.resolve({ ok: false, name: "", reason: "missing" });
+      if (o3.file !== void 0 && o3.file !== null && String(o3.file) !== "") {
+        return Promise.resolve({ ok: false, name, reason: "unsupported" });
+      }
+      const client = clientRef;
+      if (!client || typeof client.callTool !== "function") {
+        return Promise.reject(new Error("ZCode 宿主适配:无工具桥"));
+      }
+      return client.callTool("deck_skill_doc", { name }).then(function(res) {
+        if (res && res.isError) {
+          const text = res.content && res.content[0] && res.content[0].text || "skill doc failed";
+          throw new Error(text);
+        }
+        const sc = res && res.structuredContent;
+        if (sc && sc.ok === true) return { ok: true, name: sc.name || name, md: sc.md, path: sc.path };
+        return { ok: false, name, reason: sc && sc.reason || "missing" };
+      });
+    };
     const host = {
       // ZCode 宿主适配(wf.* → 工具桥;未接的电话一律 unsupported,不抛)
       call: function(method, args) {
@@ -1384,6 +1405,7 @@
         if (method === "wf.issueDetail") return issueDetailOverGet(args);
         if (method === "wf.issueComments") return issueCommentsOverGet(args);
         if (method === "wf.commentIssue") return commentIssueOverWrite(args);
+        if (method === "skill.readDoc") return skillReadDocOverTool(args);
         return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:电话 " + method + " 未接(U05)", raw: "" } });
       }
     };
@@ -2321,6 +2343,160 @@
       // #842 界面打磨（task-61）：版本管理页里那几处「看着像没上样式」的元素的统一取色与悬停；取值风格照既有 .dsws-* 与主题变量（--dsw-alias-*），浅深色都跟着主题走
     ].join("");
     styles.insert(STYLE_TEXT);
+    const PIXEL_STYLE_TEXT = [
+      ":root{--pixel-frame:#3a2c14;--pixel-paper:#f2e4c0;--pixel-card:#fffdf4;--pixel-ink:#2b2113;--pixel-ink2:#6b5b3e;--pixel-shadow:#241a0c;--pixel-gold:#e3a92f;--pixel-acc:#8b5cf6;--pixel-ok:#0e8a16;--pixel-bad:#a3231a;--pixel-warn:#f59e0b;--pixel-stripe:#ddcda1;--pixel-popline:#e8d9ae;--pixel-hi:#ffe1a1;--pixel-link:#5b3df0}",
+      // ---- 装饰色令牌：深色值就是以前写在各条规则里的那些字面量，一个不差（深色零变化的底线）----
+      // 收成令牌只为让浅色能整套换掉。每一对「令牌:值」都对应今天规则里的同一个字面量：
+      //   棋盘两色（tab1 / tab2）、棋盘上的字（tab-ink，原来是 paper 色）、三颗图标的底色与警告字色、
+      //   印章、状态行上边框、块引用底、推荐行底、代码块前景/背景、遮罩、强调色上的字、提交成功/失败闪的底色。
+      ":root{--pixel-tab1:#93764f;--pixel-tab2:#8a6f4d;--pixel-tab-ink:#f2e4c0;--pixel-ok-bg:#d9f2dc;--pixel-bad-bg:#fbe3e1;--pixel-warn-bg:#fdf0d3;--pixel-ic-warn-ink:#9a6a00;--pixel-seal:#c9503f;--pixel-statusline-edge:#9a8f78;--pixel-quote-bg:#efe8fb;--pixel-rec-bg:#efe8fb;--pixel-pre-bg:#241a0c;--pixel-pre-ink:#f2e4c0;--pixel-overlay:rgba(28,16,4,.55);--pixel-acc-ink:#fff}",
+      // ---- 浅色（纸面便签：原型里选定的纸面底、卡片白、深色描边、深绿强调）：只认宿主有没有挂深色标记，面板里没有第二个开关 ----
+      // 挂在 .pixel-tab 上：像素家族全在这棵子树里（列表、详情弹窗、图片放大层、遮罩），令牌靠继承往下走，
+      // 不会漏到别的页签。这一段只写令牌，不写别的属性——浅色换的是色，不是结构。
+      // 几处定版值的理由：
+      //   link 用 #2563eb（深绿留给强调色）：链接要能和强调绿分开，否则正文里的链接看起来像强调；
+      //     设计文档里给出的那档信息蓝不能用——它是容器身份蓝，verify-container-colors 全仓零容忍；
+      //     #2563eb 是同一色系里更深一档，纸面底对比过 4.5:1，过正文线。
+      //   quote 用纸面下沉 #efe8d9、rec 用浅绿 #eef7ef（原型 .row.rec 的浅色值），两者不同，浅色下分得开。
+      //   pre 保持墨块（深底浅字）：纸面上的代码块是一块压上去的墨，比浅底更清楚，对比 14:1。
+      //   overlay 用描边色压 45%：浅色下面板后面的东西还看得见轮廓，又不至于抢戏。
+      "body:not([data-ds-dark-theme]) .pixel-tab{--pixel-frame:#3a2c14;--pixel-paper:#f6f1e6;--pixel-card:#fffdf8;--pixel-ink:#221d15;--pixel-ink2:#6f6252;--pixel-shadow:#241a0c;--pixel-gold:#a16207;--pixel-acc:#15803d;--pixel-ok:#15803d;--pixel-bad:#b91c1c;--pixel-warn:#b45309;--pixel-stripe:#e7ddc8;--pixel-popline:#e7ddc8;--pixel-hi:#dff2e3;--pixel-link:#2563eb;--pixel-tab1:#efe8d9;--pixel-tab2:#e7ddc8;--pixel-tab-ink:#3a2c14;--pixel-ok-bg:#d9f2dc;--pixel-bad-bg:#fbe3e1;--pixel-warn-bg:#fdf0d3;--pixel-ic-warn-ink:#b45309;--pixel-seal:#c9503f;--pixel-statusline-edge:#b9ab90;--pixel-quote-bg:#efe8d9;--pixel-rec-bg:#eef7ef;--pixel-pre-bg:#241a0c;--pixel-pre-ink:#f6f1e6;--pixel-overlay:rgba(58,44,20,.45);--pixel-acc-ink:#fff}",
+      ".pixel-btn{font:700 12px ui-monospace,Menlo,Consolas,monospace;border:3px solid var(--pixel-frame);background:var(--pixel-paper);color:var(--pixel-ink);padding:4px 12px;cursor:pointer;box-shadow:2px 2px 0 var(--pixel-shadow);transition:transform " + MOTION.pixelPressMs + "ms steps(2,end),box-shadow " + MOTION.pixelPressMs + "ms steps(2,end)}",
+      ".pixel-btn:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--pixel-shadow);outline:2px solid var(--pixel-gold);outline-offset:1px}",
+      // 按压态走委托挂的 .dsws-pressing（#1335 界面反馈）：不用 CSS 的 :active，
+      // 因为按住后把指针拖走 :active 会粘住，祖先元素还会跟着一起匹配。
+      ".pixel-btn.dsws-pressing{transform:translate(2px,2px);box-shadow:0 0 0 var(--pixel-shadow)}",
+      // 焦点环跟随宿主（#1377 规格）：浅色这一条不命中，落回全局 [data-dsws-host] :focus-visible 的 2px 宿主蓝环（往内画）。
+      // 深色这一条照旧保留；今天它同样被注入更晚的全局规则盖住，所以深色外观零变化。
+      // 深色守卫写成 :where(body[data-ds-dark-theme])：:where 自己不参与权重计算，选择器总权重与改动前一样，
+      //   深色下「谁盖谁」不变；若直接写 body[data-ds-dark-theme] 前缀，会多一份 (0,1,0) 权重，
+      //   这条金虚线就会盖住宿主蓝环，深色外观当场变样（probe-review-focus 实测过）。
+      ":where(body[data-ds-dark-theme]) .pixel-btn:focus-visible{outline:2px dashed var(--pixel-gold);outline-offset:2px}",
+      ".pixel-btn:disabled{opacity:.6;cursor:wait}",
+      ".pixel-btn.hot{background:var(--pixel-acc);color:var(--pixel-acc-ink)}",
+      ".pixel-btn.mini{padding:1px 8px;font-size:11px}",
+      ".pixel-spin{display:none;width:10px;height:10px;background:var(--pixel-acc);margin-right:6px;vertical-align:-1px;animation:pixel-blk " + MOTION.pixelBlinkMs + "ms steps(2,end) infinite}",
+      ".pixel-btn.loading .pixel-spin{display:inline-block}",
+      "@keyframes pixel-blk{50%{opacity:.15}}",
+      ".pixel-dot{flex:none;width:10px;height:10px;border:2px solid var(--pixel-frame);background:var(--pixel-dc,var(--pixel-ok))}",
+      ".pixel-num{flex:none;font:700 11px ui-monospace,monospace;background:var(--pixel-frame);color:var(--pixel-paper);padding:0 6px;min-width:26px;text-align:center}",
+      ".pixel-ic{display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;border:2px solid var(--pixel-frame);font-weight:800;font-size:12px;margin-right:6px;vertical-align:-3px}",
+      ".pixel-ic-ok{background:var(--pixel-ok-bg);color:var(--pixel-ok)}.pixel-ic-err{background:var(--pixel-bad-bg);color:var(--pixel-bad)}.pixel-ic-warn{background:var(--pixel-warn-bg);color:var(--pixel-ic-warn-ink)}.pixel-ic-idle{background:var(--pixel-stripe);color:var(--pixel-ink2)}",
+      ".pixel-seal{position:absolute;left:50%;top:-13px;margin-left:-11px;width:22px;height:22px;background:var(--pixel-seal);border:3px solid var(--pixel-frame)}",
+      // 加载中的三句节奏话（2026-10-10 人拍板放回）：按顺序 1 秒一句。
+      // 纯 CSS 轮播，客户端不排任何定时器：三句叠在网格的同一格里，各自错开一秒显示。
+      ".pixel-statusline .pixel-seq{display:grid;align-items:center}",
+      ".pixel-statusline .pixel-seq>span{grid-area:1/1;opacity:0;animation:pixel-seq " + MOTION.pixelStatusCycleMs + "ms step-end infinite both}",
+      "@keyframes pixel-seq{0%{opacity:0}1%,33.3%{opacity:1}33.4%,100%{opacity:0}}",
+      ".pixel-skel{height:14px;background:var(--pixel-stripe);border:2px solid var(--pixel-frame);margin:8px 0;animation:pixel-blk " + MOTION.pixelSkeletonMs + "ms steps(2,end) infinite}",
+      ".pixel-banner{background:var(--pixel-bad-bg);border:3px solid var(--pixel-frame);border-left:10px solid var(--pixel-bad);box-shadow:3px 3px 0 var(--pixel-shadow);padding:8px 10px;font-size:13px;margin:10px 0;display:flex;gap:8px;align-items:center}",
+      ".pixel-banner.warn{background:var(--pixel-warn-bg);border-left-color:var(--pixel-warn)}",
+      ".pixel-banner .grow{flex:1}",
+      ".pixel-statusline{font-size:12.5px;background:var(--pixel-card);border:3px solid var(--pixel-frame);border-top:8px solid var(--pixel-statusline-edge);box-shadow:2px 2px 0 var(--pixel-shadow);padding:5px 8px;margin:0 0 10px}",
+      ".pixel-toc{background:var(--pixel-card);border:3px solid var(--pixel-frame);box-shadow:3px 3px 0 var(--pixel-shadow);margin:0 0 10px;font-size:12.5px}",
+      ".pixel-toc b{display:block;background:var(--pixel-frame);color:var(--pixel-paper);font:700 12px ui-monospace,monospace;letter-spacing:2px;padding:4px 10px}",
+      ".pixel-toc a{display:flex;gap:8px;align-items:center;color:var(--pixel-ink);text-decoration:none;font-weight:700;padding:6px 10px;cursor:pointer}",
+      ".pixel-toc a+a{border-top:2px solid var(--pixel-stripe)}",
+      ".pixel-toc a:hover{background:var(--pixel-frame);color:var(--pixel-paper)}",
+      ".pixel-toc a:hover .pixel-num{background:var(--pixel-paper);color:var(--pixel-ink)}",
+      ".pixel-doc{line-height:1.85;font-size:13.5px}",
+      ".pixel-doc[data-lang=zh]{line-height:2.05}",
+      ".pixel-doc h1,.pixel-doc h2,.pixel-doc h3{font-family:ui-monospace,Menlo,Consolas,Microsoft YaHei,sans-serif}",
+      ".pixel-doc h1{font-size:19px;letter-spacing:1px;border-bottom:4px solid var(--pixel-frame);padding-bottom:4px}",
+      ".pixel-doc h2{font-size:15px;background:var(--pixel-popline);border:3px solid var(--pixel-frame);box-shadow:3px 3px 0 var(--pixel-shadow);padding:2px 10px;display:inline-block;margin:14px 0 6px}",
+      ".pixel-doc h3{font-size:14px;border-left:8px solid var(--pixel-gold);padding-left:8px}",
+      ".pixel-doc p{margin:8px 0}",
+      ".pixel-doc ul,.pixel-doc ol{margin:8px 0;padding-left:0;list-style:none}",
+      ".pixel-doc ul>li{position:relative;padding-left:18px;margin:5px 0}",
+      ".pixel-doc ul>li::before{content:'';position:absolute;left:0;top:.62em;width:8px;height:8px;background:var(--pixel-acc)}",
+      ".pixel-doc ul ul>li::before{background:var(--pixel-gold)}",
+      ".pixel-doc ul ul,.pixel-doc ol ol,.pixel-doc ul ol,.pixel-doc ol ul{margin:3px 0}",
+      ".pixel-doc ol{counter-reset:pixel-it}",
+      ".pixel-doc ol>li{counter-increment:pixel-it;position:relative;padding-left:38px;margin:7px 0}",
+      ".pixel-doc ol>li::before{content:counter(pixel-it);position:absolute;left:0;top:2px;font:700 12px ui-monospace,monospace;background:var(--pixel-frame);color:var(--pixel-paper);padding:0 6px;border:2px solid var(--pixel-frame);box-shadow:2px 2px 0 var(--pixel-shadow)}",
+      ".pixel-doc blockquote{border-left:8px solid var(--pixel-acc);background:var(--pixel-quote-bg);margin:10px 0;padding:6px 12px}",
+      ".pixel-doc pre{background:var(--pixel-pre-bg);color:var(--pixel-pre-ink);padding:10px 12px;font:12px/1.7 ui-monospace,monospace;overflow:auto;white-space:pre-wrap;border:3px solid var(--pixel-frame);box-shadow:3px 3px 0 var(--pixel-shadow)}",
+      ".pixel-doc code{font:400 12px ui-monospace,Menlo,Consolas,monospace;background:var(--pixel-card);color:var(--pixel-ink);padding:1px 6px;border:2px solid var(--pixel-frame);box-shadow:2px 2px 0 var(--pixel-shadow);white-space:nowrap}",
+      ".pixel-doc pre code{background:none;border:none;box-shadow:none;padding:0;color:inherit;font:inherit;white-space:pre-wrap}",
+      ".pixel-doc a{color:var(--pixel-link)}",
+      // 正文里能点开的技能名（2026-10-10 人拍板）：平时跟普通代码一模一样，指上去才亮出焦点色边框，
+      // 免得整篇正文到处是彩色。推荐条那几颗 chip 同理。
+      ".pixel-doc code.pixel-skillref{cursor:pointer}",
+      // 悬停仍按深浅两套给（悬停不是焦点）；焦点分支只在深色下保留，浅色把焦点环交还给全局宿主规则。
+      ".pixel-doc code.pixel-skillref:hover{background:var(--pixel-hi);border-color:var(--pixel-acc);box-shadow:2px 2px 0 var(--pixel-acc);outline:none}",
+      ":where(body[data-ds-dark-theme]) .pixel-doc code.pixel-skillref:focus-visible{background:var(--pixel-hi);border-color:var(--pixel-acc);box-shadow:2px 2px 0 var(--pixel-acc);outline:none}",
+      ".pixel-tab .dsws-chip.pixel-chipref{cursor:pointer}",
+      ".pixel-tab .dsws-chip.pixel-chipref:hover{background:var(--pixel-hi);border-color:var(--pixel-acc);box-shadow:2px 2px 0 var(--pixel-acc);outline:none}",
+      ":where(body[data-ds-dark-theme]) .pixel-tab .dsws-chip.pixel-chipref:focus-visible{background:var(--pixel-hi);border-color:var(--pixel-acc);box-shadow:2px 2px 0 var(--pixel-acc);outline:none}",
+      // 顶栏在窄面板里不许挤成两行：标题一行（放不下就省略号），按钮与层号牌各自不换行。
+      ".pixel-top>span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}",
+      ".pixel-top .pixel-btn{white-space:nowrap;flex:none}",
+      ".pixel-top .pixel-stack{flex:none}",
+      // 栈深牌：第 n 层 / 共 m 层（详情栈最多三层，超过就把最深的挤掉）
+      ".pixel-stack{font:700 11px ui-monospace,Menlo,Consolas,monospace;background:var(--pixel-card);color:var(--pixel-ink2);border:2px solid var(--pixel-frame);padding:0 6px;white-space:nowrap}",
+      // 粗体要真的更重：代码徽章自己写着 font-weight:700，会把外层 <strong> 的加粗盖掉，
+      // 于是 `**\`/grill-with-docs\`**` 看起来跟普通代码一样。
+      ".pixel-doc strong{font-weight:800}",
+      // 但光调字重看不出区别（2026-10-10 人反馈两个徽章一模一样）：等宽字体 ui-monospace / Menlo /
+      // Consolas 都没有 800、900 这两档字面，浏览器把它们归到最近的 700，于是「普通代码 700、强调代码 900」
+      // 其实都是同一个 700，长得一模一样。
+      // 人拍板（同日三轮）：反色不好看、描边加粗发虚，要**清晰的加粗**。于是把两档字重拉开用字体自带的真字面：
+      // 普通代码用常规字重（400），强调代码用真粗体（700）。字形是字体本身画出来的，不描边、不发虚。
+      // 实测同一串 /grill-me：实心像素 1661 → 2438（+47%），边缘灰像素占比 0.777 → 0.875（比描边那版更干净）。
+      ".pixel-doc strong code{font-weight:700}",
+      ".pixel-doc em{font-style:normal;font-weight:700;color:var(--pixel-ink);background:var(--pixel-hi);padding:0 3px;border-bottom:3px solid var(--pixel-gold)}",
+      ".pixel-doc hr{border:none;border-top:3px solid var(--pixel-frame);margin:10px 0}",
+      ".pixel-doc img{max-width:100%;max-height:220px;object-fit:contain;display:block;margin:8px 0;border:3px solid var(--pixel-frame);background:var(--pixel-card);cursor:zoom-in}",
+      ".pixel-doc label.pixel-task{display:flex;gap:8px;align-items:flex-start;margin:5px 0}",
+      ".pixel-skillrow{display:flex;gap:8px;align-items:center;background:var(--pixel-card);border:3px solid var(--pixel-frame);box-shadow:3px 3px 0 var(--pixel-shadow);padding:6px 10px;margin:8px 0;transition:transform " + MOTION.pixelPressMs + "ms steps(2,end),box-shadow " + MOTION.pixelPressMs + "ms steps(2,end)}",
+      ".pixel-skillrow.rec{background:var(--pixel-rec-bg)}",
+      // 悬停与焦点拆开：悬停不是焦点，深浅两套照旧；:focus-within 只在深色下画整行的圈，
+      // 浅色这一行不画环，交给宿主给里面那颗拿到焦点的控件画焦点环。
+      ".pixel-skillrow:hover{transform:translate(-2px,-2px);box-shadow:5px 5px 0 var(--pixel-shadow);outline:2px solid var(--pixel-dc,var(--pixel-gold));outline-offset:1px}",
+      ":where(body[data-ds-dark-theme]) .pixel-skillrow:focus-within{transform:translate(-2px,-2px);box-shadow:5px 5px 0 var(--pixel-shadow);outline:2px solid var(--pixel-dc,var(--pixel-gold));outline-offset:1px}",
+      ".pixel-sname{font:700 13px ui-monospace,Menlo,Consolas,monospace;min-width:120px}",
+      ".pixel-sname .pixel-star{color:var(--pixel-acc)}",
+      ".pixel-suse{flex:1;font-size:12px;color:var(--pixel-ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+      ".pixel-overlay{position:absolute;inset:0;background:var(--pixel-overlay);display:flex;align-items:center;justify-content:center;z-index:200;padding:14px}",
+      ".pixel-modal{background:var(--pixel-paper);border:4px solid var(--pixel-frame);box-shadow:8px 8px 0 var(--pixel-shadow);width:min(680px,94vw);max-height:86vh;display:flex;flex-direction:column;position:relative}",
+      ".pixel-top{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:3px solid var(--pixel-frame);font:700 13px ui-monospace,Menlo,Consolas,Microsoft YaHei,sans-serif}",
+      ".pixel-body{padding:12px 16px;overflow:auto;flex:1;min-height:120px}",
+      ".pixel-bot{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:3px solid var(--pixel-frame)}",
+      ".pixel-f-ok{animation:pixel-fok " + MOTION.pixelResultFlashMs + "ms steps(3,end)}",
+      ".pixel-f-err{animation:pixel-ferr " + MOTION.pixelResultFlashMs + "ms steps(3,end)}",
+      "@keyframes pixel-fok{0%{background:var(--pixel-ok-bg)}100%{background:var(--pixel-paper)}}",
+      "@keyframes pixel-ferr{0%{background:var(--pixel-bad-bg)}100%{background:var(--pixel-paper)}}",
+      ".pixel-shake{animation:pixel-shk " + MOTION.pixelShakeMs + "ms steps(4,end)}",
+      "@keyframes pixel-shk{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}",
+      // ---- 文字色兜底（2026-10-10 真机修复）----
+      // 面板走深色主题，宿主给正文的默认字色是浅色（#e6edf3）。原型的纸面上是深字，但那些元素
+      // 只在原型页面的 body 上设过一次 color，搬进面板后没人给容器钉字色，浅色就渗进来 ——
+      // 真机表现就是「弹窗里字都发白看不清」。这里把 ink 钉在每一层容器上，里层再各自覆盖。
+      ".pixel-skillrow,.pixel-modal,.pixel-top,.pixel-statusline,.pixel-doc,.pixel-banner,.pixel-toc,.pixel-body,.pixel-bot{color:var(--pixel-ink)}",
+      ".pixel-doc h1,.pixel-doc h2,.pixel-doc h3,.pixel-doc strong,.pixel-doc li,.pixel-doc p{color:var(--pixel-ink)}",
+      ".pixel-doc blockquote{color:var(--pixel-ink2)}",
+      ".pixel-top span,.pixel-statusline span,.pixel-bot span{color:inherit}",
+      // ---- 整个技能页签（不只是列表块）----
+      // 原型那一页的底是棕色棋盘纸，卡片压在纸上。页签根节点自己铺这个底，头行、段选与推荐徽章
+      // 都改成像素语言；类名一律以 .pixel-tab 起头，避免影响别的页签（.dsws-* 是共用的）。
+      ".pixel-tab{position:relative;background-color:var(--pixel-tab2);background-image:repeating-conic-gradient(var(--pixel-tab1) 0% 25%,var(--pixel-tab2) 0% 50%);background-size:8px 8px;border:4px solid var(--pixel-frame);box-shadow:6px 6px 0 var(--pixel-shadow);padding:10px}",
+      ".pixel-tab .dsws-grp{color:var(--pixel-tab-ink);font-weight:700;letter-spacing:1px}",
+      ".pixel-tab .dsws-grp svg{color:var(--pixel-tab-ink)}",
+      ".pixel-tab .dsws-seg{font:700 11px ui-monospace,Menlo,Consolas,monospace;background:var(--pixel-paper);color:var(--pixel-ink);border:2px solid var(--pixel-frame);box-shadow:2px 2px 0 var(--pixel-shadow);padding:1px 8px;border-radius:0;cursor:pointer}",
+      ".pixel-tab .dsws-seg.on{background:var(--pixel-acc);color:var(--pixel-acc-ink)}",
+      ".pixel-tab .dsws-chip{font:700 11px ui-monospace,Menlo,Consolas,monospace;background:var(--pixel-card);color:var(--pixel-ink);border:2px solid var(--pixel-frame);box-shadow:2px 2px 0 var(--pixel-shadow);border-radius:0;padding:0 7px}",
+      // ---- 详情占满可见区域（2026-10-10 人拍板，两轮真机反馈后改成量父容器）----
+      // 列表让位、详情本体就是内容；正文在盒子里自己滚，底栏那两颗按钮停在**用户可见区域的底部**。
+      // 高度不再靠"面板外框大概多高"去减：面板内容区本身是定高的滚动容器，页签取它的高度（height:100%），
+      // 详情再撑满页签剩下的部分。万一某层拿不到定高（height:100% 退化成 auto），
+      // 还有 max-height: calc(100vh - 120px) 兜底 —— 最坏情况也只是一屏以内，底栏不会掉出屏幕。
+      ".pixel-tab-detail{height:100%;display:flex;flex-direction:column;box-sizing:border-box}",
+      ".pixel-detail-full{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;max-height:calc(100vh - 118px)}",
+      ".pixel-modal-full{flex:1;min-height:0;width:100%;max-width:none;max-height:none;box-shadow:4px 4px 0 var(--pixel-shadow)}",
+      ".pixel-modal-full .pixel-body{flex:1;min-height:0;overflow:auto}",
+      "@media (prefers-reduced-motion:reduce){.pixel-btn,.pixel-skillrow,.pixel-skel,.pixel-f-ok,.pixel-f-err,.pixel-shake,.pixel-spin{animation:none!important;transition:none!important}.pixel-statusline .pixel-seq>span{animation:none!important}.pixel-statusline .pixel-seq>span:not(:first-child){display:none}}"
+    ];
+    styles.insert(PIXEL_STYLE_TEXT);
     const LOCALE_LANGS = Object.freeze(["zh", "en"]);
     const LANG_CONFIG = Object.freeze({
       default: "zh",
@@ -7902,6 +8078,37 @@ Execution: after the user confirms with the reply "Apply it", you do not change 
       });
       return s3;
     };
+    const SKILLS_DATA = [
+      { name: "ask-matt", level: "warn" },
+      { name: "setup-matt-pocock-skills", level: "ok" },
+      { name: "wayfinder", level: "warn" },
+      { name: "grill-me", level: "ok" },
+      { name: "grill-with-docs", level: "ok" },
+      { name: "to-spec", level: "warn" },
+      { name: "to-tickets", level: "warn" },
+      { name: "implement", level: "warn" },
+      { name: "handoff", level: "warn" },
+      { name: "research", level: "ok" },
+      { name: "prototype", level: "ok" },
+      { name: "triage", level: "ok" },
+      { name: "wizard", level: "ok" },
+      { name: "code-review", level: "ok" },
+      { name: "diagnosing-bugs", level: "ok" },
+      { name: "retro", level: "ok" },
+      { name: "grilling", level: "ok" },
+      { name: "domain-modeling", level: "ok" },
+      { name: "to-questionnaire", level: "ok" },
+      { name: "implement-spec", level: "warn" },
+      { name: "tdd", level: "ok" },
+      { name: "codebase-design", level: "ok" },
+      { name: "improve-codebase-architecture", level: "ok" },
+      { name: "pr", level: "ok" },
+      { name: "teach", level: "ok" },
+      { name: "wait-what", level: "ok" },
+      { name: "writing-for-agents", level: "warn" }
+    ];
+    const MATT_SKILL_PROBE_NAMES = SKILLS_DATA.map((s3) => s3.name);
+    const SKILLS = SKILLS_DATA;
     const CANONICAL_LABELS = [
       { name: "bug", color: "d73a4a", description: "Something isn't working" },
       { name: "needs-triage", color: "fbca04", description: "Maintainer needs to evaluate this issue (unexamined, awaiting diagnosis)" },
@@ -21546,6 +21753,1138 @@ ${formatProgressEntry(entry)}
         ]) : null
       ]);
     };
+    const SkillsTab = ({ st }) => {
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const rec = ["ask-matt"];
+      const recTitle = tr("skill.generic");
+      const items = SKILLS.map(function(sk) {
+        return {
+          name: sk.name,
+          level: sk.level,
+          use: tr("skilldesc." + sk.name),
+          recommended: rec.indexOf(sk.name) >= 0
+        };
+      });
+      const itemOf = function(name) {
+        for (let i3 = 0; i3 < items.length; i3++) if (items[i3].name === name) return items[i3];
+        return null;
+      };
+      const d3 = st && st.pixelDetail ? st.pixelDetail : null;
+      const detailOpen = !!(d3 && d3.open);
+      const loadingName = d3 && d3.phase === "loading" ? d3.name : null;
+      const head = h4("div", { style: { display: "flex", alignItems: "center", gap: 6, marginBottom: 6 } }, [
+        h4("div", { className: "dsws-grp", style: { margin: 0 } }, [Ic({ n: "compass", size: 12 }), h4("span", null, recTitle)])
+      ]);
+      const openSkill = function(name) {
+        if (typeof pixelOpenDetail === "function") pixelOpenDetail(st, name, itemOf(name));
+      };
+      const chips = h4("div", { style: { marginBottom: 8 } }, rec.map(function(r3, i3) {
+        return h4("span", {
+          key: i3,
+          className: "dsws-chip dsws-chip-m pixel-chipref dsws-hov",
+          role: "button",
+          tabIndex: 0,
+          "data-press": "chip",
+          "data-log": "skill.chip." + i3,
+          onClick: function() {
+            openSkill(r3);
+          }
+        }, "/" + r3);
+      }));
+      const detail = h4(PixelSkillDetailModal, {
+        st,
+        full: true,
+        onRetry: function() {
+          if (typeof pixelRetryDetail === "function") pixelRetryDetail(st);
+        },
+        // 正文里的 /技能名 点一下就压一层新的详情（2026-10-10 人拍板）。
+        onOpenSkill: openSkill,
+        skillNames: items.map(function(it) {
+          return it.name;
+        })
+      });
+      const list = h4(PixelSkillList, {
+        items,
+        onDetail: function(name) {
+          if (typeof pixelOpenDetail === "function") pixelOpenDetail(st, name, itemOf(name));
+        },
+        onLoad: function(name) {
+          inject(st, "/" + name);
+        },
+        loadingName
+      });
+      return h4("div", { className: "pixel-tab" + (detailOpen ? " pixel-tab-detail" : "") }, [head, chips, detailOpen ? detail : list]);
+    };
+    const PixelContents = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const items = p3.items || [];
+      if (!items.length) return null;
+      const rows = items.map(function(label, i3) {
+        return h4("a", {
+          key: i3,
+          // 目录整行是一个跳转目标：按下要有按压反馈，日志里要认得出跳的是第几节（标题文字会变，不能进定位名）。
+          "data-press": "row",
+          "data-log": "sd.toc.row." + i3,
+          onClick: function() {
+            if (typeof p3.onJump === "function") p3.onJump(i3);
+          }
+        }, [
+          h4(PixelNum, { key: "n", n: i3 + 1 }),
+          h4("span", { key: "t" }, label)
+        ]);
+      });
+      return h4("div", { className: "pixel-toc" }, [h4("b", { key: "h" }, tr("sd.toc"))].concat(rows));
+    };
+    const pixelDocHeadings = function(md) {
+      const out = [];
+      String(md == null ? "" : md).split(/\r?\n/).forEach(function(line) {
+        const m3 = /^(#{1,3})\s+(.+)$/.exec(line.trim());
+        if (m3) out.push({ level: m3[1].length, text: m3[2].replace(/(\*\*|\*|~~|`)/g, "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") });
+      });
+      return out;
+    };
+    const PixelMarkdown = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const st = p3.st || null;
+      const nameSet = function(names) {
+        if (!names || !names.length) return null;
+        const s3 = {};
+        for (let i22 = 0; i22 < names.length; i22++) s3[String(names[i22])] = true;
+        return s3;
+      };
+      const skillSet = nameSet(p3.skillNames);
+      const skillRefOf = function(code) {
+        if (!skillSet || typeof p3.onSkill !== "function") return null;
+        const text = String(code || "").trim();
+        const name = text.charAt(0) === "/" ? text.slice(1) : text;
+        if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(name)) return null;
+        return skillSet[name] ? name : null;
+      };
+      let k4 = 0;
+      const key = function() {
+        k4 += 1;
+        return "pxd" + k4;
+      };
+      let linkN = 0;
+      let imgN = 0;
+      let skillN = 0;
+      const mdRefSet = typeof p3.onMdFile === "function" ? nameSet(p3.mdRefs) : null;
+      let mdN = 0;
+      const mdRefOf = function(text, isUrl) {
+        let t3 = String(text == null ? "" : text).trim();
+        if (isUrl) {
+          if (!t3 || /^https?:/i.test(t3) || t3.charAt(0) === "#") return null;
+        } else if (t3.length > 1 && t3.charAt(0) === "`" && t3.charAt(t3.length - 1) === "`") t3 = t3.slice(1, t3.length - 1);
+        if (t3.indexOf("./") === 0) t3 = t3.slice(2);
+        const pathRef = /^docs\/agents\/([A-Za-z0-9][A-Za-z0-9._-]*\.md)$/.exec(t3);
+        if (t3.indexOf("/") >= 0) {
+          if (isUrl || !pathRef) return null;
+          t3 = pathRef[1];
+        }
+        if (!mdRefSet || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(t3)) return null;
+        return mdRefSet[t3] ? t3 : null;
+      };
+      const mdRefNode = function(label, ref) {
+        return h4("code", { key: key(), className: "pixel-skillref", role: "button", tabIndex: 0, "data-press": "button", "data-log": "sd.md.file." + (mdN += 1), onClick: function() {
+          try {
+            p3.onMdFile(ref);
+          } catch (e3) {
+          }
+        } }, label);
+      };
+      const mdRefNodes = function(text) {
+        const s3 = String(text == null ? "" : text), out = [];
+        if (!mdRefSet || !s3) {
+          out.push(s3);
+          return out;
+        }
+        const re = /[A-Za-z0-9][A-Za-z0-9._-]*\.md/g;
+        let last = 0, m3 = null;
+        while ((m3 = re.exec(s3)) !== null) {
+          const name = m3[0], end = m3.index + name.length;
+          const before = m3.index > 0 ? s3.charAt(m3.index - 1) : "", after = end < s3.length ? s3.charAt(end) : "";
+          if (before && /[A-Za-z0-9_.\/-]/.test(before) || after && /[A-Za-z0-9_\/-]/.test(after) || !mdRefSet[name]) continue;
+          if (m3.index > last) out.push(s3.slice(last, m3.index));
+          out.push(mdRefNode(name, name));
+          last = end;
+        }
+        if (last < s3.length) out.push(s3.slice(last));
+        return out;
+      };
+      const openImg = function(src, alt) {
+        if (!st || !src) return;
+        st.pixelImgOverlay = { src, alt: String(alt || "").slice(0, 200) };
+        try {
+          if (typeof emit === "function") emit(st);
+        } catch (e3) {
+        }
+      };
+      const skillEntry = function(ref, label) {
+        skillN += 1;
+        return h4("code", {
+          key: key(),
+          className: "pixel-skillref",
+          role: "button",
+          tabIndex: 0,
+          // 接线（#1335 界面反馈）：正文里写到的技能名是一个能点的入口（role=button），
+          // 按下要有按压反馈；定位名只带编号，日志里能认出点的是第几个技能引用。
+          "data-press": "button",
+          "data-log": "sd.md.skill." + skillN,
+          onClick: function() {
+            try {
+              p3.onSkill(ref);
+            } catch (e3) {
+            }
+          }
+        }, label);
+      };
+      const pxInline = function(text, inLink) {
+        return pxInlineWith(text, inLink, []);
+      };
+      const pxInlineWith = function(text, inLink, atoms) {
+        const mark = function(node) {
+          atoms.push(node);
+          return "A" + (atoms.length - 1) + "";
+        };
+        const findClose = function(s3, ch, from, need) {
+          let i22 = from;
+          while (i22 < s3.length) {
+            if (s3[i22] !== ch) {
+              i22 += 1;
+              continue;
+            }
+            let run = 1;
+            while (i22 + run < s3.length && s3[i22 + run] === ch) run += 1;
+            const fits = need === 1 ? run === 1 : run >= need;
+            if (fits) {
+              if (ch === "_") {
+                const after = i22 + run < s3.length ? s3[i22 + run] : " ";
+                if (/[A-Za-z0-9]/.test(after)) {
+                  i22 += run;
+                  continue;
+                }
+              }
+              return i22;
+            }
+            i22 += run;
+          }
+          return -1;
+        };
+        const pushText = function(target, s3) {
+          if (!mdRefSet || inLink) target.push(s3);
+          else mdRefNodes(s3).forEach(function(x4) {
+            target.push(x4);
+          });
+        };
+        const expand = function(nodes2) {
+          const out = [];
+          nodes2.forEach(function(n2) {
+            if (typeof n2 !== "string") {
+              out.push(n2);
+              return;
+            }
+            const re = /\u0002A(\d+)\u0002/g;
+            let last = 0, m3 = null;
+            while ((m3 = re.exec(n2)) !== null) {
+              if (m3.index > last) pushText(out, n2.slice(last, m3.index));
+              const atom = atoms[parseInt(m3[1], 10)];
+              if (atom !== void 0) out.push(atom);
+              last = m3.index + m3[0].length;
+            }
+            if (last < n2.length) pushText(out, n2.slice(last));
+          });
+          return out;
+        };
+        const emphasisOf = function(s3) {
+          const out = [];
+          let i22 = 0;
+          while (i22 < s3.length) {
+            const ch = s3[i22];
+            if (ch !== "*" && ch !== "_" && ch !== "~") {
+              let j4 = i22;
+              while (j4 < s3.length && s3[j4] !== "*" && s3[j4] !== "_" && s3[j4] !== "~") j4 += 1;
+              out.push(s3.slice(i22, j4));
+              i22 = j4;
+              continue;
+            }
+            let run = 1;
+            while (i22 + run < s3.length && s3[i22 + run] === ch) run += 1;
+            const need = ch === "~" ? 2 : run >= 2 ? 2 : 1;
+            if (ch === "~" && run < 2) {
+              out.push(s3.slice(i22, i22 + run));
+              i22 += run;
+              continue;
+            }
+            if (ch === "_") {
+              const prev = i22 > 0 ? s3[i22 - 1] : " ";
+              if (/[A-Za-z0-9]/.test(prev)) {
+                out.push(s3.slice(i22, i22 + 1));
+                i22 += 1;
+                continue;
+              }
+            }
+            const openEnd = i22 + need;
+            const closeAt = findClose(s3, ch, openEnd, need);
+            if (closeAt < 0) {
+              out.push(s3.slice(i22, openEnd));
+              i22 = openEnd;
+              continue;
+            }
+            const kids = expand(emphasisOf(s3.slice(openEnd, closeAt)));
+            if (ch === "~") out.push(h4("span", { key: key(), style: { textDecoration: "line-through" } }, kids));
+            else if (need === 2) out.push(h4("strong", { key: key() }, kids));
+            else out.push(h4("em", { key: key() }, kids));
+            i22 = closeAt + need;
+          }
+          return out;
+        };
+        let rest = String(text == null ? "" : text);
+        rest = rest.replace(/`([^`]+)`/g, function(all, code) {
+          const fileRef = mdRefOf(code);
+          if (fileRef) return mark(mdRefNode(code, fileRef));
+          const ref = skillRefOf(code);
+          if (ref) return mark(skillEntry(ref, code));
+          return mark(h4("code", { key: key() }, code));
+        });
+        rest = rest.replace(/\\([*_`~\[\]()#!>\\\\])/g, function(all, ch) {
+          return mark(String(ch));
+        });
+        rest = rest.replace(/!\[([^\]]*)\]\(\s*([^\s)]+)(?:\s+["']([^"']*)["'])?\s*\)/g, function(all, alt, url) {
+          if (!/^https:/i.test(url)) return alt || "";
+          const clickable = !inLink && !!st;
+          const props2 = { key: key(), src: url, alt: alt || "Image", loading: "lazy" };
+          if (clickable) {
+            imgN += 1;
+            props2.onClick = function() {
+              openImg(url, alt);
+            };
+            props2["data-press"] = "other";
+            props2["data-log"] = "sd.md.img." + imgN;
+          }
+          return mark(h4("img", props2));
+        });
+        rest = rest.replace(/\[([^\]]+)\]\(([^\s)]+)\)/g, function(all, label, url) {
+          if (!/^https?:/i.test(url)) {
+            const fileRef = mdRefOf(url, true);
+            if (!fileRef) return label;
+            const plain = /^`([^`]*)`$/.exec(label), text2 = (plain ? plain[1] : label).indexOf("A") >= 0 ? fileRef : plain ? plain[1] : label;
+            return mark(mdRefNode(text2, fileRef));
+          }
+          linkN += 1;
+          return mark(h4("a", {
+            key: key(),
+            href: url,
+            target: "_blank",
+            rel: "noreferrer",
+            // 接线（#1335 界面反馈）：正文里的外链用 link 这一档；链接文字会变，定位名只带编号。
+            "data-press": "link",
+            "data-log": "sd.md.link." + linkN
+          }, pxInlineWith(label, true, atoms)));
+        });
+        rest = rest.replace(/(?<!\\)"([^"\n]{1,64})"/g, function(all, inner) {
+          const ref = skillRefOf(inner);
+          if (!ref) return all;
+          return '"' + mark(skillEntry(ref, inner)) + '"';
+        });
+        rest = rest.replace(/\/([A-Za-z0-9][A-Za-z0-9_-]*)/g, function(all, _name, offset, whole) {
+          const before = offset > 0 ? whole.charAt(offset - 1) : "", end = offset + all.length, after = end < whole.length ? whole.charAt(end) : "";
+          if (before && /[A-Za-z0-9_.\/]/.test(before) || after && /[A-Za-z0-9_\/-]/.test(after) || after === "." && /[A-Za-z]/.test(whole.charAt(end + 1) || "")) return all;
+          const ref = skillRefOf(all);
+          return ref ? mark(skillEntry(ref, all)) : all;
+        });
+        return expand(emphasisOf(rest));
+      };
+      const matchListLine = function(line) {
+        const im = /^( *)/.exec(line);
+        const indent = im ? im[1].length : 0;
+        const rest = line.slice(indent);
+        let m3 = /^-\s+\[([ xX])\]\s+(.+)$/.exec(rest);
+        if (m3) return { indent, ordered: false, task: m3[1], text: m3[2] };
+        m3 = /^(\d+)\.\s+(.+)$/.exec(rest);
+        if (m3) return { indent, ordered: true, task: null, text: m3[2] };
+        m3 = /^(-|\*)\s+(.+)$/.exec(rest);
+        if (m3) return { indent, ordered: false, task: null, text: m3[2] };
+        return null;
+      };
+      const takeList = function(flat, pos, indent) {
+        const lists = [];
+        let cur = null;
+        let i22 = pos;
+        while (i22 < flat.length && flat[i22].indent >= indent) {
+          const r3 = flat[i22];
+          if (r3.indent > indent) {
+            if (cur && cur.items.length > 0) {
+              const sub2 = takeList(flat, i22, r3.indent);
+              cur.items[cur.items.length - 1].kids = sub2.lists;
+              i22 = sub2.next;
+            } else {
+              i22 += 1;
+            }
+          } else {
+            if (!cur || cur.ordered !== r3.ordered) {
+              cur = { ordered: r3.ordered, items: [] };
+              lists.push(cur);
+            }
+            cur.items.push({ task: r3.task, text: r3.text, kids: null });
+            i22 += 1;
+          }
+        }
+        return { lists, next: i22 };
+      };
+      const renderListSeq = function(seq) {
+        return seq.map(function(lst, li) {
+          const tag = lst.ordered ? "ol" : "ul";
+          return h4(tag, { key: key() }, lst.items.map(function(it, ii) {
+            const kids = it.kids && it.kids.length ? renderListSeq(it.kids) : null;
+            if (it.task !== null) {
+              return h4("li", { key: ii }, h4("label", { className: "pixel-task" }, [
+                h4("input", { key: "c", type: "checkbox", checked: it.task === "x" || it.task === "X", disabled: true }),
+                h4("span", { key: "t" }, pxInline(it.text, false)),
+                kids ? h4("span", { key: "k" }, kids) : null
+              ]));
+            }
+            return h4("li", { key: ii }, [h4("span", { key: "t" }, pxInline(it.text, false))].concat(kids || []));
+          }));
+        });
+      };
+      const lines = String(p3.md == null ? "" : p3.md).split(/\r?\n/);
+      const nodes = [];
+      let i3 = 0;
+      while (i3 < lines.length) {
+        const line = lines[i3];
+        const trim = line.trim();
+        if (trim.indexOf("```") === 0) {
+          const codeLines = [];
+          i3 += 1;
+          while (i3 < lines.length && lines[i3].trim().indexOf("```") !== 0) {
+            codeLines.push(lines[i3]);
+            i3 += 1;
+          }
+          if (i3 < lines.length) i3 += 1;
+          const codeNodes = [];
+          for (let ci = 0; ci < codeLines.length; ci++) {
+            if (ci > 0) codeNodes.push("\n");
+            mdRefNodes(codeLines[ci]).forEach(function(x4) {
+              codeNodes.push(x4);
+            });
+          }
+          nodes.push(h4("pre", { key: key() }, h4("code", null, codeNodes)));
+          continue;
+        }
+        const hm = /^(#{1,6})\s+(.+)$/.exec(trim);
+        if (hm) {
+          const lv = Math.min(hm[1].length, 3);
+          nodes.push(h4("h" + lv, { key: key() }, pxInline(hm[2], false)));
+          i3 += 1;
+          continue;
+        }
+        if (/^---+$/.test(trim) || /^\*\*\*+$/.test(trim)) {
+          nodes.push(h4("hr", { key: key() }));
+          i3 += 1;
+          continue;
+        }
+        const q4 = /^>\s?(.*)$/.exec(trim);
+        if (q4) {
+          nodes.push(h4("blockquote", { key: key() }, pxInline(q4[1], false)));
+          i3 += 1;
+          continue;
+        }
+        if (matchListLine(line)) {
+          const flat = [];
+          while (i3 < lines.length) {
+            const r3 = matchListLine(lines[i3]);
+            if (!r3) break;
+            flat.push(r3);
+            i3 += 1;
+          }
+          renderListSeq(takeList(flat, 0, flat[0].indent).lists).forEach(function(n2) {
+            nodes.push(n2);
+          });
+          continue;
+        }
+        if (trim === "") {
+          i3 += 1;
+          continue;
+        }
+        nodes.push(h4("p", { key: key() }, pxInline(line, false)));
+        i3 += 1;
+      }
+      const ov = st && st.pixelImgOverlay && st.pixelImgOverlay.src ? st.pixelImgOverlay : null;
+      return h4("div", null, [
+        h4("div", { key: "doc", className: "pixel-doc", "data-lang": p3.lang || "en" }, nodes),
+        ov ? h4("div", {
+          key: "ov",
+          className: "pixel-overlay",
+          style: { position: "fixed", zIndex: 1e4 },
+          // 接线（#1335 界面反馈）：点遮罩空白处会关掉放大层，遮罩自己也是能点到的，所以接一组标识；
+          // 它不是按钮，用 data-press 的 other 档，表示「按下去的是个没有固定形状的东西」。
+          "data-press": "other",
+          "data-log": "sd.md.img.backdrop",
+          onClick: function(e3) {
+            try {
+              if (e3.target === e3.currentTarget) {
+                st.pixelImgOverlay = null;
+                emit(st);
+              }
+            } catch (err) {
+            }
+          }
+        }, h4("div", { className: "pixel-modal", style: { maxWidth: "92%" } }, [
+          h4("div", { key: "t", className: "pixel-top" }, [
+            h4("span", { key: "a", style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, ov.alt || "Image"),
+            // 按压形状是 icon 档：这颗只有「✕」一个符号，小图标下沉会看着歪。
+            h4(PixelBtn, { key: "x", mini: true, "data-press": "icon", "data-log": "sd.md.img.close", onClick: function() {
+              st.pixelImgOverlay = null;
+              try {
+                emit(st);
+              } catch (err) {
+              }
+            } }, "✕")
+          ]),
+          h4("div", { key: "b", className: "pixel-body", style: { display: "flex", alignItems: "center", justifyContent: "center" } }, h4("img", { src: ov.src, alt: ov.alt || "Image", style: { maxHeight: "60vh" } })),
+          h4("div", { key: "f", className: "pixel-bot" }, [
+            h4("span", { key: "u", style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11 } }, ov.src),
+            // 接线（#1335 界面反馈）：放大层底部那颗「打开原图」也是外链，用 link 档；它跟正文里的链接不是同一颗，定位名要分开。
+            h4("a", { key: "o", href: ov.src, target: "_blank", rel: "noreferrer", "data-press": "link", "data-log": "sd.md.img.openlink", style: { color: "#5b3df0", fontSize: 11, flex: "none" } }, tr("sd.openLink"))
+          ])
+        ])) : null
+      ]);
+    };
+    const PixelSkillRow = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const level = p3.level === "warn" ? "warn" : p3.level === "bad" ? "bad" : "ok";
+      const nameKey = String(p3.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "unnamed";
+      const dc = level === "bad" ? "#a3231a" : level === "warn" ? "#f59e0b" : "#0e8a16";
+      return h4("div", { className: "pixel-skillrow" + (p3.recommended ? " rec" : ""), style: { "--pixel-dc": dc } }, [
+        h4(PixelDot, { key: "d", level }),
+        h4("div", { key: "n", className: "pixel-sname" }, [
+          "/" + p3.name,
+          p3.recommended ? h4("span", { key: "s", className: "pixel-star" }, " ★") : null
+        ]),
+        // 副标题超宽会被省略号裁掉，悬停给全文——走 Tip，不用原生 title（T2/T3 纪律）。
+        h4(Tip, { key: "u", content: p3.use || "" }, h4("div", { className: "pixel-suse" }, p3.use)),
+        p3.onLoad ? h4(PixelBtn, {
+          key: "l",
+          // 按压形状写明是 button 档（这两颗带字）；定位名后缀是清洗过的技能名，同屏两行不会撞名。
+          "data-press": "button",
+          "data-log": "sd.skillrow.load." + nameKey,
+          onClick: function() {
+            if (typeof p3.onLoad === "function") p3.onLoad(p3.name);
+          }
+        }, tr("act.load")) : null,
+        h4(PixelBtn, {
+          key: "b",
+          loading: p3.loading,
+          "data-press": "button",
+          "data-log": "sd.skillrow.detail." + nameKey,
+          onClick: function() {
+            if (typeof p3.onDetail === "function") p3.onDetail(p3.name);
+          }
+        }, tr("sd.detailBtn"))
+      ]);
+    };
+    const PixelSkillList = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const items = p3.items || [];
+      return h4("div", null, [
+        h4("div", { key: "t", className: "dsws-grp", style: { marginBottom: 6 } }, tr("sd.listTitle")),
+        h4("div", { key: "rows" }, items.map(function(it) {
+          return h4(PixelSkillRow, {
+            key: it.name,
+            name: it.name,
+            level: it.level,
+            use: it.use,
+            recommended: it.recommended,
+            onDetail: p3.onDetail,
+            onLoad: p3.onLoad,
+            loading: p3.loadingName === it.name
+          });
+        }))
+      ]);
+    };
+    const pixelCloseDetail = function(s3) {
+      if (!s3) return;
+      const stack = Array.isArray(s3.pixelDetailStack) ? s3.pixelDetailStack : [];
+      stack.pop();
+      s3.pixelDetail = stack.length ? stack[stack.length - 1] : null;
+      try {
+        if (typeof emit === "function") emit(s3);
+      } catch (e3) {
+      }
+    };
+    const pixelToggleDetailLang = function(s3) {
+      const d3 = s3 && s3.pixelDetail;
+      if (!d3) return;
+      d3.bodyLang = d3.bodyLang === "zh" ? "en" : "zh";
+      try {
+        if (typeof emit === "function") emit(s3);
+      } catch (e3) {
+      }
+    };
+    const pixelCopyDetailLink = function(s3, text) {
+      const d3 = s3 && s3.pixelDetail;
+      const done = function() {
+        if (!d3) return;
+        d3.copied = true;
+        try {
+          if (typeof emit === "function") emit(s3);
+        } catch (e3) {
+        }
+        setTimeout(function() {
+          if (!s3 || s3.pixelDetail !== d3) return;
+          d3.copied = false;
+          try {
+            if (typeof emit === "function") emit(s3);
+          } catch (e3) {
+          }
+        }, SKILL_DETAIL_COPIED_FLASH_MS);
+      };
+      try {
+        if (text && typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, done);
+          return;
+        }
+      } catch (e3) {
+      }
+      done();
+    };
+    const PixelSkillDetailModal = function(props) {
+      const p3 = props || {};
+      const cx2 = React.useContext(DswsCtx);
+      const h4 = cx2 ? cx2.h : React.createElement;
+      const s3 = p3.st;
+      const d3 = s3 && s3.pixelDetail;
+      const bodyRef = React.useRef(null);
+      const fitRef = React.useRef(null);
+      const useFit = React.useLayoutEffect || React.useEffect;
+      useFit(function() {
+        if (!p3.full) return void 0;
+        const el = fitRef.current;
+        if (!el || typeof window === "undefined") return void 0;
+        const fit = function() {
+          try {
+            let host2 = el.parentElement;
+            let limit = 0;
+            while (host2 && host2 !== document.body) {
+              const cs = window.getComputedStyle(host2);
+              if (/(auto|scroll|hidden)/.test(cs.overflowY) && host2.clientHeight >= 200) {
+                const pbd = parseFloat(cs.paddingBottom) || 0;
+                const r3 = host2.getBoundingClientRect();
+                limit = r3.top + host2.clientTop + host2.clientHeight - Math.max(pbd, 8);
+                break;
+              }
+              host2 = host2.parentElement;
+            }
+            const top = el.getBoundingClientRect().top;
+            let h22 = limit ? limit - top : window.innerHeight - top - 12;
+            h22 = Math.max(240, Math.min(h22, window.innerHeight - top - 6));
+            el.style.height = Math.round(h22) + "px";
+            el.style.maxHeight = "none";
+          } catch (e3) {
+          }
+        };
+        fit();
+        window.addEventListener("resize", fit);
+        let ro = null;
+        try {
+          if (typeof ResizeObserver === "function") {
+            ro = new ResizeObserver(fit);
+            ro.observe(el.parentElement || el);
+          }
+        } catch (e3) {
+        }
+        return function() {
+          window.removeEventListener("resize", fit);
+          try {
+            if (ro) ro.disconnect();
+          } catch (e3) {
+          }
+        };
+      }, [p3.full, d3 && d3.open, d3 && d3.name]);
+      const showStatus = d3 && d3.open && (d3.phase === "loading" || d3.phase === "error");
+      if (!d3 || !d3.open) return null;
+      const lang = d3.bodyLang === "zh" && d3.mdZh ? "zh" : "en";
+      const md = lang === "zh" ? d3.mdZh : d3.mdEn;
+      const copyPath = lang === "zh" && d3.pathZh ? d3.pathZh : d3.docPath;
+      const title = (lang === "zh" ? d3.titleZh : d3.titleEn) || d3.titleEn || "/" + (d3.name || "");
+      const heads = pixelDocHeadings(md || "").filter(function(x4) {
+        return x4.level >= 2;
+      }).map(function(x4) {
+        return x4.text;
+      });
+      const canTranslate = !!d3.mdZh;
+      const toTop = function() {
+        try {
+          if (bodyRef.current) bodyRef.current.scrollTop = 0;
+        } catch (e3) {
+        }
+      };
+      const jump = function(i3) {
+        try {
+          const hs = bodyRef.current ? bodyRef.current.querySelectorAll("h2,h3") : [];
+          if (hs[i3]) bodyRef.current.scrollTop = hs[i3].offsetTop - 8;
+        } catch (e3) {
+        }
+      };
+      const depth = Array.isArray(s3.pixelDetailStack) ? s3.pixelDetailStack.length : 1;
+      const icon = d3.phase === "loading" ? "loading" : d3.phase === "ready" ? "ok" : d3.phase === "error" ? d3.isMissing ? "warn" : "err" : "idle";
+      const frame = d3.phase === "ready" ? "pixel-f-ok" : d3.phase === "error" && !d3.isMissing ? "pixel-f-err pixel-shake" : "";
+      let body = null;
+      const mdBody = function(key) {
+        return h4(PixelMarkdown, {
+          key,
+          md,
+          lang,
+          st: s3,
+          onSkill: p3.onOpenSkill || null,
+          skillNames: p3.skillNames || null,
+          mdRefs: d3.refs || null,
+          onMdFile: function(name) {
+            pixelOpenFileRef(s3, name);
+          }
+        });
+      };
+      if (d3.phase === "loading" && d3.showSkel) body = h4(PixelSkeleton, { key: "b", lines: 3 });
+      else if (d3.phase === "ready" && d3.kind === "project") {
+        body = h4("div", { key: "b", className: "pixel-doc", "data-lang": lang }, [
+          h4("p", { key: "n" }, tr("sd.fileProject", { file: String(d3.name || "") }))
+        ]);
+      } else if (d3.phase === "ready" && d3.kind === "choose") {
+        body = h4("div", { key: "b", className: "pixel-doc", "data-lang": lang }, [
+          h4("p", { key: "t" }, tr("sd.fileChoose")),
+          ...(d3.options || []).map(function(opt, i3) {
+            return h4(PixelBtn, {
+              key: "o" + i3,
+              "data-press": "button",
+              "data-log": "sd.detail.pick." + (i3 + 1),
+              onClick: function() {
+                pixelPickFileOption(s3, opt);
+              }
+            }, opt.file + (opt.skill ? " · " + opt.skill : ""));
+          })
+        ]);
+      } else if (d3.phase === "ready") {
+        if (d3.kind === "format") {
+          body = h4("div", { key: "b" }, [
+            h4("p", { key: "fmt", className: "pixel-doc" }, tr("sd.fileFormat", { name: String(d3.name || ""), file: String(d3.file || "") })),
+            mdBody("md")
+          ]);
+        } else {
+          body = mdBody("b");
+        }
+      } else if (d3.phase === "error" && d3.isMissing) {
+        body = h4("div", { key: "b", className: "pixel-doc", "data-lang": lang }, [
+          h4("p", { key: "t" }, [h4(PixelStateIcon, { key: "i", kind: "warn" }), h4("b", { key: "x" }, tr("sd.miss"))]),
+          h4("p", { key: "m" }, tr("sd.missBody")),
+          h4("p", { key: "s" }, d3.shortDesc || "")
+        ]);
+      } else if (d3.phase === "error") body = h4("p", { key: "b" }, tr("sd.noBody"));
+      else body = h4("p", { key: "b" }, tr("sd.none"));
+      const box = h4("div", {
+        className: "pixel-modal " + frame + (p3.full ? " pixel-modal-full" : ""),
+        role: "dialog",
+        "aria-label": title
+      }, [
+        h4(PixelSeal, { key: "seal" }),
+        h4("div", { key: "top", className: "pixel-top" }, [
+          h4("span", { key: "t" }, title),
+          depth > 1 ? h4("span", { key: "ly", className: "pixel-stack" }, tr("sd.stack", { n: String(depth), m: String(PIXEL_STACK_MAX) })) : null,
+          h4("span", { key: "f", style: { flex: 1 } }),
+          // 接线（#1335 界面反馈）：弹窗顶上这两颗按钮各接一组标识（翻译、关闭），日志里分得清点的是哪颗。
+          // 按压形状都写明是 button 档：这几颗都带字；像素风自带悬停反馈，不叠通用悬停样式。
+          canTranslate ? h4(PixelBtn, { key: "l", hot: true, "data-press": "button", "data-log": "sd.detail.lang", onClick: function() {
+            pixelToggleDetailLang(s3);
+          } }, lang === "en" ? tr("sd.toZh") : tr("sd.toEn")) : null,
+          h4(PixelBtn, { key: "x", "data-press": "button", "data-log": "sd.detail.close", onClick: function() {
+            pixelCloseDetail(s3);
+          } }, tr("sd.close"))
+        ]),
+        showStatus ? h4(PixelStatusLine, {
+          key: "st",
+          icon,
+          texts: d3.phase === "loading" ? [tr("sd.fetch"), tr("sd.parse"), tr("sd.layout")] : null,
+          text: d3.phaseText || tr("sd.idle")
+        }) : null,
+        h4("div", {
+          key: "body",
+          ref: bodyRef,
+          className: "pixel-body"
+        }, [
+          d3.phase === "error" ? h4(PixelBanner, {
+            key: "bn",
+            kind: d3.isMissing ? "warn" : "error",
+            text: d3.phaseText,
+            onRetry: !d3.isMissing && typeof p3.onRetry === "function" ? function() {
+              p3.onRetry(d3.name);
+            } : null,
+            onClose: function() {
+              pixelCloseDetail(s3);
+            }
+          }) : null,
+          d3.phase === "ready" && heads.length ? h4(PixelContents, { key: "toc", items: heads, onJump: jump }) : null,
+          body
+        ]),
+        h4("div", { key: "bot", className: "pixel-bot" }, [
+          // 接线（#1335 界面反馈）：底栏三颗按钮（复制、重试、回到顶部）各接一组标识，彼此不重名。
+          d3.copyText ? h4(PixelBtn, { key: "c", "data-press": "button", "data-log": "sd.detail.copy", onClick: function() {
+            pixelCopyDetailLink(s3, copyPath);
+          } }, d3.copied ? tr("sd.copied") : copyPath ? tr("sd.copyPath") : tr("sd.copy")) : null,
+          !d3.isMissing && d3.phase === "error" && typeof p3.onRetry === "function" ? h4(PixelBtn, { key: "r", "data-press": "button", "data-log": "sd.detail.retry", onClick: function() {
+            p3.onRetry(d3.name);
+          } }, tr("sd.retry")) : null,
+          h4("span", { key: "f", style: { flex: 1 } }),
+          h4(PixelBtn, { key: "t", mini: true, "data-press": "button", "data-log": "sd.detail.top", onClick: toTop }, tr("sd.top"))
+        ])
+      ]);
+      if (p3.full) return h4("div", { className: "pixel-detail-full", ref: fitRef, "data-fit": "on" }, box);
+      return h4("div", {
+        className: "pixel-overlay",
+        // 接线（#1335 界面反馈）：点遮罩空白处会关掉这个弹窗，遮罩自己也是能点到的，所以接一组标识；
+        // 它不是按钮，用 data-press 的 other 档，表示「按下去的是个没有固定形状的东西」。
+        "data-press": "other",
+        "data-log": "sd.detail.backdrop",
+        onClick: function(e3) {
+          try {
+            if (e3.target === e3.currentTarget) pixelCloseDetail(s3);
+          } catch (err) {
+          }
+        }
+      }, box);
+    };
+    const pixelDetailCache = {};
+    const pixelRefsOf = function(res) {
+      try {
+        if (res && Array.isArray(res.refs)) return res.refs.map(function(n2) {
+          return String(n2);
+        });
+      } catch (e3) {
+      }
+      return null;
+    };
+    let pixelSkelTimer = null;
+    const pixelClearSkel = function() {
+      try {
+        if (pixelSkelTimer) {
+          clearTimeout(pixelSkelTimer);
+          pixelSkelTimer = null;
+        }
+      } catch (e3) {
+      }
+    };
+    const pixelLangOf = function() {
+      try {
+        if (typeof uiLang === "function") return String(uiLang() || "");
+      } catch (e3) {
+      }
+      try {
+        if (typeof LANG_CONFIG === "object" && LANG_CONFIG && LANG_CONFIG.default) return String(LANG_CONFIG.default);
+      } catch (e3) {
+      }
+      return "";
+    };
+    const PIXEL_STACK_MAX = 3;
+    const pixelStackOf = function(st) {
+      if (!Array.isArray(st.pixelDetailStack)) st.pixelDetailStack = [];
+      return st.pixelDetailStack;
+    };
+    const pixelSyncTop = function(st) {
+      const s3 = pixelStackOf(st);
+      st.pixelDetail = s3.length ? s3[s3.length - 1] : null;
+    };
+    const pixelAlive = function(st, created) {
+      const s3 = Array.isArray(st.pixelDetailStack) ? st.pixelDetailStack : [];
+      return s3.indexOf(created) >= 0;
+    };
+    const pixelFail = function(st, created, isMissing) {
+      const d3 = created;
+      if (!d3 || !pixelAlive(st, d3)) return;
+      pixelClearSkel();
+      d3.phase = "error";
+      d3.isMissing = !!isMissing;
+      d3.phaseText = isMissing ? tr("sd.miss") : tr("sd.fail");
+      d3.showSkel = false;
+      try {
+        if (typeof emit === "function") emit(st);
+      } catch (e3) {
+      }
+    };
+    const pixelFetch = function(st, created, args, failCode, onOk) {
+      pixelClearSkel();
+      pixelSkelTimer = setTimeout(function() {
+        const d3 = created;
+        if (!d3 || !pixelAlive(st, d3) || d3.phase !== "loading") return;
+        d3.showSkel = true;
+        try {
+          if (typeof emit === "function") emit(st);
+        } catch (e3) {
+        }
+      }, SKILL_SKELETON_DELAY_MS);
+      const t0 = Date.now();
+      let pending = null;
+      try {
+        pending = typeof host !== "undefined" && host && typeof host.call === "function" ? host.call("skill.readDoc", args) : null;
+      } catch (e3) {
+        pending = null;
+      }
+      if (!pending || typeof pending.then !== "function") {
+        pixelFail(st, created, false);
+        return;
+      }
+      pending.then(function(res) {
+        try {
+          if (res && res.ok === true) log("info", "host.call", { method: "skill.readDoc", latencyMs: Date.now() - t0, ok: true, kind: "skill-doc" });
+          else log("warn", "host.call.fail", { method: "skill.readDoc", kind: "skill-doc", errorHash: dswsLogHash(dswsLogTrunc(String(failCode), 120, "error")) });
+        } catch (eL) {
+        }
+        const d3 = created;
+        if (!d3 || !pixelAlive(st, d3)) return;
+        pixelClearSkel();
+        if (res && res.ok === true) {
+          onOk(res);
+          return;
+        }
+        pixelFail(st, created, true);
+      }, function(e3) {
+        try {
+          log("warn", "host.call.fail", { method: "skill.readDoc", kind: "skill-doc", errorHash: dswsLogHash(dswsLogTrunc(String(e3 && e3.message || e3), 120, "error")) });
+        } catch (eL) {
+        }
+        pixelFail(st, created, false);
+      });
+    };
+    const pixelLoad = function(st, created, name) {
+      pixelFetch(st, created, { name }, "skill-doc-not-ok", function(res) {
+        if (!res.md) {
+          pixelFail(st, created, true);
+          return;
+        }
+        const docPath = String(res && res.path || "");
+        const zh = res && res.mdZh ? String(res.mdZh) : "";
+        const zhPath = zh ? String(res && res.pathZh || "") : "";
+        created.skill = name;
+        created.refs = pixelRefsOf(res);
+        created.mdEn = String(res.md);
+        created.mdZh = zh || null;
+        created.pathZh = zhPath || null;
+        created.copyText = docPath || null;
+        created.docPath = docPath || null;
+        created.phase = "ready";
+        created.phaseText = tr("sd.ready");
+        created.showSkel = false;
+        pixelDetailCache[name] = { md: String(res.md), path: docPath, mdZh: zh || null, pathZh: zhPath || null, refs: created.refs };
+        try {
+          if (typeof emit === "function") emit(st);
+        } catch (e3) {
+        }
+      });
+    };
+    const pixelClearDoc = function(d3) {
+      d3.mdEn = null;
+      d3.mdZh = null;
+      d3.docPath = null;
+      d3.pathZh = null;
+      d3.copyText = null;
+      d3.options = null;
+    };
+    const pixelResetLayer = function(d3) {
+      pixelClearDoc(d3);
+      d3.copied = false;
+      d3.phase = "loading";
+      d3.phaseText = tr("sd.fetch");
+      d3.isMissing = false;
+      d3.showSkel = false;
+    };
+    const pixelLoadFile = function(st, created, skillName, ref) {
+      pixelFetch(st, created, { name: skillName || "", file: ref }, "skill-file-not-ok", function(res) {
+        const d3 = created;
+        d3.refs = pixelRefsOf(res);
+        d3.showSkel = false;
+        d3.copied = false;
+        if (res.kind === "project") {
+          d3.kind = "project";
+          d3.format = false;
+          pixelClearDoc(d3);
+        } else if (res.kind === "choose") {
+          d3.kind = "choose";
+          d3.format = res.format === true;
+          pixelClearDoc(d3);
+          d3.options = Array.isArray(res.options) ? res.options : [];
+        } else {
+          if (!res.md) {
+            pixelFail(st, created, true);
+            return;
+          }
+          const docPath = String(res && res.path || "");
+          const zh = res && res.mdZh ? String(res.mdZh) : "";
+          const zhPath = zh ? String(res && res.pathZh || "") : "";
+          if (res.kind === "format") d3.format = true;
+          d3.kind = d3.format === true ? "format" : "file";
+          d3.file = String(res && res.file || ref);
+          d3.skill = res.skill ? String(res.skill) : skillName ? String(skillName) : null;
+          d3.mdEn = String(res.md);
+          d3.mdZh = zh || null;
+          d3.pathZh = zhPath || null;
+          d3.docPath = docPath || null;
+          d3.copyText = docPath || null;
+          d3.options = null;
+        }
+        d3.phase = "ready";
+        d3.phaseText = tr("sd.ready");
+        try {
+          if (typeof emit === "function") emit(st);
+        } catch (e3) {
+        }
+      });
+    };
+    const pixelOpenDetail = function(st, name, item) {
+      if (!st || !name) return;
+      const use = item && item.use || "";
+      const stack = pixelStackOf(st);
+      const top = stack[stack.length - 1];
+      if (top && top.name === name && top.phase !== "error") return;
+      const created = {
+        open: true,
+        // kind：空/缺省是技能正文层；文件层另有 file/format/project/choose 四种（#1522）。
+        kind: "skill",
+        // format：这一层打开的是不是格式模板（#1522 方案 C）；技能正文层永远不是。
+        format: false,
+        name,
+        titleEn: "/" + name,
+        titleZh: "/" + name,
+        skill: name,
+        // 名单要等这一篇的取数回来才有；先空着，取回后按这一篇自己的名单填（不挂上一篇的）。
+        refs: null,
+        mdEn: null,
+        mdZh: null,
+        shortDesc: use,
+        // 正文默认英文原文；随包若带中文译文（兄弟目录 bundled-skills-zh 下的同名文件），弹窗上那颗「中文」按钮就能切过去。
+        bodyLang: "en",
+        phase: "loading",
+        phaseText: tr("sd.fetch"),
+        isMissing: false,
+        dshLang: pixelLangOf(),
+        showSkel: false
+      };
+      stack.push(created);
+      while (stack.length > PIXEL_STACK_MAX) stack.shift();
+      pixelSyncTop(st);
+      try {
+        if (typeof emit === "function") emit(st);
+      } catch (e3) {
+      }
+      const cached = pixelDetailCache[name];
+      if (cached) {
+        created.skill = name;
+        created.refs = cached.refs || null;
+        created.mdEn = cached.md;
+        created.docPath = cached.path;
+        created.copyText = cached.path;
+        created.mdZh = cached.mdZh;
+        created.pathZh = cached.pathZh;
+        created.phase = "ready";
+        created.phaseText = tr("sd.readyHit");
+        try {
+          if (typeof emit === "function") emit(st);
+        } catch (e3) {
+        }
+        return;
+      }
+      pixelLoad(st, created, name);
+    };
+    const pixelOpenFileRef = function(st, ref) {
+      if (!st || !ref) return;
+      const stack = pixelStackOf(st);
+      const top = stack[stack.length - 1];
+      const baseSkill = top ? top.kind && top.kind !== "skill" ? top.skill || null : top.name || null : null;
+      if (top && top.kind && top.kind !== "skill" && top.name === ref && top.phase !== "error") return;
+      const created = {
+        open: true,
+        kind: "file",
+        // 点进来的是正文里写的名字；它是不是格式模板要等宿主回话（kind=format 或 choose+format）。
+        format: false,
+        name: ref,
+        titleEn: ref,
+        titleZh: ref,
+        file: ref,
+        skill: baseSkill,
+        refs: null,
+        mdEn: null,
+        mdZh: null,
+        shortDesc: "",
+        bodyLang: "en",
+        phase: "loading",
+        phaseText: tr("sd.fetch"),
+        isMissing: false,
+        dshLang: pixelLangOf(),
+        showSkel: false
+      };
+      stack.push(created);
+      while (stack.length > PIXEL_STACK_MAX) stack.shift();
+      pixelSyncTop(st);
+      try {
+        if (typeof emit === "function") emit(st);
+      } catch (e3) {
+      }
+      pixelLoadFile(st, created, baseSkill, ref);
+    };
+    const pixelPickFileOption = function(st, opt) {
+      const d3 = st && st.pixelDetail;
+      if (!d3 || !opt || !opt.file) return;
+      const keepName = d3.format === true;
+      d3.kind = keepName ? "format" : "file";
+      if (!keepName) {
+        d3.name = String(opt.file);
+        d3.titleEn = String(opt.file);
+        d3.titleZh = String(opt.file);
+      }
+      d3.file = String(opt.file);
+      d3.skill = opt.skill ? String(opt.skill) : null;
+      d3.options = null;
+      pixelResetLayer(d3);
+      try {
+        if (typeof emit === "function") emit(st);
+      } catch (e3) {
+      }
+      pixelLoadFile(st, d3, d3.skill, d3.file);
+    };
+    const pixelRetryDetail = function(st) {
+      const d3 = st && st.pixelDetail;
+      if (!d3 || !d3.name) return;
+      if (d3.kind === "file" || d3.kind === "format" || d3.kind === "choose") {
+        const ref = d3.kind === "choose" ? d3.name : d3.file || d3.name;
+        pixelResetLayer(d3);
+        try {
+          if (typeof emit === "function") emit(st);
+        } catch (e3) {
+        }
+        pixelLoadFile(st, d3, d3.skill || "", ref);
+        return;
+      }
+      const name = d3.name;
+      try {
+        delete pixelDetailCache[name];
+      } catch (e3) {
+      }
+      pixelResetLayer(d3);
+      try {
+        if (typeof emit === "function") emit(st);
+      } catch (e3) {
+      }
+      pixelLoad(st, d3, name);
+    };
+    const pixelCloseDetailAndClean = function(st) {
+      pixelClearSkel();
+      pixelCloseDetail(st);
+    };
     const cx = createCx({
       ctx,
       h: h3,
@@ -21593,7 +22932,7 @@ ${formatProgressEntry(entry)}
             if (topMap !== null && topMap !== void 0)
               return h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, ["地图详情页:mapV2 家族未搬(U06+ 候选)"]);
             return h3(ListTab, { st, narrow });
-          }() : h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tab" + (st.tab === "skills" ? "Skills" : st.tab === "checks" ? "Checks" : "Pr")) + " 页:U06+ 搬入"])
+          }() : st.tab === "skills" ? h3(SkillsTab, { st }) : h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tab" + (st.tab === "checks" ? "Checks" : "Pr")) + " 页:U06+ 搬入"])
         ])
       ]);
     };
