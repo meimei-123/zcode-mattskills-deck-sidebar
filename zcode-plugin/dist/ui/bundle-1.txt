@@ -23683,7 +23683,7 @@ ${formatProgressEntry(entry)}
             if (topMap !== null && topMap !== void 0)
               return h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, ["地图详情页:mapV2 家族未搬(U06+ 候选)"]);
             return h3(ListTab, { st, narrow });
-          }() : st.tab === "skills" ? h3(SkillsTab, { st }) : st.tab === "checks" ? h3(ChecksTab, { st }) : h3("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tabPr") + " 页:U06+ 搬入"])
+          }() : st.tab === "skills" ? h3(SkillsTab, { st }) : st.tab === "checks" ? h3(ChecksTab, { st }) : h3(ListTab, { st, narrow })
         ])
       ]);
     };

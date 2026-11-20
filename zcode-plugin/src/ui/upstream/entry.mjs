@@ -18,7 +18,7 @@
 //   - host:上游叶子对 DSH 宿主电话的出口统一是 host.call('wf.*');ZCode 这边唯一接通的是
 //     wf.issuesPage(历史票翻页 → deck_issue_list 客户端分页),其余电话回 unsupported 形状;
 //   - snapFresh/loadSnapshot/scheduleActionProbe/DetailsDock 四个名字是最小桩(refresh rooms
-//     家族与 Dock 不搬:数据面是 boot/ingest,详情视图是 U05+)。
+//     家族与 Dock 不搬:数据面是 boot/ingest,详情由列表分支的 IssueDetail 承担)。
 import * as PreactCompat from "preact/compat";
 import { h, render, options as PreactOptions } from "preact";
 // effect 冲刷调度兜底(U05):Preact 把 passive effect 排给 options.requestAnimationFrame,
@@ -312,8 +312,9 @@ function apply(ctx) {
   //     snapFresh=true(永远新鲜 → loadSnapshot 不被调),loadSnapshot 给无操作兜底。
   //   scheduleActionProbe —— 上游 api-io 的 inject 后排一次探测刷新(refresh-timer);ZCode 无
   //     刷新回合,给空函数(调用点 api-io inject 与 348 行的 typeof 守卫各得其所)。
-  //   DetailsDock —— 上游 router 的 DeckSidebarTab 渲的是整套 Dock(U05+ 的详情/页签内容分发);
-  //     本票给 null 组件占位,U05 详情视图接手后撤。
+  //   DetailsDock —— 上游 router 的 DeckSidebarTab 渲整套 Dock;本仓 router 不搬,面板由
+  //     本文件 DeckShell/DeckBody 直接挂槽位,详情走 list 分支的 IssueDetail。此名只为装配
+  //     差集保留,返回 null、不参与渲染。
   const snapFresh = function (st) {
     void st; // U04 桩:数据面是 boot/ingest,页签点击不触发快照重拉
     return true;
@@ -482,7 +483,8 @@ function apply(ctx) {
   // ==== leaf:mdEffortRow (spliced by build) ====
   // ==== leaf:listTab (spliced by build) ====
 
-  // ---- 技能页签 + 文档详情像素风家族(工单 02;上游 index.ts 标记序原位,leaf:prTab 本批跳过。
+  // ---- 技能页签 + 文档详情像素风家族(工单 02;上游 index.ts 标记序原位,leaf:prTab 不搬
+  //      (本地后端无 PR 能力,页签不渲染)。
   //      依赖次序:页签本体先声明,详情家族按 目录/正文/行/列表/弹窗/取数 次序) ----
   // ==== leaf:skillsTab (spliced by build) ====
   // ==== leaf:pixelContents (spliced by build) ====
@@ -515,8 +517,8 @@ function apply(ctx) {
   //      U03 的卡面临时挂点在此撤销,卡面组件仍经 cards 自检面供给;工单 03 起「环境检查」
   //      页签也接真视图:ChecksTab 的链快照唯一渲染;#284 起九格 wf.status 视图已退役,不恢复) ----
   // 结构对上游 panel/Dock.ts 的头部三段:dsws-head(标题)/dsws-tabs(useTabsRow 的墨块 + 页签
-  // 与 wayfinder、bug 入口、EntryChooser)/dsws-body(按 st.tab 分发;list 与 skills 是真视图,
-  // checks 占位待 03 票搬入,pr 在本地后端无能力、兜底占位)。
+  // 与 wayfinder、bug 入口、EntryChooser)/dsws-body(按 st.tab 分发;list/skills/checks 都是真视图,
+  // pr 在本地后端无能力、页签不渲染,状态落到 pr 时兜底回列表 —— 与上游 Dock.ts 同一分支同款)。
   // 门组件(上游 #670 同款):无数据先画 dsws-hold 空壳,有数据才挂 DeckBody ——
   // hooks(useTabsRow 等)只在 DeckBody 里调,渲染次数变化不破坏 hook 次序。
   const DeckShell = function () {
@@ -629,7 +631,8 @@ function apply(ctx) {
               ? h(SkillsTab, { st: st })
               : st.tab === "checks"
                 ? h(ChecksTab, { st: st })
-                : h("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-caption,#8b8b95)", padding: "14px 0", textAlign: "center" } }, [tr("panel.tabPr") + " 页:U06+ 搬入"]),
+                // pr 无能力时兜底回列表(上游 Dock.ts 同一分支:showPrTab 为假就画 ListTab)
+                : h(ListTab, { st: st, narrow: narrow }),
       ]),
     ]);
   };
