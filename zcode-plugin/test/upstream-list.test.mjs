@@ -349,7 +349,7 @@ if (code) {
   has("桩 snapFresh(U04 数据面 = boot/ingest)", /const snapFresh = function|U04 桩.*snapFresh|snapFresh.*U04 桩/s);
   check("bundle 无拼接标记残留", !/\(spliced by build\)/.test(code));
   check("bundle 无锚点残留", !/@splice-anchor/.test(code));
-  check("bundle 无模块级 import/export", !/\bimport\s*["']/.test(code) && !/^[^\S\r\n]*export\s/m.test(code));
+  check("bundle 无模块级 import/export", !/^[^\S\r\n]*import[\s{"'*]/m.test(code) && !/^[^\S\r\n]*export\s/m.test(code));
   try {
     new vm.Script(code);
     check("bundle 语法过(vm.Script)", true);
@@ -428,11 +428,10 @@ if (U) {
   check("页签行 dsws-ink-host 在(tabs 壳)", !!tabsRow);
   if (tabsRow) {
     const tabBtn = (log) => walk(tabsRow).filter((n) => n.attributes["data-log"] === log && n.tagName === "BUTTON")[0];
-    for (const id of ["panel.tab.list", "panel.tab.skills", "panel.tab.checks"]) {
+    for (const id of ["panel.tab.list", "panel.tab.skills", "panel.tab.checks", "panel.tab.versioncontrol"]) {
       check(`页签 ${id} 在`, !!tabBtn(id));
     }
     check("拉取请求页签缺席(能力门控:prTabVisible 未搬,typeof 守卫走缺省)", !tabBtn("panel.tab.pr"));
-    check("版本管理页签缺席(同上 vcTabVisible)", !tabBtn("panel.tab.versioncontrol"));
     const listTab = tabBtn("panel.tab.list");
     check("列表页签选中(dsws-tab on)", listTab && String(listTab.attributes["class"]).includes("on"));
     check("新建需求入口在(panel.newwayfinder)", !!walk(tabsRow).find((n) => n.attributes["data-log"] === "panel.newwayfinder"));

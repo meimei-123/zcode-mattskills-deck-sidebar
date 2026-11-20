@@ -335,7 +335,7 @@ if (code) {
   has("注入通道种子(st.injector → sendMessage)", /st\.injector = function[\s\S]*sendMessage/);
   has("DeckBody 详情分发(peekNav 栈顶)", /peekNav\(st\)[\s\S]*IssueDetail/);
   check("bundle 无拼接标记残留", !/\(spliced by build\)/.test(code));
-  check("bundle 无模块级 import/export", !/\bimport\s*["']/.test(code) && !/^[^\S\r\n]*export\s/m.test(code));
+  check("bundle 无模块级 import/export", !/^[^\S\r\n]*import[\s{"'*]/m.test(code) && !/^[^\S\r\n]*export\s/m.test(code));
   try {
     new vm.Script(code);
     check("bundle 语法过(vm.Script)", true);

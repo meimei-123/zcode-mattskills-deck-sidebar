@@ -318,7 +318,7 @@ if (code) {
   has("宽度通道(面板根 ResizeObserver → setDw)", /setDw/);
   check("bundle 无拼接标记残留", !/\(spliced by build\)/.test(code));
   check("bundle 无锚点残留", !/@splice-anchor/.test(code));
-  check("bundle 无模块级 import/export", !/\bimport\s*["']/.test(code) && !/^[^\S\r\n]*export\s/m.test(code));
+  check("bundle 无模块级 import/export", !/^[^\S\r\n]*import[\s{"'*]/m.test(code) && !/^[^\S\r\n]*export\s/m.test(code));
   try {
     new vm.Script(code);
     check("bundle 语法过(vm.Script)", true);
@@ -424,7 +424,7 @@ if (U) {
   check("宽档基线:KPI 行在", !!kpiRow);
 
   // ---- 切片:document.fonts.ready 这一路触发页签折叠 ----
-  // fake 容器的可用宽 300:590px 内容需收「环境检查(8)→技能(7)→列表(4)」三档后放得下,
+  // fake 容器的可用宽 300:590px 内容需收「环境检查(8)→技能(7)→版本管理(5)」三档后放得下,
   // 590 - 3×100 = 290 <= 301(每折一档少 100px,模拟真实 max-width 动画收字)
   const tabsRow = tabsRowOf();
   check("页签行在(.dsws-tabs)", !!tabsRow);
@@ -448,7 +448,7 @@ if (U) {
     }
     eq("fonts.ready 触发折叠:data-tabs-level = 3", tabsRow.attributes["data-tabs-level"], "3");
     const collapsedNow = () => qsa(tabsRow, "[data-priority].collapsed").map((el) => el.attributes["data-priority"]);
-    eq("折叠集合按 priority 降序 = 8 环境检查 → 7 技能 → 4 列表", collapsedNow().sort((a, b) => Number(b) - Number(a)), ["8", "7", "4"]);
+    eq("折叠集合按 priority 降序 = 8 环境检查 → 7 技能 → 5 版本管理", collapsedNow().sort((a, b) => Number(b) - Number(a)), ["8", "7", "5"]);
     check("优先级最高(8 环境检查)先收", collapsedNow().includes("8"));
     check("右侧入口(2 新建需求 / 1 +bug)不让位", !collapsedNow().includes("2") && !collapsedNow().includes("1"));
   }

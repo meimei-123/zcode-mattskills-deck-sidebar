@@ -105,7 +105,7 @@ if (existsSync(bundlePath)) {
   check("bundle 定义 MattSkillsUpstream(上游复刻壳)", bundle.includes("MattSkillsUpstream"));
   check("bundle 指向 setup 技能", bundle.includes("/setup-matt-pocock-skills"));
   check("bundle 指向 to-tickets 技能", bundle.includes("/to-tickets"));
-  check("bundle 无 import(资源通道只搬文本)", !/\bimport\s*["'"]/.test(bundle));
+  check("bundle 无 import(资源通道只搬文本)", !/^[^\S\r\n]*import[\s{"'*]/m.test(bundle));
 }
 
 // --- 5. server 冒烟:spawn → initialize → tools/list → resources/list → resources/read ---
