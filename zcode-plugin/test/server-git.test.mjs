@@ -5,7 +5,7 @@
 //      并直连 dist/git.mjs 的 bridge 验方法表与目标路径边界。测试结束删临时目录。
 // 期望值独立于实现:来自工单 01 的验收条目与 git 自身行为(分支名/提交标题/补丁行)。
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -121,13 +121,80 @@ async function sliceContract() {
     }
 
     const badArgs = await s.call("deck_git", { method: "gitStatus", args: "not-an-object" });
-    check("contract: 坏 args 不崩(按空对象处理)", !badArgs.error && !!badArgs.result, JSON.stringify(badArgs.error || badArgs.result));
+    const basc = scOf(badArgs);
+    check(
+      "contract: 字符串 args 回 bad-args(结构化人话,不静默当空对象)",
+      !badArgs.result?.isError && basc.ok === false && basc.error?.kind === "bad-args" && basc.error?.message === "args 必须是对象。",
+      JSON.stringify(basc)
+    );
+    const arrayArgs = await s.call("deck_git", { method: "gitStatus", args: [] });
+    check("contract: 数组 args 回 bad-args", scOf(arrayArgs).ok === false && scOf(arrayArgs).error?.kind === "bad-args", JSON.stringify(scOf(arrayArgs)));
+    const nullArgs = await s.call("deck_git", { method: "gitStatus", args: null });
+    check("contract: null args 回 bad-args", scOf(nullArgs).ok === false && scOf(nullArgs).error?.kind === "bad-args", JSON.stringify(scOf(nullArgs)));
 
     const badCwd = await s.call("deck_git", { method: "gitStatus", args: { cwd: 42 } });
     check("contract: 非字符串 cwd 回人话错误,不崩", !badCwd.result?.isError && scOf(badCwd).ok === false && /cwd/.test(scOf(badCwd).error?.message || ""), JSON.stringify(scOf(badCwd)));
   } finally {
     await s.stop();
     repo.cleanup();
+  }
+}
+
+async function sliceBoundaryAndSpawn() {
+  if (!existsSync(DIST_GIT)) {
+    check("boundary: dist/git.mjs 可 import", false);
+    return;
+  }
+  const { createGitBridge } = await import(pathToFileURL(DIST_GIT).href);
+  const root = mkdtempSync(join(tmpdir(), "t01-boundary-"));
+  const outside = mkdtempSync(join(tmpdir(), "t01-boundary-outside-"));
+  try {
+    mkdirSync(join(root, "..foo"));
+    // Node 在 Windows 上用 junction 不需要管理员权限;junction 指向根外,词法路径看起来仍在根内。
+    const link = join(root, "link-out");
+    symlinkSync(outside, link, "junction");
+    const bridge = createGitBridge({ workspaceRoot: root, env: process.env });
+
+    const junctionCwd = await bridge.call("gitStatus", { cwd: link });
+    check(
+      "boundary: cwd 经根内 junction 指到根外 → boundary",
+      junctionCwd.ok === false && junctionCwd.error?.kind === "boundary",
+      JSON.stringify(junctionCwd)
+    );
+    const junctionTarget = await bridge.call("gitCloneCheck", { dir: join(link, "target"), url: "https://example.invalid/x.git" });
+    check(
+      "boundary: 目标路径经 junction 指到根外(即使尚不存在) → boundary",
+      junctionTarget.ok === false && junctionTarget.error?.kind === "boundary",
+      JSON.stringify(junctionTarget)
+    );
+    const dotdotName = await bridge.call("gitCloneCheck", { dir: join(root, "..foo", "target"), url: "https://example.invalid/x.git" });
+    check(
+      "boundary: 合法目录名 ..foo 不误判越界",
+      !(dotdotName.ok === false && dotdotName.error?.kind === "boundary"),
+      JSON.stringify(dotdotName)
+    );
+    const insideMissing = await bridge.call("gitCloneCheck", { dir: join(root, "new-dir"), url: "https://example.invalid/x.git" });
+    check(
+      "boundary: 根内尚不存在的目标按最近已存在祖先判定,不误判",
+      !(insideMissing.ok === false && insideMissing.error?.kind === "boundary"),
+      JSON.stringify(insideMissing)
+    );
+
+    // 工作区根内不存在的 cwd:边界放行,但 spawn 起不来 git → 必须是 spawn 档,不是 parse。
+    const spawnBad = await bridge.call("gitStatus", { cwd: join(root, "missing-cwd") });
+    check(
+      "spawn: cwd 不存在时回 error.kind=spawn(确认装了 git 那一档)",
+      spawnBad.ok === false && spawnBad.error?.kind === "spawn",
+      JSON.stringify(spawnBad)
+    );
+    check(
+      "spawn: 人话写明起不了 git 进程",
+      /起不了 git 进程/.test(spawnBad.error?.message || ""),
+      spawnBad.error?.message
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   }
 }
 
@@ -215,6 +282,10 @@ if (!existsSync(DIST_SERVER)) {
 await sliceContract().catch((e) => {
   failures++;
   console.error("FAIL - contract 套件异常 :: " + (e && e.stack ? e.stack : e));
+});
+await sliceBoundaryAndSpawn().catch((e) => {
+  failures++;
+  console.error("FAIL - boundary/spawn 套件异常 :: " + (e && e.stack ? e.stack : e));
 });
 await sliceRealRepo().catch((e) => {
   failures++;

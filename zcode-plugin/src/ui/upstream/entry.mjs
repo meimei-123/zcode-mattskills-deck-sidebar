@@ -240,6 +240,8 @@ function apply(ctx) {
       return Promise.reject(new Error("ZCode 宿主适配:无工具桥"));
     }
     return client
+      // slice(3) 只剥 `wf.` 前缀(全部 66 条电话都以 `wf.git` 开头),留下 `gitStatus` 这类方法名;
+      // 不是剥 `wf.git`——桥的方法表本来就是 handleGit* 派生的 `git*` 名。
       .callTool("deck_git", { method: String(method).slice(3), args: args && typeof args === "object" ? args : {} })
       .then(function (res) {
         if (res && res.isError) {
@@ -957,6 +959,29 @@ function apply(ctx) {
     issueDetailFoldStateAt: issueDetailFoldStateAt,
     enterSubDetail: enterSubDetail,
     renderIssueDetailComments: renderIssueDetailComments,
+  };
+  // 版本管理自检面(工单 02 / m3 review):页签组件、页面壳渲染、页面注册表与分支读数入口。
+  //   renderPageInto 用闭包里的 h/tr 画单页,替测试把「管理分区页」逐页挂起来做开页 smoke
+  //   (页签本体目前只挂改动/提交历史/工作树三视图,管理页没有从页签进入的路)。
+  window.MattSkillsUpstream.vc = {
+    VersionControlTab: VersionControlTab,
+    VC_VIEWS: VC_VIEWS,
+    VC_TAB_PAGES: VC_TAB_PAGES,
+    VC_MANAGE_PAGES: VC_MANAGE_PAGES,
+    VC_SIDE_PAGES: VC_SIDE_PAGES,
+    pageIds: function () {
+      return PAGE_SURFACES.map(function (p) { return String(p.id); });
+    },
+    renderPageInto: function (page, container, props) {
+      const o = Object.assign({}, props || {}, { page: String(page) });
+      const Page = function () { return vcShellPageNode(h, tr, o); };
+      render(h(withCx(Page), {}), container);
+      return o;
+    },
+    readBranches: function (reads, call, cwd) { return vcReadBranches(reads, call, cwd); },
+    branchBoardNode: function (board, props) {
+      return vcBranchBoardNode(h, tr, Object.assign({}, props || {}, { board: board }));
+    },
   };
 }
 

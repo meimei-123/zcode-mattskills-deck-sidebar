@@ -28,7 +28,7 @@ src/git/                    withGhLane 直通垫片(admission-stub)与上游子�
 build-upstream.mjs          上游 client 叶子 splice 拼接构建(bundle-1.txt)
 build-git.mjs               上游 vc 家族 + Node 垫片 → dist/git.mjs
 dist/                       构建产物(server.mjs + git.mjs + ui/),安装即用
-test/                       十八套直跑测试(缝 1:工具边界;缝 2:面板 DOM/桥包络;U01:上游骨架;0.3.1:技能/检查/响应式;0.4.0:版本管理五套)
+test/                       十八套直跑测试(缝 1:工具边界;缝 2:面板 DOM/桥包络;U01:上游骨架;0.3.1:技能/检查/响应式;0.4.0:版本管理六套:versioncontrol + server-git/server-git-history/server-git-refs/server-git-admin/server-git-writes)
 prototype/                  UI 快照原型(ui-preview 分支,一次性,见 SMOKE.md 提示)
 ```
 

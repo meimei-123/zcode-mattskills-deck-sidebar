@@ -6,6 +6,8 @@
 //   - subprocess.spawn({argv,cwd,stdio,graceMs,env}) → {done, collected, stdin?, terminate};
 //     Node child_process.spawn + shell:false,argv 数组直传(不做任何 shell 拼接);
 //     env 里值为 undefined 的键从继承环境删除(上游的墓碑语义);terminate 先 SIGTERM,graceMs 后 SIGKILL。
+//     与上游 DSH Job 的差异:terminate 只杀直接子进程,不覆盖整棵进程树(git 拉起的钩子/传输助手
+//     不会被连带结束);本仓没有 Job 层的进程组回收,这条边界记在 ADR-0002。
 //   - timer.timeout(ms) → Promise(到点 resolve) 与 clearTimeout(handle);定时器 unref,
 //     成功命令留下的竞速定时器不拖住进程退出。
 //   - fs.resolve/stat/lstat/exists/readText/writeText/listDir/mkdir/statfs(node:fs/promises;
@@ -24,13 +26,16 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
-import { promises as fsp } from "node:fs";
+import { realpathSync, promises as fsp } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createVersionControl } from "../../src/host/versionControl.js";
 import { VC_RUN_TIMEOUT_MS } from "../../src/shared/time-config/src/values.js";
 
 /** 子进程环境:继承 base,再按上游墓碑语义覆盖(undefined = 删除该键)。 */
+const DEFAULT_STDOUT_MAX_BYTES = 8 * 1024 * 1024;
+const DEFAULT_STDERR_MAX_BYTES = 256 * 1024;
+
 function mergeChildEnv(overrides, baseEnv) {
   const env = { ...(baseEnv || process.env) };
   const extra = overrides && typeof overrides === "object" ? overrides : {};
@@ -63,7 +68,7 @@ function tailWithinBytes(text, maxBytes) {
  * 超过 maxBytes 时保留尾部,置 lossy/truncated;offset 按「从流开头算的字符数」计。
  */
 function makeCollector(maxBytes) {
-  const limit = Number.isFinite(maxBytes) && maxBytes > 0 ? Math.floor(maxBytes) : 8 * 1024 * 1024;
+  const limit = Number.isFinite(maxBytes) && maxBytes > 0 ? Math.floor(maxBytes) : DEFAULT_STDOUT_MAX_BYTES;
   const decoder = new StringDecoder("utf8");
   let text = "";
   let totalChars = 0;
@@ -113,8 +118,8 @@ function makeSubprocess(baseEnv) {
       const [exe, ...args] = argv;
       const stdio = req.stdio && typeof req.stdio === "object" ? req.stdio : {};
       const stdinMode = stdio.stdin === "pipe" ? "pipe" : "ignore";
-      const stdoutLimit = stdio.stdout && typeof stdio.stdout.maxBytes === "number" ? stdio.stdout.maxBytes : 8 * 1024 * 1024;
-      const stderrLimit = stdio.stderr && typeof stdio.stderr.maxBytes === "number" ? stdio.stderr.maxBytes : 256 * 1024;
+      const stdoutLimit = stdio.stdout && typeof stdio.stdout.maxBytes === "number" ? stdio.stdout.maxBytes : DEFAULT_STDOUT_MAX_BYTES;
+      const stderrLimit = stdio.stderr && typeof stdio.stderr.maxBytes === "number" ? stdio.stderr.maxBytes : DEFAULT_STDERR_MAX_BYTES;
       const child = spawn(exe, args, {
         cwd: typeof req.cwd === "string" && req.cwd !== "" ? req.cwd : undefined,
         env: mergeChildEnv(req.env, baseEnv),
@@ -134,7 +139,7 @@ function makeSubprocess(baseEnv) {
       }
       let settled = false;
       let killed = false;
-      const done = new Promise((resolve) => {
+      const done = new Promise((resolve, reject) => {
         child.on("close", (code, signal) => {
           if (settled) return;
           settled = true;
@@ -142,10 +147,13 @@ function makeSubprocess(baseEnv) {
           stderr.end();
           resolve({ exitCode: typeof code === "number" ? code : -1, signal: signal || undefined });
         });
+        // 起不了进程(ENOENT/EACCES 等)必须 reject:上游 runPinned 的 Promise.race catch 分支
+        // 回 kind='spawn-failed',failureFromExec 再翻成 error.kind='spawn'(提示确认装了 git)。
+        // 早先这里 resolve({exitCode:-1}) 会被上游当成一次普通非零退出,最后误报成 parse 失败。
         child.on("error", (error) => {
           if (settled) return;
           settled = true;
-          resolve({ exitCode: -1, signal: "spawn-error", error });
+          reject(error);
         });
       });
       const graceMs = Number.isFinite(req.graceMs) && req.graceMs >= 0 ? req.graceMs : 10000;
@@ -181,7 +189,6 @@ function makeTimer() {
       });
       // 上游把这一条 promise 放进 Promise.race 后不 clearTimeout(成功路径也一样):
       // 不 unref 的话,每条成功命令都会留下一个到点才醒的定时器,把 Node 进程(含测试)无谓地拖住。
-      if (id && typeof id.unref === "function") id.unref();
       promise.timer = id;
       return promise;
     },
@@ -232,10 +239,33 @@ function makeLogCtx(debugOn) {
   };
 }
 
-// 以工作区根为边界的路径判定(target 必须落在 root 内,root 本身算在内)。
-function insideRoot(root, target) {
-  const rel = path.relative(root, target);
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+// 以工作区根为边界的路径判定(真实路径版):工作区内的 symlink/junction 可以把词法路径指到根外,
+// 所以比对前先把两侧都换成真实路径。判定用精确的「父目录」写法,`..foo` 这种合法目录名不误伤。
+function insideRoot(rootReal, targetReal) {
+  const rel = path.relative(rootReal, targetReal);
+  return rel === "" || !(rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel));
+}
+
+/** 存在就 realpath;不存在就向上找最近的已存在祖先做 realpath,再把剩余段拼回去。 */
+function realPathOf(target) {
+  const abs = path.resolve(target);
+  const rest = [];
+  let base = abs;
+  for (;;) {
+    try {
+      const real = realpathSync.native(base);
+      return rest.length ? path.join(real, ...rest.reverse()) : real;
+    } catch (e) {
+      if (e && (e.code === "ENOENT" || e.code === "ENOTDIR")) {
+        const parent = path.dirname(base);
+        if (parent === base) return abs;
+        rest.push(path.basename(base));
+        base = parent;
+        continue;
+      }
+      return abs;
+    }
+  }
 }
 
 function boundaryReply(field, value, root) {
@@ -252,6 +282,8 @@ function boundaryReply(field, value, root) {
 // 补丁输出目录(gitPatchFiles 的 dir),以及长任务 fast-import 的输入文件(stdinFile.path,内容会进仓库对象)。
 // 文件内相对路径类参数(改动页/冲突页的 path、配置 check-attr 的 path)由上游自己的仓库内路径守卫负责,
 // 这里不重复拦截,避免误伤普通字符串。
+// 克隆的 `url` 有意不拦:它可以指工作区外的本地仓,宿主只从那里读对象、不往它写盘;与 stdinFile.path
+// 的区别就在这里 —— stdinFile 的内容会写进当前仓库的对象库,所以那条按真实路径拦。
 const BOUNDARY_FIELDS = {
   gitCloneCheck: ["dir"],
   gitCloneWrite: ["dir"],
@@ -272,6 +304,13 @@ const BOUNDARY_FIELDS = {
 export function createGitBridge(opts) {
   const options = opts || {};
   const root = path.resolve(String(options.workspaceRoot || process.cwd()));
+  // 根只取一次真实路径(缓存):下面的边界判定都用它,避免每次调用都打一次盘。
+  let rootReal = root;
+  try {
+    rootReal = realpathSync.native(root);
+  } catch {
+    // 根不可解析(权限/空前缀等):退回词法根,后续目标按 realPathOf 的失败兜底走。
+  }
   const baseEnv = options.env || process.env;
   const debugOn = String(baseEnv.ZCODE_GIT_DEBUG || process.env.ZCODE_GIT_DEBUG || "") === "1";
   // 长任务记录只落缓存目录(上游 taskStore 按 getCacheDir 写盘);不给这个口时文件会落进工作区根。
@@ -309,7 +348,7 @@ export function createGitBridge(opts) {
   function resolveTarget(field, value, baseCwd) {
     if (typeof value !== "string" || value.trim() === "") return null;
     const resolved = path.isAbsolute(value) ? path.normalize(value) : path.resolve(baseCwd, value);
-    return insideRoot(root, resolved) ? null : boundaryReply(field, value, root);
+    return insideRoot(rootReal, realPathOf(resolved)) ? null : boundaryReply(field, value, root);
   }
 
   function checkTarget(fields, args, baseCwd) {
@@ -330,14 +369,17 @@ export function createGitBridge(opts) {
     if (!fn) {
       return { ok: false, error: { kind: "unknown-method", message: `未知 git 方法:${name || "(空)"}。` } };
     }
-    const input = args && typeof args === "object" && !Array.isArray(args) ? { ...args } : {};
+    if (args !== undefined && (args === null || typeof args !== "object" || Array.isArray(args))) {
+      return { ok: false, error: { kind: "bad-args", message: "args 必须是对象。" } };
+    }
+    const input = args && typeof args === "object" ? { ...args } : {};
     if (input.cwd !== undefined && input.cwd !== null && input.cwd !== "" && typeof input.cwd !== "string") {
       return { ok: false, error: { kind: "bad-args", message: "参数 cwd 必须是工作区根内的路径字符串。" } };
     }
     let baseCwd = root;
     if (typeof input.cwd === "string" && input.cwd.trim() !== "") {
       const resolvedCwd = path.resolve(root, input.cwd);
-      if (!insideRoot(root, resolvedCwd)) return boundaryReply("cwd", input.cwd, root);
+      if (!insideRoot(rootReal, realPathOf(resolvedCwd))) return boundaryReply("cwd", input.cwd, root);
       input.cwd = resolvedCwd;
       baseCwd = resolvedCwd;
     } else if (input.cwd === undefined || input.cwd === null || input.cwd === "") {

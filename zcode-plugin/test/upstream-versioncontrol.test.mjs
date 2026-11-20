@@ -88,12 +88,45 @@ const SCREEN = {
   ],
   repo: { merging: false, rebasing: false, cherryPicking: false, reverting: false, hasCommits: true, bare: false, tier: "full", autocrlf: "false" },
 };
-const LOG = {
-  commits: SCREEN.commits,
-  skip: 0,
-  requested: 50,
-  returned: 2,
-  hasMore: false,
+// 翻页第二批:两条更早的提交(形状与首屏同款;oid 独立,便于断言行数增加)。
+const LOG_PAGE_2 = [
+  {
+    oid: "31ad0f5c9e2b4a7f8d1c3e5a7b9d0f2a4c6e8b10",
+    short: "31ad0f5",
+    author: "Tester",
+    email: "t@example.com",
+    authorDateMs: 1795178980000,
+    commitDateMs: 1795178980000,
+    subject: "更早的提交:第三笔",
+    parents: [],
+  },
+  {
+    oid: "42be1a6d0f3c5b8e9a2d4f6b8c0e1a3d5f7b9c21",
+    short: "42be1a6",
+    author: "Tester",
+    email: "t@example.com",
+    authorDateMs: 1795178979000,
+    commitDateMs: 1795178979000,
+    subject: "更早的提交:第四笔",
+    parents: [],
+  },
+];
+// 分支页回包(契约形状,vcBranchShapeOk 要求 contract/version/readAtMs/branches/tags/descriptions 齐)。
+const BRANCH_BOARD = {
+  ok: true,
+  contract: "version-control.branch-board",
+  version: 1,
+  readAtMs: 1795178982816,
+  current: { name: "main" },
+  branches: [
+    { name: "main", current: true, upstream: "origin/main", ahead: 0, behind: 0 },
+    { name: "feature/read-only", current: false, upstream: null, ahead: 0, behind: 0 },
+  ],
+  tags: [{ name: "v0.4.0", annotated: true }],
+  descriptions: {},
+  merged: ["main"],
+  notMerged: ["feature/read-only"],
+  capabilities: { gitVersion: "2.42.0", actions: [] },
 };
 const DIFF_WORKING = {
   ok: true,
@@ -463,13 +496,15 @@ const doc = createFakeDom();
 const calls = [];
 const roEntries = [];
 let ResizeObserverCount = 0;
+let logPageCalls = 0;
+let fakeClient = null;
 {
   const { scanWorkspace, thinRow } = await import(pathToFileURL(join(ROOT, "src", "cards.mjs")).href);
   const scan = scanWorkspace(join(ROOT, "test", "fixtures", "u04-list"));
   const tickets = scan.rows.filter((r) => r.type !== "map" && r.type !== "spec");
   const openN = tickets.filter((r) => r.state === "open").length;
   const closedN = tickets.filter((r) => r.state === "closed").length;
-  const fakeClient = {
+  fakeClient = {
     readResource: async (uri) => {
       if (uri.endsWith("workspace.json")) return { contents: [{ text: JSON.stringify({ root: "X:/vc-repo", env: {} }) }] };
       throw new Error("no asset " + uri);
@@ -483,7 +518,20 @@ let ResizeObserverCount = 0;
         const m = args.method;
         const a = args.args || {};
         if (m === "gitStatus") return { structuredContent: { ok: true, screen: SCREEN, tier: "full", gitVersion: "git version 2.42.0.windows.2", worktreesNul: true, readAtMs: 1795178982816 } };
-        if (m === "gitLog") return { structuredContent: Object.assign({ ok: true }, LOG) };
+        if (m === "gitLog") {
+          // 第一次翻页回「还有更早的」,第二次回「没有了」(读数的 allLoaded 由第二次回包收口)。
+          logPageCalls++;
+          if (logPageCalls === 1) {
+            return { structuredContent: { ok: true, commits: LOG_PAGE_2, skip: a.skip, requested: 50, returned: 2, hasMore: true } };
+          }
+          return { structuredContent: { ok: true, commits: [], skip: a.skip, requested: 50, returned: 0, hasMore: false } };
+        }
+        if (m === "gitStage") return { structuredContent: { ok: true, staged: (a.paths || []).map((p) => ({ path: p })) } };
+        if (m === "gitWriteCheck") return { structuredContent: { ok: true, plan: { mode: "fast-forward" }, ticket: { id: "tk-review-fix", expiresAtMs: Date.now() + 120000 }, remotes: [] } };
+        if (m === "gitPull") return { structuredContent: { ok: true, mode: "fast-forward" } };
+        if (m === "gitBranches") return { structuredContent: BRANCH_BOARD };
+        if (m === "gitMaintenanceRead") return { structuredContent: { ok: true, readAtMs: 1795178982816, objects: [], status: {} } };
+        if (m === "gitTaskQuery") return { structuredContent: { ok: true, tasks: [] } };
         if (m === "gitDiff" && a.rev && a.path) return { structuredContent: DIFF_COMMIT_FILE };
         if (m === "gitDiff" && a.rev) return { structuredContent: DIFF_COMMIT };
         if (m === "gitDiff") return { structuredContent: DIFF_WORKING };
@@ -565,6 +613,37 @@ if (U) {
     check("提交标题在(第二次提交:补充一行 / 初次提交:建立基线)", textOf(surface).includes("第二次提交:补充一行") && textOf(surface).includes("初次提交:建立基线"));
     check("短 oid 在(bcfd5a1)", textOf(surface).includes("bcfd5a1"));
 
+    // ---- 提交历史翻页:加载更早 → gitLog 带 skip,行数增加;再加载 → 已全部加载 ----
+    const moreBtn = qsa(surface, "[data-vc-more]")[0];
+    check("提交历史有「加载更早的提交」入口", !!moreBtn);
+    if (moreBtn) {
+      const logBefore = calls.filter((c) => c.name === "deck_git" && c.args.method === "gitLog").length;
+      fireClick(moreBtn);
+      await tick();
+      await settle(50);
+      const moreCalls = calls.filter((c) => c.name === "deck_git" && c.args.method === "gitLog");
+      check("再次调用 deck_git gitLog", moreCalls.length === logBefore + 1, JSON.stringify(moreCalls.slice(-2)));
+      const lastCall = moreCalls[moreCalls.length - 1];
+      check(
+        "gitLog 带 skip(首屏 2 条之后)与 count",
+        lastCall && lastCall.args.args && lastCall.args.args.skip === 2 && typeof lastCall.args.args.count === "number",
+        JSON.stringify(lastCall && lastCall.args)
+      );
+      eq("翻页后提交行 = 4", qsa(surface, "[data-vc-commit]").length, 4);
+      check("第二批提交标题在(更早的提交:第三笔/第四笔)", textOf(surface).includes("更早的提交:第三笔") && textOf(surface).includes("更早的提交:第四笔"));
+      const moreAgain = qsa(surface, "[data-vc-more]")[0];
+      check("还有下一批时入口仍在", !!moreAgain);
+      if (moreAgain) {
+        fireClick(moreAgain);
+        await tick();
+        await settle(50);
+        const moreCalls2 = calls.filter((c) => c.name === "deck_git" && c.args.method === "gitLog");
+        check("第二次翻页 skip = 4", moreCalls2[moreCalls2.length - 1]?.args?.args?.skip === 4, JSON.stringify(moreCalls2[moreCalls2.length - 1]?.args));
+        eq("没有更多时提交行不减少", qsa(surface, "[data-vc-commit]").length, 4);
+        check("hasMore:false 后显示「已全部加载」", textOf(surface).includes("已全部加载"));
+      }
+    }
+
     // ---- 切工作树:空态如实说 ----
     fireClick(byAttr("data-vc-view", "worktrees")[0]);
     await tick();
@@ -588,6 +667,70 @@ if (U) {
         check("点文件行发 deck_git gitDiff(带 path)", calls.some((c) => c.name === "deck_git" && c.args.method === "gitDiff" && c.args.args && c.args.args.path === "src.txt" && !c.args.args.rev), JSON.stringify(calls.filter((c) => c.name === "deck_git")));
         eq("补丁行 = 8(4 文件头 + 1 hunk + 3 内容)", qsa(surface, "[data-vc-line]").length, 8);
         check("补丁里有 +line3", textOf(surface).includes("line3"));
+      }
+    }
+
+    // ---- 改动页写动作:行内暂存 → gitStage → 成功后重读 gitStatus ----
+    const closestAttr = (n, attr) => {
+      let p = n;
+      while (p) {
+        if (p.attributes && p.attributes[attr] !== undefined) return p;
+        p = p.parentNode;
+      }
+      return null;
+    };
+    const stageBtn = qsa(surface, "[data-vc-stage]").find((b) => {
+      const row = closestAttr(b, "data-vc-file");
+      return row && textOf(row).includes("src.txt");
+    });
+    check("src.txt 行有暂存入口", !!stageBtn);
+    if (stageBtn) {
+      const statusBefore = calls.filter((c) => c.name === "deck_git" && c.args.method === "gitStatus").length;
+      fireClick(stageBtn);
+      await tick();
+      await settle(80);
+      const gitCalls = calls.filter((c) => c.name === "deck_git");
+      const stageIdx = gitCalls.findIndex((c) => c.args.method === "gitStage");
+      let statusAfterIdx = -1;
+      for (let i = stageIdx + 1; i < gitCalls.length; i++) {
+        if (gitCalls[i].args.method === "gitStatus") { statusAfterIdx = i; break; }
+      }
+      check("点暂存发 gitStage,paths 带 src.txt", stageIdx >= 0 && JSON.stringify(gitCalls[stageIdx].args.args.paths) === JSON.stringify(["src.txt"]), JSON.stringify(gitCalls[stageIdx] && gitCalls[stageIdx].args));
+      check("暂存成功后重读 gitStatus(在 gitStage 之后)", stageIdx >= 0 && statusAfterIdx > stageIdx, JSON.stringify(gitCalls.map((c) => c.args.method)));
+      check("重读使 gitStatus 调用数 +1", calls.filter((c) => c.name === "deck_git" && c.args.method === "gitStatus").length === statusBefore + 1);
+    }
+
+    // ---- 改动页预检分支:拉取 → gitWriteCheck 预检 → 确认卡 → gitPull → 重读 gitStatus ----
+    // 上游行内暂存是可逆动作,直接执行、没有预检;带预检的是拉取/推送/提交这一族。
+    SCREEN.identity.sync = "tracking";
+    SCREEN.identity.ahead = 0;
+    SCREEN.identity.behind = 0;
+    SCREEN.identity.basisMs = 1795178982816;
+    fireClick(byAttr("data-vc-view", "worktrees")[0]);
+    await tick();
+    fireClick(byAttr("data-vc-view", "changes")[0]);
+    await tick();
+    await settle(40);
+    const pullBtn = byAttr("data-vc-action", "pull").find((n) => n.tagName === "BUTTON");
+    check("拉取入口在", !!pullBtn);
+    if (pullBtn) {
+      check("有上游时拉取入口可点", pullBtn.attributes.disabled === undefined, JSON.stringify(pullBtn.attributes));
+      const statusBefore = calls.filter((c) => c.name === "deck_git" && c.args.method === "gitStatus").length;
+      fireClick(pullBtn);
+      await tick();
+      await settle(60);
+      const checkCall = calls.find((c) => c.name === "deck_git" && c.args.method === "gitWriteCheck");
+      check("拉取先打 gitWriteCheck 预检(op=pull)", !!checkCall && checkCall.args.args.op === "pull", JSON.stringify(checkCall && checkCall.args));
+      const confirmOk = qsa(surface, "[data-vc-confirm-ok]")[0];
+      check("预检通过后出确认卡", !!qsa(surface, "[data-vc-confirm]")[0] && !!confirmOk);
+      if (confirmOk) {
+        const gitCallsBefore = calls.filter((c) => c.name === "deck_git").length;
+        fireClick(confirmOk);
+        await tick();
+        await settle(80);
+        const after = calls.filter((c) => c.name === "deck_git").slice(gitCallsBefore);
+        check("确认后发 gitPull", after.some((c) => c.args.method === "gitPull"), JSON.stringify(after.map((c) => c.args.method)));
+        check("拉取成功后重读 gitStatus", after.some((c) => c.args.method === "gitStatus") && calls.filter((c) => c.name === "deck_git" && c.args.method === "gitStatus").length === statusBefore + 1, JSON.stringify(calls.filter((c) => c.name === "deck_git").slice(-4).map((c) => c.args.method)));
       }
     }
 
@@ -618,6 +761,76 @@ if (U) {
         }
       }
     }
+
+    // ---- 分支页:读 gitBranches 后画分支板 ----
+    const vcCall = (phone, args) =>
+      fakeClient.callTool("deck_git", { method: String(phone).replace(/^wf\./, ""), args: args || {} }).then((r) => r.structuredContent);
+    let branchBoardForSmoke = null;
+    check("vc 自检面在(页签/页面壳/分支读数)", !!(U.vc && typeof U.vc.readBranches === "function" && typeof U.vc.renderPageInto === "function"));
+    if (U.vc) {
+      const branchBefore = calls.filter((c) => c.name === "deck_git" && c.args.method === "gitBranches").length;
+      const branchReads = await U.vc.readBranches({}, vcCall, "X:/vc-repo");
+      check("读分支页发出 gitBranches", calls.filter((c) => c.name === "deck_git" && c.args.method === "gitBranches").length === branchBefore + 1);
+      const board = branchReads && branchReads.branch && branchReads.branch.data;
+      branchBoardForSmoke = board || null;
+      check("分支读数落库为 ok", branchReads?.branch?.state === "ok" && !!board, JSON.stringify(branchReads?.branch?.error));
+      const branchBox = doc.createElement("div");
+      doc.body.appendChild(branchBox);
+      U.vc.renderPageInto("branch-tags", branchBox, { branchBoard: board, cwd: "X:/vc-repo" });
+      await tick();
+      await settle(40);
+      check("分支页根渲染(data-vc-page=branch-tags)", qsa(branchBox, "[data-vc-root]")[0]?.attributes["data-vc-page"] === "branch-tags");
+      check("分支部件渲染(两行分支)", qsa(branchBox, "[data-vc-branch-row]").length === 2);
+      check("分支页当前分支是 main", qsa(branchBox, "[data-vc-branch-current]")[0]?.attributes["data-vc-branch-current"] === "main");
+      check("分支页动作入口在位(切分支/删除等)", qsa(branchBox, "[data-vc-branch-action]").length >= 2);
+    }
+
+    // ---- 管理页开页 smoke:页面注册表逐页渲染,不崩、各画自己的页面根 ----
+    if (U.vc) {
+      const pages = U.vc.pageIds();
+      check("页面注册表有 16 页", pages.length === 16, pages.join(","));
+      for (const page of pages) {
+        const box = doc.createElement("div");
+        doc.body.appendChild(box);
+        const before = calls.filter((c) => c.name === "deck_git").length;
+        let err = null;
+        try {
+          U.vc.renderPageInto(page, box, {
+            cwd: "X:/vc-repo",
+            call: vcCall,
+            width: 900,
+            branchBoard: page === "branch-tags" ? branchBoardForSmoke : undefined,
+          });
+          await tick();
+          await settle(30);
+        } catch (e) {
+          err = e;
+        }
+        const rootNode = qsa(box, "[data-vc-root]")[0];
+        check(`管理页 ${page}:渲染不崩`, !err, err && (err.stack || String(err)));
+        check(`管理页 ${page}:页面根与页面体在位`, !!rootNode && rootNode.attributes["data-vc-page"] === page && !!qsa(box, "[data-vc-page-body]")[0]);
+        // 维护/诊断两页挂载即读(gitMaintenanceRead / gitTaskQuery);其余页在未接数据时只画骨架,不发电话。
+        if (page === "maintenance" || page === "diagnostics") {
+          const after = calls.filter((c) => c.name === "deck_git").length;
+          check(`管理页 ${page}:开页发出读数电话`, after > before, JSON.stringify(calls.filter((c) => c.name === "deck_git").slice(before).map((c) => c.args.method)));
+        }
+      }
+    }
+
+    // ---- 宽档 900:VC 页根在,且没有横向溢出 ----
+    for (const ro of roEntries.slice()) {
+      try { ro.cb([{ contentRect: { width: 900 } }]); } catch (e) { /* 同上 */ }
+    }
+    await tick();
+    await settle(40);
+    const wide = vcRoot();
+    check("900 宽下 VC 页根仍在", !!wide);
+    if (wide) {
+      wide.clientWidth = 900;
+      wide.scrollWidth = 900;
+      check("900 宽下无横向溢出", wide.scrollWidth <= wide.clientWidth, `scroll=${wide.scrollWidth} client=${wide.clientWidth}`);
+    }
+    check("900 宽下三视图页签仍在", byAttr("data-vc-view", "changes").length + byAttr("data-vc-view", "commits").length + byAttr("data-vc-view", "worktrees").length === 3);
 
     // ---- 窄档:宽度通道压到 320,vc 根与三视图页签仍在(页内自己让位) ----
     for (const ro of roEntries.slice()) {
