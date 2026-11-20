@@ -231,9 +231,30 @@ function apply(ctx) {
       return { ok: false, name: name, reason: (sc && sc.reason) || "missing" };
     });
   };
+  // 版本管理取数(工单 02):上游 vc 叶子的全部电话都是 wf.git<X>(如 wf.gitStatus → gitStatus),
+  // ZCode 侧由 01 票的一条 deck_git 工具路由。isError → reject(上游各数据层按 catch 画失败态);
+  // 其余返回 structuredContent(上游的 {ok,...} 信封原样,形状判据仍由各叶子自己核)。
+  const gitPhoneOverTool = function (method, args) {
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") {
+      return Promise.reject(new Error("ZCode 宿主适配:无工具桥"));
+    }
+    return client
+      // slice(3) 只剥 `wf.` 前缀(全部 66 条电话都以 `wf.git` 开头),留下 `gitStatus` 这类方法名;
+      // 不是剥 `wf.git`——桥的方法表本来就是 handleGit* 派生的 `git*` 名。
+      .callTool("deck_git", { method: String(method).slice(3), args: args && typeof args === "object" ? args : {} })
+      .then(function (res) {
+        if (res && res.isError) {
+          const text = (res.content && res.content[0] && res.content[0].text) || "git call failed";
+          throw new Error(text);
+        }
+        return (res && res.structuredContent) || { ok: false, error: { kind: "shape", message: "" } };
+      });
+  };
   const host = {
     // ZCode 宿主适配(wf.* → 工具桥;未接的电话一律 unsupported,不抛)
     call: function (method, args) {
+      if (method.indexOf("wf.git") === 0) return gitPhoneOverTool(method, args);
       if (method === "wf.issuesPage") return issuesPageOverList(args);
       if (method === "wf.issueDetail") return issueDetailOverGet(args);
       if (method === "wf.issueComments") return issueCommentsOverGet(args);
@@ -284,6 +305,17 @@ function apply(ctx) {
   //   落不了地(面板只剩占位)。这里只补这一个纯函数,不搬快照同步那一套。
   const nowStr = () => {
     try { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); } catch (e) { return ''; }
+  };
+  // dswsLogHash / dswsLogTrunc:上游真源在 src/refresh/rooms/client/snapshot-sync.ts:68-72(不搬的
+  //   refresh rooms 家族)。vc 数据层(locale 亦同)引用这两个名字;上游是宿主注入的 ambient 名,
+  //   本仓闭包没有 —— 不补时每个日志调用都在 try/catch 里静默失败。这里逐字同源补两条纯函数
+  //   (散列算法与截断语义一致;不带 scrub 计数那一半,本仓没有 privacy.scrub 事件)。
+  const dswsLogHash = function (s) {
+    try { const t = String(s || ''); let h = 5381; for (let i = 0; i < t.length; i++) h = (((h << 5) + h + t.charCodeAt(i)) >>> 0); return ('0000000' + h.toString(16)).slice(-8); } catch (e) { return '00000000'; }
+  };
+  const dswsLogTrunc = function (s, n, field) {
+    void field;
+    try { const t = String(s || ''); return t.length <= n ? t : t.slice(0, n); } catch (e) { return ''; }
   };
   // refreshAll:上游真源在 src/refresh/rooms/client/refresh-timer.ts:408(不搬)。本仓最小实现,
   //   与上游的差异写在明处:只做「st.refreshing=true -> emit -> chainEventRefresh(st,'user-recheck')
@@ -343,6 +375,11 @@ function apply(ctx) {
   // ==== kernel:motion (spliced by build) ====
   // ==== kernel:styles (spliced by build) ====
   styles.insert(STYLE_TEXT);
+  // ---- 工单 02(版本管理):vc 家族两片样式叶子(上游 index.ts 同位:styles.insert 各一行) ----
+  // ==== leaf:vcStyles (spliced by build) ====
+  styles.insert(VC_STYLE_TEXT);
+  // ==== leaf:vcShellStyles (spliced by build) ====
+  styles.insert(VC_SHELL_STYLE_TEXT);
   // ---- 技能详情像素风皮肤(工单 02;上游 index.ts 标记序在 kernel:styles 之后、locale 之前;
   //      皮肤里引 MOTION,而 kernel:motion 已在本段之前) ----
   // ==== leaf:pixelStyles (spliced by build) ====
@@ -388,6 +425,27 @@ function apply(ctx) {
   // ==== kernel:config (spliced by build) ====
   // ==== kernel:log (spliced by build) ====
   // ==== shared:refreshBudget (spliced by build) ====
+  // ---- 工单 02(版本管理):vc 共享层(上游 index.ts 标记序原位:refreshBudget 之后、storePrefs
+  //      之前。能力账本/首屏契约/各域动作规则;vc 叶子的 declare 逐个由它们提供) ----
+  // ==== shared:vcRules (spliced by build) ====
+  // ==== shared:vcCommitPlan (spliced by build) ====
+  // ==== shared:vcCapabilityLedger (spliced by build) ====
+  // ==== shared:vcCapabilities (spliced by build) ====
+  // ==== shared:vcFirstScreen (spliced by build) ====
+  // ==== shared:vcSyncActions (spliced by build) ====
+  // ==== shared:vcSyncRules (spliced by build) ====
+  // ==== shared:vcMigrateActions (spliced by build) ====
+  // ==== shared:vcStashRules (spliced by build) ====
+  // ==== shared:vcPlatformInspect (spliced by build) ====
+  // ==== shared:vcCloneOptions (spliced by build) ====
+  // ==== shared:vcCloneTicket (spliced by build) ====
+  // ==== shared:vcConfigRules (spliced by build) ====
+  // ==== shared:vcWorktreeOps (spliced by build) ====
+  // ==== shared:vcSubmoduleOps (spliced by build) ====
+  // ==== shared:vcConflictText (spliced by build) ====
+  // ==== shared:vcRewriteOps (spliced by build) ====
+  // ==== shared:vcRecoveryPoint (spliced by build) ====
+  // ==== shared:vcMaintenanceOps (spliced by build) ====
   // ==== kernel:storePrefs (spliced by build) ====
   // ==== kernel:deckState (spliced by build) ====
   // ==== kernel:storeSnapshot (spliced by build) ====
@@ -457,6 +515,75 @@ function apply(ctx) {
   // ---- 列表页全家 + 页签壳(工单 U04;上游 index.ts 标记序原位) ----
   // 链渲染器通用件(工单 03;上游标记序在 tabs 之前、checksums 之后 —— 本仓跳过 checksums 保序)
   // ==== leaf:chainRenderer (spliced by build) ====
+  // ---- 工单 02(版本管理):vc 家族 67 叶(上游 index.ts 大块原位:chainRenderer 之后、tabs
+  //      之前。次序即声明依赖次序;vcTabVisible 进闭包后 Tabs 自然画出第四枚页签) ----
+  // ==== leaf:vcText (spliced by build) ====
+  // ==== leaf:vcFold (spliced by build) ====
+  // ==== leaf:vcDiff (spliced by build) ====
+  // ==== leaf:vcCommit (spliced by build) ====
+  // ==== leaf:vcRows (spliced by build) ====
+  // ==== leaf:vcWrite (spliced by build) ====
+  // ==== leaf:vcWriteRun (spliced by build) ====
+  // ==== leaf:vcWriteUi (spliced by build) ====
+  // ==== leaf:vcWriteOps (spliced by build) ====
+  // ==== leaf:vcWriteView (spliced by build) ====
+  // ==== leaf:vcDiffOps (spliced by build) ====
+  // ==== leaf:vcBlocks (spliced by build) ====
+  // ==== leaf:vcViews (spliced by build) ====
+  // ==== leaf:vcAiHandoff (spliced by build) ====
+  // ==== leaf:vcTabVisible (spliced by build) ====
+  // ==== leaf:vcData (spliced by build) ====
+  // ==== leaf:vcCache (spliced by build) ====
+  // ==== leaf:vcInView (spliced by build) ====
+  // ==== leaf:vcFirstScreen (spliced by build) ====
+  // ==== leaf:vcCapabilityPages (spliced by build) ====
+  // ==== leaf:vcShellPrimitives (spliced by build) ====
+  // ==== leaf:vcPalette (spliced by build) ====
+  // ==== leaf:vcCapabilityList (spliced by build) ====
+  // ==== leaf:vcHistory (spliced by build) ====
+  // ==== leaf:vcSyncData (spliced by build) ====
+  // ==== leaf:vcRemoteData (spliced by build) ====
+  // ==== leaf:vcRemotePage (spliced by build) ====
+  // ==== leaf:vcSyncPage (spliced by build) ====
+  // ==== leaf:vcMigrateData (spliced by build) ====
+  // ==== leaf:vcQuery (spliced by build) ====
+  // ==== leaf:vcQueryView (spliced by build) ====
+  // ==== leaf:vcCommitOps (spliced by build) ====
+  // ==== leaf:vcCommitPage (spliced by build) ====
+  // ==== leaf:vcTaskPanel (spliced by build) ====
+  // ==== leaf:vcBranches (spliced by build) ====
+  // ==== leaf:vcChangesPage (spliced by build) ====
+  // ==== leaf:vcStashOps (spliced by build) ====
+  // ==== leaf:vcStashPage (spliced by build) ====
+  // ==== leaf:vcDiagnostics (spliced by build) ====
+  // ==== leaf:vcDiagnosticsPage (spliced by build) ====
+  // ==== leaf:vcUndoOps (spliced by build) ====
+  // ==== leaf:vcUndoPage (spliced by build) ====
+  // ==== leaf:vcWorktreesData (spliced by build) ====
+  // ==== leaf:vcWorktreesOps (spliced by build) ====
+  // ==== leaf:vcWorktreesPage (spliced by build) ====
+  // ==== leaf:vcMigratePage (spliced by build) ====
+  // ==== leaf:vcClonePage (spliced by build) ====
+  // ==== leaf:vcSubmodulesData (spliced by build) ====
+  // ==== leaf:vcSubmodulesOps (spliced by build) ====
+  // ==== leaf:vcSubmodulesPage (spliced by build) ====
+  // ==== leaf:vcConflictsOps (spliced by build) ====
+  // ==== leaf:vcConflictsPage (spliced by build) ====
+  // ==== leaf:vcConfigOps (spliced by build) ====
+  // ==== leaf:vcConfigPage (spliced by build) ====
+  // ==== leaf:vcHooksPage (spliced by build) ====
+  // ==== leaf:vcPlatformData (spliced by build) ====
+  // ==== leaf:vcPlatformPage (spliced by build) ====
+  // ==== leaf:vcMigrateExport (spliced by build) ====
+  // ==== leaf:vcRebaseOps (spliced by build) ====
+  // ==== leaf:vcRebasePage (spliced by build) ====
+  // ==== leaf:vcRewriteOps (spliced by build) ====
+  // ==== leaf:vcRewritePage (spliced by build) ====
+  // ==== leaf:vcMaintenanceData (spliced by build) ====
+  // ==== leaf:vcMaintenancePage (spliced by build) ====
+  // ==== leaf:vcMaintenanceDiag (spliced by build) ====
+  // ==== leaf:vcShellPages (spliced by build) ====
+  // ==== leaf:versionControlTab (spliced by build) ====
   // ==== leaf:tabs (spliced by build) ====
   // ==== leaf:truthLines (spliced by build) ====
   // ==== leaf:fallbackMark (spliced by build) ====
@@ -661,9 +788,12 @@ function apply(ctx) {
               ? h(SkillsTab, { st: st })
               : st.tab === "checks"
                 ? h(ChecksTab, { st: st })
-                // pr 页签不可达(prTabVisible 缺席),这里只做渲染兜底,不改状态:上游 Dock 还有
-                // 「st.tab === 'pr' 且无能力 → 把 st.tab 改回 list」的 effect,本仓没有(pr 到不了这儿)。
-                : h(ListTab, { st: st, narrow: narrow }),
+                // 工单 02:版本管理(上游 Dock 同款分发;narrow 照传,页内自己按宽度阶梯让位)
+                : st.tab === "versionControl"
+                  ? h(VersionControlTab, { st: st, narrow: narrow })
+                  // pr 页签不可达(prTabVisible 缺席),这里只做渲染兜底,不改状态:上游 Dock 还有
+                  // 「st.tab === 'pr' 且无能力 → 把 st.tab 改回 list」的 effect,本仓没有(pr 到不了这儿)。
+                  : h(ListTab, { st: st, narrow: narrow }),
       ]),
     ]);
   };
@@ -829,6 +959,29 @@ function apply(ctx) {
     issueDetailFoldStateAt: issueDetailFoldStateAt,
     enterSubDetail: enterSubDetail,
     renderIssueDetailComments: renderIssueDetailComments,
+  };
+  // 版本管理自检面(工单 02 / m3 review):页签组件、页面壳渲染、页面注册表与分支读数入口。
+  //   renderPageInto 用闭包里的 h/tr 画单页,替测试把「管理分区页」逐页挂起来做开页 smoke
+  //   (页签本体目前只挂改动/提交历史/工作树三视图,管理页没有从页签进入的路)。
+  window.MattSkillsUpstream.vc = {
+    VersionControlTab: VersionControlTab,
+    VC_VIEWS: VC_VIEWS,
+    VC_TAB_PAGES: VC_TAB_PAGES,
+    VC_MANAGE_PAGES: VC_MANAGE_PAGES,
+    VC_SIDE_PAGES: VC_SIDE_PAGES,
+    pageIds: function () {
+      return PAGE_SURFACES.map(function (p) { return String(p.id); });
+    },
+    renderPageInto: function (page, container, props) {
+      const o = Object.assign({}, props || {}, { page: String(page) });
+      const Page = function () { return vcShellPageNode(h, tr, o); };
+      render(h(withCx(Page), {}), container);
+      return o;
+    },
+    readBranches: function (reads, call, cwd) { return vcReadBranches(reads, call, cwd); },
+    branchBoardNode: function (board, props) {
+      return vcBranchBoardNode(h, tr, Object.assign({}, props || {}, { board: board }));
+    },
   };
 }
 

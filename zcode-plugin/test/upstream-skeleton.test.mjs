@@ -178,7 +178,7 @@ if (existsSync(BUNDLE)) {
   } catch (e) {
     check("bundle-1 语法过(vm.Script)", false, e.message);
   }
-  check("bundle-1 无模块级 import(资源通道只搬文本)", !/\bimport\s*["']/.test(code));
+  check("bundle-1 无模块级 import(资源通道只搬文本)", !/^[^\S\r\n]*import[\s{"'*]/m.test(code));
   check("bundle-1 无模块级 export", !/^[^\S\r\n]*export\s/m.test(code));
 
   // 工单 04 收口:页签占位清零;地图层占位按规格保留(只清页签占位,不误删地图)

@@ -39,3 +39,11 @@ _Avoid_: 宿主胶水(口语可用,文档用规范词)
 **动作(Deck Action)**:
 卡片按钮触发、经 ext-apps 桥 `sendMessage` 发进对话的 prompt(领取/修复/诊断/实施等),上游动作色表与之对应。
 _Avoid_: 注入 prompt(prompt injection 指旧机制)、快捷指令
+
+**版本管理页签(Version Control Tab)**:
+面板的第四枚页签(`versionControl`),内含改动/提交历史/工作树三视图与分支、标签、贮藏、改写等能力页;整族从上游 vc 克隆,UI 叶进 bundle-1,宿主取数打成 `dist/git.mjs`。
+_Avoid_: 版本控制页、Git 页签、VC 面板(指页签时)
+
+**电话(Phone)**:
+上游 vc 家族对宿主能力的调用名(`wf.gitStatus`、`wf.gitDiff` 等);本仓经 `deck_git({method,args})` 一条工具路由,方法名取 `handleGit*` 的驼峰后缀。不是网络电话。
+_Avoid_: API 调用、宿主方法(泛指时)

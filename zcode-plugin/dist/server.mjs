@@ -12,6 +12,7 @@ import { commentIssue, updateStatusIssue, closeIssue, reopenIssue, setLabelsIssu
 import { createDeckWatch, refreshFromEnv } from "./watch.mjs";
 import { buildEnvChain, summarizeEnvCheck } from "./env-check.mjs";
 import { readSkillDoc } from "./skill-doc.mjs";
+import { createGitBridge } from "./git-entry.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_NAME = "zcode-mattpocock-skills-deck";
@@ -206,6 +207,19 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: "deck_git",
+    description:
+      "版本管理页签的 git 数据面:上游全部 wf.git* 电话(约 60 余条,以方法表为准)经此一条工具路由;路径限制在工作区根内;只读与写操作都在此。method 是电话名(如 gitStatus/gitFirstScreen/gitLog),args 必须是对象,原样转给该电话;回包形状与上游一致({ok,...} 或 {ok:false,error:{kind,message}})。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        method: { type: "string", description: "git 电话方法名,如 gitStatus" },
+        args: { type: "object", description: "该电话的参数对象(原样转给上游;cwd 缺省为工作区根)" },
+      },
+      required: ["method"],
+    },
+  },
 ];
 
 /** 卡的显示标签:#effort/编号(根级无目录前缀);退化身份的 key 已带目录前缀,不重复拼。 */
@@ -279,10 +293,58 @@ function handleSkillDoc(a, root) {
   };
 }
 
+// 工单 01:版本管理 git 数据面。bridge 模块级懒初始化,绑定工作区根(换根时重建);
+// 只暴露上游 createVersionControl() 回包里的 handleGit*(tickets 表与 runGitCommand 不对外)。
+let gitBridge = null;
+let gitBridgeRoot = "";
+function deckGitBridge(root) {
+  if (!gitBridge || gitBridgeRoot !== root) {
+    gitBridge = createGitBridge({ workspaceRoot: root, env: process.env });
+    gitBridgeRoot = root;
+  }
+  return gitBridge;
+}
+
+/** deck_git 回包:handler 的 {ok,...} 原样进 structuredContent;未知方法/边界/执行失败都是人话。 */
+function deckGitReply(method, result) {
+  if (result && result.ok === true) {
+    return { content: [{ type: "text", text: `git 方法 ${method} 已执行。` }], structuredContent: result };
+  }
+  const error = result && result.error && typeof result.error === "object" ? result.error : {};
+  const why = error.message || "没有给出原因";
+  return {
+    content: [{ type: "text", text: `git 方法 ${method || "(空)"} 失败:${why}` }],
+    structuredContent: result,
+  };
+}
+
+/** deck_git:一条工具路由全部 git 电话。工具级异常(装配失败)才 isError;电话失败按结构化回包。 */
+function handleDeckGit(a) {
+  const method = String(a.method === undefined || a.method === null ? "" : a.method).trim();
+  let pending;
+  try {
+    pending = deckGitBridge(workspaceRoot()).call(method, a.args);
+  } catch (e) {
+    return {
+      content: [{ type: "text", text: `git 能力初始化失败:${e && e.message ? e.message : String(e)}` }],
+      isError: true,
+    };
+  }
+  return Promise.resolve(pending).then(
+    (result) => deckGitReply(method, result),
+    (e) => ({
+      content: [{ type: "text", text: `git 方法 ${method || "(空)"} 执行出错:${e && e.message ? e.message : String(e)}` }],
+      isError: true,
+    })
+  );
+}
+
 /** 工具实现:全部走同一次扫描,返回 {content, structuredContent} 或 {content, isError}。 */
 function handleCall(name, args) {
   const a = args && typeof args === "object" ? args : {};
   const root = workspaceRoot();
+  // 版本管理 git 数据面先于 .scratch 扫描分派:.scratch 坏掉不挡 git(工单 01)。
+  if (name === "deck_git") return handleDeckGit(a);
   // 技能原文与 .scratch 数据面无关:在扫描之前分派(本工具只读技能根)。
   if (name === "deck_skill_doc") return handleSkillDoc(a, root);
   const scan = scanWorkspace(root);
