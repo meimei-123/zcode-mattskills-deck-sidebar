@@ -67,6 +67,40 @@ const deckWatch = createDeckWatch(workspaceRoot(), refreshFromEnv(process.env));
 // 不持久化;每次工具调用经 readRegistry 现读清单再解析根(同名项改路径自然指新路径)。
 let activeProjectName = null;
 
+// 票 03:危险动作哨兵 —— 版本管理页有「预检签票已发、还没凭票执行」的写域动作时,
+// deck_project_use 拒绝切换,免得确认卡里的 push/reset 落到另一个仓库(spec 用户故事 19)。
+//
+// 为什么在 server 层记哨兵:上游签票状态住在 vc 家族的票据表(writeTickets/changesTickets
+// 等闭包 Map,versionControlCheck.ts 发票、versionControlWrite.ts 核票)里;桥(git-entry.mjs)
+// 的对外面只有 handleGit* 派生的电话,票据表不进方法表、电话回包也只带单张票 —— 从桥的
+// 既有电话查不到整表。所以按宿主垫片外的最小口径记:
+//   · 记入 —— deck_git 回包带票(result.ticket.id 且带 expiresAtMs)时,把哨兵推到该票自己
+//     的到期时刻(上游票期 = TICKET_TTL_MS,config/timeouts.yaml 的 120 秒,即「确认窗口」);
+//     缺 expiresAtMs 时退同值兜底。
+//   · 结清 —— args.ticketId 非空的电话(全部凭票执行档)无论成败都清零:票据已被赎回或
+//     已作废,这个动作不再算「未确认」。
+//   · 取消在面板侧只是关掉确认卡、不发任何电话,服务端看不到;这条路径由票据过期自然
+//     结清(与上游「票过期即作废」同一口径,最多一个票期后恢复可切)。
+// 按 gitRootOf 字符串键控:哨兵只对签票时的那个活动根生效,换根后互不影响。
+const dangerUntil = new Map();
+const TICKET_TTL_MS = 120000;
+function dangerArm(root, result) {
+  if (!result || result.ok !== true) return;
+  const t = result.ticket;
+  if (!t || typeof t.id !== "string" || !t.id) return;
+  const exp = Number(t.expiresAtMs);
+  const until = Number.isFinite(exp) && exp > 0 ? exp : Date.now() + TICKET_TTL_MS;
+  dangerUntil.set(root, Math.max(dangerUntil.get(root) || 0, until));
+}
+function dangerSettle(root, args) {
+  if (args && typeof args === "object" && typeof args.ticketId === "string" && args.ticketId !== "") {
+    dangerUntil.set(root, 0);
+  }
+}
+function dangerLive(root) {
+  return (dangerUntil.get(root) || 0) > Date.now();
+}
+
 const TOOLS = [
   {
     name: "deck_issue_list",
@@ -354,20 +388,31 @@ function deckGitReply(method, result) {
   };
 }
 
-/** deck_git:一条工具路由全部 git 电话。工具级异常(装配失败)才 isError;电话失败按结构化回包。 */
-function handleDeckGit(a) {
+/** deck_git:一条工具路由全部 git 电话,作用于活动项目仓库(票 03)。工具级异常(装配失败)
+ *  才 isError;电话失败按结构化回包。活动项目回退时说明附在人话尾部、结构化回包带 note
+ *  (仅回退时;home/无清单回包与原来逐字一致)。 */
+function handleDeckGit(a, root, active) {
   const method = String(a.method === undefined || a.method === null ? "" : a.method).trim();
+  dangerSettle(root, a.args); // 凭票执行档(ticketId 非空)先结清哨兵,成败另说
   let pending;
   try {
-    pending = deckGitBridge(workspaceRoot()).call(method, a.args);
+    pending = deckGitBridge(root).call(method, a.args);
   } catch (e) {
     return {
       content: [{ type: "text", text: `git 能力初始化失败:${e && e.message ? e.message : String(e)}` }],
       isError: true,
     };
   }
+  const settle = (reply, result) => {
+    if (result && typeof result === "object") dangerArm(root, result); // 带票回包:确认窗口开始
+    if (!active || !active.note) return reply;
+    return {
+      content: [{ type: "text", text: reply.content[0].text + activeNoteSuffix(active) }],
+      structuredContent: withActiveNote(reply.structuredContent, active),
+    };
+  };
   return Promise.resolve(pending).then(
-    (result) => deckGitReply(method, result),
+    (result) => settle(deckGitReply(method, result), result),
     (e) => ({
       content: [{ type: "text", text: `git 方法 ${method || "(空)"} 执行出错:${e && e.message ? e.message : String(e)}` }],
       isError: true,
@@ -410,8 +455,10 @@ function handleProjectList(reg, active) {
   return { content: [{ type: "text", text: registrySummary(reg, active, head) }], structuredContent: sc };
 }
 
-/** deck_project_use:只认清单里的名字;切 home-repo 是幂等 noop;坏名字明确报错并列可用名,不猜。 */
-function handleProjectUse(a, reg) {
+/** deck_project_use:只认清单里的名字;切 home-repo 是幂等 noop;坏名字明确报错并列可用名,不猜。
+ *  版本管理页有未确认的危险 git 动作时拒绝真正的切换(票 03;切到当前项目本身是幂等
+ *  noop,根没动,不挡)。 */
+function handleProjectUse(a, reg, active, activeGitRoot) {
   const wanted = String(a.name === undefined || a.name === null ? "" : a.name).trim();
   if (!wanted) {
     return { content: [{ type: "text", text: "缺少 name:请给项目清单里的名字(deck_project_list 可看全量)。" }], isError: true };
@@ -420,7 +467,22 @@ function handleProjectUse(a, reg) {
     content: [{ type: "text", text: registrySummary(reg, active, head) }],
     structuredContent: { ...registryState(reg, active), note: null },
   });
-  if (wanted.toLowerCase() === reg.home.name.toLowerCase()) {
+  const activeIsHome = active ? active.isHome : true;
+  // noop = 目标就是当前活动项目(名字同,或都是 home-repo):根没动,危险哨兵不挡。
+  const toHome = wanted.toLowerCase() === reg.home.name.toLowerCase();
+  const noop = toHome ? activeIsHome : !activeIsHome && active.name.toLowerCase() === wanted.toLowerCase();
+  if (!noop && dangerLive(activeGitRoot)) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `切换被拒:版本管理页还有未确认的危险 git 动作(预检签票未结)。请先在版本管理页确认执行,或取消后等票据过期(最多 ${Math.round(TICKET_TTL_MS / 1000)} 秒),再切换项目。`,
+        },
+      ],
+      isError: true,
+    };
+  }
+  if (toHome) {
     activeProjectName = null; // 回 home-repo:幂等 noop
     return useReply({ root: reg.home.path, name: reg.home.name, isHome: true, note: null }, `活动项目已设为 home-repo(${reg.home.name})。`);
   }
@@ -442,23 +504,30 @@ function activeNoteSuffix(active) {
   return active.note ? `\n${active.note}` : "";
 }
 
+// 票 03:git 桥根按活动项目取。home-repo 仍用宿主注入的原样路径(与旧口径逐字一致,
+// 边界回包里出现的根路径不变);非 home 用清单解析出的项目根。桥缓存按这个字符串换根重建。
+function gitRootOf(active, homeRoot) {
+  return active.isHome ? homeRoot : active.root;
+}
+
 /** 工具实现:全部走同一次扫描,返回 {content, structuredContent} 或 {content, isError}。 */
 function handleCall(name, args) {
   const a = args && typeof args === "object" ? args : {};
   const homeRoot = workspaceRoot();
-  // 版本管理 git 数据面先于 .scratch 扫描分派:.scratch 坏掉不挡 git(工单 01)。
-  // 票 01 范围:git 桥仍绑工作区根;随活动项目重根是后续票。
-  if (name === "deck_git") return handleDeckGit(a);
-  // 技能原文与 .scratch 数据面无关:在扫描之前分派(只读技能根;技能根与项目无关,不随活动项目)。
-  if (name === "deck_skill_doc") return handleSkillDoc(a, homeRoot);
 
   // 票 01:入口解析活动项目 —— 清单现读现算,捕获-后用(deck_project_use 只影响之后的调用)。
   const reg = readRegistry(homeRoot);
   const active = resolveActive(reg, activeProjectName);
   if (active.note) activeProjectName = null; // 回退即落定:清单是唯一信任边界,失效选择就地清掉
 
+  // 版本管理 git 数据面先于 .scratch 扫描分派:.scratch 坏掉不挡 git(工单 01)。
+  // 票 03:桥根随活动项目(home 仍用宿主注入的原样路径)。
+  if (name === "deck_git") return handleDeckGit(a, gitRootOf(active, homeRoot), active);
+  // 技能原文与 .scratch 数据面无关:在扫描之前分派(只读技能根;技能根与项目无关,不随活动项目)。
+  if (name === "deck_skill_doc") return handleSkillDoc(a, homeRoot);
+
   if (name === "deck_project_list") return handleProjectList(reg, active);
-  if (name === "deck_project_use") return handleProjectUse(a, reg);
+  if (name === "deck_project_use") return handleProjectUse(a, reg, active, gitRootOf(active, homeRoot));
 
   const scanRoot = active.isHome ? homeRoot : active.root;
   const scan = scanWorkspace(scanRoot);
@@ -636,14 +705,18 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     case "resources/read": {
       const uri = String(m.params?.uri || "");
       if (uri === WORKSPACE_URI) {
-        // 静态工作区根(运行时现算,不落盘):root 与 env 同 manifest 注入口径
+        // 工作区根(运行时现算,不落盘):票 03 起 root 为活动项目根(面板版本页 cwd 的取数
+        // 来源,切换后跟着走);env.ZCODE_WORKSPACE_ROOT 仍是宿主注入的 home 根(home-repo 身份)。
+        // 无清单时活动项目就是 home-repo,root 与旧口径逐字一致。
+        const reg = readRegistry(workspaceRoot());
+        const active = resolveActive(reg, activeProjectName);
         return reply(m.id, {
           contents: [
             {
               uri: WORKSPACE_URI,
               mimeType: "application/json",
               text: JSON.stringify({
-                root: workspaceRoot(),
+                root: gitRootOf(active, workspaceRoot()),
                 plugin: PLUGIN_NAME,
                 version: VERSION,
                 env: { ZCODE_WORKSPACE_ROOT: process.env.ZCODE_WORKSPACE_ROOT || "" },

@@ -44050,6 +44050,39 @@ ${formatProgressEntry(entry)}
       rerenderPanels();
       return st;
     };
+    const refreshActiveProject = function(target) {
+      const st = target || (deckPanelState.st || null);
+      if (!st || !clientRef) return Promise.resolve(null);
+      return async function() {
+        const workspace = await fetchWorkspace(clientRef);
+        const root = workspace && workspace.root ? String(workspace.root) : st.cwd;
+        const data = await fetchDeckData(clientRef);
+        if (!data) return st;
+        const fresh = makeStore();
+        Object.assign(
+          st,
+          ingestSnapshot(
+            { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: root },
+            { planDeckCounts, rowCountsOf }
+          ),
+          {
+            cwd: root,
+            workspaceRoot: root,
+            snapMode: "real",
+            issueCache: fresh.issueCache,
+            issueMode: fresh.issueMode,
+            issueError: fresh.issueError,
+            issueDetail: fresh.issueDetail,
+            issueCommentsMoreLoading: fresh.issueCommentsMoreLoading,
+            activeIssue: fresh.activeIssue,
+            activeMap: fresh.activeMap,
+            navStack: fresh.navStack
+          }
+        );
+        rerenderPanels();
+        return st;
+      }();
+    };
     window.MattSkillsUpstream.kernel = {
       // store-derived(面板派生统计)
       isTicketRow,
@@ -44233,6 +44266,9 @@ ${formatProgressEntry(entry)}
       branchBoardNode: function(board, props) {
         return vcBranchBoardNode(h3, tr, Object.assign({}, props || {}, { board }));
       }
+    };
+    window.MattSkillsUpstream.projects = {
+      refreshActiveProject
     };
     window.MattSkillsUpstream.map = {
       MapDetailV2Page,

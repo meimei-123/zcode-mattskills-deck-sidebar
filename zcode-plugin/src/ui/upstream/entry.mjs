@@ -899,6 +899,48 @@ function apply(ctx) {
     return st;
   };
 
+  // 票 03(本仓补件,上游零改动):活动项目跟随 —— 重取服务端的活动根与看板数据,写回
+  // 既有 store(不整只重建,用户停在当前页签)。服务端 workspace.json 资源的 root 现算为
+  // 活动项目根;「版本管理页回到初始视图」由上游 VersionControlTab 自己的 cwd 变化复位
+  // 分支(leaf:vcWriteView 的 staleCwd:setUi 回 changes + vcResetViewMemory + 重读)接住,
+  // vc 读数缓存本就按 cwd 键控(vcCacheSeedOf/vcCacheSave),上一仓库的缓存不会串到这里。
+  // 本补件只多管两件事:看板数据随根重取;上一项目的导航与详情缓存就地清掉(issueCache
+  // /issueDetail/activeIssue/activeMap/navStack 回初始值 —— 看板缓存不跨项目)。
+  // 票 04 的 chip 点击(deck_project_use 成功后整体重取)走这里。
+  const refreshActiveProject = function (target) {
+    const st = target || (deckPanelState.st || null);
+    if (!st || !clientRef) return Promise.resolve(null);
+    return (async function () {
+      const workspace = await fetchWorkspace(clientRef);
+      const root = workspace && workspace.root ? String(workspace.root) : st.cwd;
+      const data = await fetchDeckData(clientRef);
+      if (!data) return st;
+      const fresh = makeStore();
+      Object.assign(
+        st,
+        ingestSnapshot(
+          { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: root },
+          { planDeckCounts: planDeckCounts, rowCountsOf: rowCountsOf }
+        ),
+        {
+          cwd: root,
+          workspaceRoot: root,
+          snapMode: "real",
+          issueCache: fresh.issueCache,
+          issueMode: fresh.issueMode,
+          issueError: fresh.issueError,
+          issueDetail: fresh.issueDetail,
+          issueCommentsMoreLoading: fresh.issueCommentsMoreLoading,
+          activeIssue: fresh.activeIssue,
+          activeMap: fresh.activeMap,
+          navStack: fresh.navStack,
+        }
+      );
+      rerenderPanels();
+      return st;
+    })();
+  };
+
   // kernel 自检面(工单验收:上游 kernel 算子可从外部驱动;测试与后续工单的接线口)
   window.MattSkillsUpstream.kernel = {
     // store-derived(面板派生统计)
@@ -1027,6 +1069,11 @@ function apply(ctx) {
     branchBoardNode: function (board, props) {
       return vcBranchBoardNode(h, tr, Object.assign({}, props || {}, { board: board }));
     },
+  };
+  // 项目自检面(票 03):活动项目跟随的重取入口。chip(票 04)与测试都走这里;
+  // 上游零改动 —— 版本页复位由上游 cwd 变化分支接住(见 refreshActiveProject 注释)。
+  window.MattSkillsUpstream.projects = {
+    refreshActiveProject: refreshActiveProject,
   };
   // 地图详情自检面(M4):页面组件、页面模型与取数桶入口 —— 测试直接对着模型断言,
   // 不用把整页挂起来才看得到档案区/卡片流。
