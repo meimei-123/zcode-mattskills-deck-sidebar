@@ -43931,7 +43931,7 @@ ${formatProgressEntry(entry)}
       const narrow = !!(props && props.narrow);
       const busy = deckChip.busy === true;
       const warn = data.registry && data.registry.status === "broken" || Array.isArray(data.warnings) && data.warnings.length > 0;
-      const kids = [h3("span", { "data-deck-chip-name": "" }, [String(data.active && data.active.name || "")])];
+      const kids = [h3("span", { "data-deck-chip-name": "" }, [String(data.active && data.active.name || "未知")])];
       if (!narrow) kids.push(h3("span", { "data-deck-chip-caret": "" }, ["▾"]));
       return h3("div", { "data-deck-chip-wrap": "" }, [
         h3(
@@ -44196,17 +44196,34 @@ ${formatProgressEntry(entry)}
         return st;
       }();
     };
+    const chipLoadFailed = function(reason) {
+      deckChip.data = {
+        ok: false,
+        active: null,
+        home: null,
+        projects: [],
+        warnings: [],
+        registry: { status: "broken", path: "", error: reason }
+      };
+      rerenderPanels();
+    };
     const loadProjectChip = function() {
       const client = clientRef;
       if (!client || typeof client.callTool !== "function") return;
       client.callTool("deck_project_list", {}).then(function(res) {
-        if (res && res.isError) return;
+        if (res && res.isError) {
+          chipLoadFailed("项目清单读取失败:" + String(res.content && res.content[0] && res.content[0].text || "工具回包失败。"));
+          return;
+        }
         const sc = res && res.structuredContent;
         if (sc && sc.ok === true) {
           deckChip.data = sc;
           rerenderPanels();
+          return;
         }
-      }).catch(function() {
+        chipLoadFailed("项目清单读取失败:回包不可用。");
+      }).catch(function(e3) {
+        chipLoadFailed("项目清单读取失败:" + String(e3 && e3.message || e3 || "工具桥异常。"));
       });
     };
     const useProjectFromChip = function(name) {

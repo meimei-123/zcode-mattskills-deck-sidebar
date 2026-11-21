@@ -713,7 +713,8 @@ function apply(ctx) {
   // hooks(useTabsRow 等)只在 DeckBody 里调,渲染次数变化不破坏 hook 次序。
   // ---- 票 04(本仓补件,上游零改动):头部项目 chip ----
   // 数据缝:deck_project_list(既有 callTool 缝)启动取一次;deck_project_use 成功后用回包
-  // 刷新活动项目身份;切换成功走票 03 的 refreshActiveProject 整体重取(不造第二套)。
+  // 刷新活动项目身份;切换成功走票 03 的 refreshActiveProject 整体重取(不造第二套);
+  // 清单读取失败(isError/桥异常)亮警告态 chip 说明原因,registry 明确 missing 才隐藏。
   // 三态:普通(显示活动项目名)/ 警告(清单 broken 或 warnings 非空 → dsws-pchip-warn)/
   // 缺清单(registry.status==='missing' → 组件返回 null,头部与上游逐字一致)。
   // 展开:home-repo 第一、有效项目可点、被跳过条目以 warning 附末尾;窄档只留名字。
@@ -779,7 +780,7 @@ function apply(ctx) {
     const narrow = !!(props && props.narrow);
     const busy = deckChip.busy === true;
     const warn = (data.registry && data.registry.status === "broken") || (Array.isArray(data.warnings) && data.warnings.length > 0);
-    const kids = [h("span", { "data-deck-chip-name": "" }, [String((data.active && data.active.name) || "")])];
+    const kids = [h("span", { "data-deck-chip-name": "" }, [String((data.active && data.active.name) || "未知")])];
     if (!narrow) kids.push(h("span", { "data-deck-chip-caret": "" }, ["▾"]));
     return h("div", { "data-deck-chip-wrap": "" }, [
       h(
@@ -1016,7 +1017,7 @@ function apply(ctx) {
     deckPanelState.st = st;
     // emit→重画订阅挂在骨架层(不等组件 useEffect:上游面板在组件里订阅,本骨架单壳等价、更稳)
     try { sub(st, rerenderPanels); } catch (eSub) { /* 订阅失败不挡首渲 */ }
-    // 票 04:项目 chip 启动取一次活动项目身份(清单缺失/取失败时 chip 保持隐藏,不挡面板)
+    // 票 04:项目 chip 启动取一次活动项目身份(无清单时隐藏;读取失败亮警告态 chip,不挡面板)
     try { loadProjectChip(); } catch (eChip) { /* 取不到保持隐藏 */ }
     // 控制台留档(工单验收:数据接通可见) —— 同池九口径 + 面板口径一起打出
     try {
@@ -1079,21 +1080,40 @@ function apply(ctx) {
   // 状态形状)即新身份,覆盖 chip 数据并走 refreshActiveProject 整体重取;在途 busy 罩住整段
   // 切换(use + 重取),期间禁点不叠发;拒绝(isError)/桥异常 → chip 数据不变,busy 退场,
   // 人话原因展示在展开层([data-deck-chip-error])。
+  // 清单读取失败 ≠ 无清单:失败是可恢复的读取事故,亮警告态 chip 把原因说给人听
+  // (复用 broken 清单的展开层错误行路径);只有服务端明确 registry.status === "missing"
+  // (这个工作区没有项目清单)才让 chip 隐身,与零清单工作区的观感逐字一致。
+  const chipLoadFailed = function (reason) {
+    deckChip.data = {
+      ok: false,
+      active: null,
+      home: null,
+      projects: [],
+      warnings: [],
+      registry: { status: "broken", path: "", error: reason },
+    };
+    rerenderPanels();
+  };
   const loadProjectChip = function () {
     const client = clientRef;
     if (!client || typeof client.callTool !== "function") return;
     client
       .callTool("deck_project_list", {})
       .then(function (res) {
-        if (res && res.isError) return; // 工具级失败:chip 保持隐藏,不挡面板
+        if (res && res.isError) {
+          chipLoadFailed("项目清单读取失败:" + String((res.content && res.content[0] && res.content[0].text) || "工具回包失败。"));
+          return;
+        }
         const sc = res && res.structuredContent;
         if (sc && sc.ok === true) {
           deckChip.data = sc;
           rerenderPanels();
+          return;
         }
+        chipLoadFailed("项目清单读取失败:回包不可用。"); // 形状不对也亮警告,不静默藏
       })
-      .catch(function () {
-        /* 清单取不到 = 与无清单同观感,不算面板失败 */
+      .catch(function (e) {
+        chipLoadFailed("项目清单读取失败:" + String((e && e.message) || e || "工具桥异常。"));
       });
   };
   const useProjectFromChip = function (name) {

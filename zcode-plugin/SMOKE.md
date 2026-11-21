@@ -26,7 +26,7 @@
 | 2p | 切换后走三页:版本管理(改动/历史)、环境检查、再回列表 | 版本管理页回到初始视图并读新仓(分支/改动是新仓的,越界 cwd 被拒);环境检查链按新项目根组(git:repo 反映新根,技能步不变);看板继续跟随磁盘变化(切到新项目后改它的卡片,面板自动跟上) | server-git-project(桥根随活动项目/路径边界)、server-project-writes(监听重挂/切换恰好 +1)、upstream-versioncontrol(切换复位)覆盖 |
 | 2q | 从新项目卡片点动作按钮(领取/实施/诊断) | 发进对话的 prompt 恰好前置一行「项目:<name>(<项目根>);以下操作都在该项目内进行。」,其后动作模板与上游一致;切回 home-repo 后同一按钮不再带前言 | upstream-inject 覆盖(前置一行/不叠加/逐字放行) |
 | 2r | 版本管理页发起危险动作(如重置)只出预检签票、不确认,直接点 chip 切项目 | 切换被拒,人话说明要确认执行或等票据过期(最多 120 秒);确认执行(凭票)或等票据过期后可切;切到当前项目本身不受影响 | server-git-project(哨兵布防/结清/幂等 noop 不挡)覆盖 |
-| 2s | 切回 home-repo;再手改清单:删掉或改名当前活动项目条目后,任做一次操作(如刷新列表) | 切回 home-repo 正常,头部与看板回本仓;活动项目不在清单后,下一次操作自动回退 home-repo 并在回包/面板说明原因 | server-project(现读回退)、server-project-writes(同名改路径下一次用新路径)覆盖 |
+| 2s | 切回 home-repo;再手改清单:删掉或改名当前活动项目条目后,任做一次操作(如刷新列表) | 切回 home-repo 正常,头部与看板回 home-repo;活动项目不在清单后,下一次操作自动回退 home-repo 并在回包/面板说明原因 | server-project(现读回退)、server-project-writes(同名改路径下一次用新路径)覆盖 |
 | 3 | 对 agent 说"用 /to-tickets 在 m1-core-board 下建几张测试卡" | agent 调 `deck_issue_create`,卡片落盘 `.scratch/m1-core-board/issues/` | server-write 覆盖 |
 | 4 | 看板(不刷新面板) | 防抖后自动出现新卡;计数胶囊条变 | live-refresh 覆盖 |
 | 5 | 点开一张卡 | 详情:元行/正文/评论时间线;长文折叠可展开 | upstream-detail 覆盖 |

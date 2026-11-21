@@ -12,7 +12,11 @@
 //      workspace 根重读、新 active 高亮);
 //   6) 切换被拒(deck_project_use 回 isError):chip 不变、busy 退场、展开层人话错误行内可见;
 //   7) 窄档:ResizeObserver 宽度压到 300 → chip 只留活动项目名(caret 与展开层根路径收掉),
-//      放宽还原。
+//      放宽还原;
+//   8) 切到非 home 项目后点检查页签:链按新项目根重取(stub 收到 deck_env_check,
+//      快照落进 store —— ADR-0003「三页跟随」里检查页那一页的缝断言);
+//   9) deck_project_list 失败(回包 isError/桥异常):警告态 chip 可见、展开层人话错误;
+//      只有服务端明确 registry.status === "missing" 才隐藏。
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
@@ -347,7 +351,13 @@ async function bootChipPanel(listReply, opts = {}) {
     sendMessage: async () => ({ ok: true }),
     callTool: async (name, args) => {
       calls.push({ name, args: args || {} });
-      if (name === "deck_project_list") return { structuredContent: state.list };
+      if (name === "deck_project_list") {
+        if (opts.listMode === "error") {
+          return { isError: true, content: [{ type: "text", text: "读取 .deck/projects.json 失败:权限被拒" }] };
+        }
+        if (opts.listMode === "throw") throw new Error("工具桥断了");
+        return { structuredContent: state.list };
+      }
       if (name === "deck_project_use") {
         useCalls.push(args || {});
         if (useMode === "reject") return USE_REJECTED;
@@ -358,6 +368,17 @@ async function bootChipPanel(listReply, opts = {}) {
         return new Promise((resolve) => {
           releaseUse = resolve;
         });
+      }
+      // deck_env_check 照 upstream-checks 套件的 stub 形状回一份最小链快照(切片 8 用;
+      // 其余切片不点检查页,不受影响)
+      if (name === "deck_env_check") {
+        return {
+          structuredContent: {
+            ok: true,
+            snapshot: { steps: [], currentIndex: 0, failedIndex: -1, doneCount: 0, applicableCount: 0, totalCount: 0, chainState: "done", version: "1" },
+            checkedAt: "2026-11-21T00:00:00.000Z",
+          },
+        };
       }
       if (name === "deck_issue_list") return { structuredContent: { rows: [], revision: 1 } };
       if (name === "deck_issue_counts") return { structuredContent: { counts: { open: 0, closed: 0, total: 0 }, revision: 1 } };
@@ -560,6 +581,54 @@ globalThis.ResizeObserver = FakeResizeObserver;
   check("票04拒绝: 展开层人话错误(危险动作被拒)", errs.length >= 1 && textOf(errs[errs.length - 1]).includes("未确认的危险 git 动作"), errs.length && textOf(errs[errs.length - 1]));
   const listCalls = t.calls.filter((c) => c.name === "deck_issue_list").length;
   eq("票04拒绝: 被拒不触发整体重取(list 不重拉)", listCalls, 1);
+}
+
+// ---------------------------------------------------------------------------
+// 切片 8:切换到非 home 项目后,检查页路径重取 —— 链按活动项目根重组(ADR-0003
+// 「列表、版本管理、环境检查三页跟随」里检查页那一页的面板缝断言):切到 forge
+// 后点检查页签,stub 收到 deck_env_check 且链快照落进 store。
+// ---------------------------------------------------------------------------
+{
+  const t = await bootChipPanel(LIST_CLEAN, { useMode: "ok" });
+  await t.openPop();
+  fireClick(t.itemOf("forge"));
+  await flush();
+  eq("票04检查页跟随: 切到 forge 后 chip 显示 forge", t.chipName(), "forge");
+  const envCalls = () => t.calls.filter((c) => c.name === "deck_env_check");
+  eq("票04检查页跟随: 切换本身不发链取数", envCalls().length, 0);
+  const checksBtn = walk(t.surface).filter((n) => n.attributes["data-log"] === "panel.tab.checks" && n.tagName === "BUTTON")[0];
+  check("票04检查页跟随: 检查页签按钮在", !!checksBtn);
+  fireClick(checksBtn);
+  await flush();
+  eq("票04检查页跟随: 检查页发车一次 deck_env_check", envCalls().length, 1);
+  check("票04检查页跟随: 链快照落进 store(重取被触发)", !!(t.st.chainSnapshot && Array.isArray(t.st.chainSnapshot.steps)), JSON.stringify(t.st.chainSnapshot));
+}
+
+// ---------------------------------------------------------------------------
+// 切片 9:deck_project_list 失败 —— 警告态 chip 可见(人话错误在展开层),只有
+// 服务端明确 registry.status === "missing"(这个工作区没有清单)才隐藏。
+// ---------------------------------------------------------------------------
+{
+  const t = await bootChipPanel(LIST_CLEAN, { listMode: "error" });
+  const chip = t.chip();
+  check("票04清单失败: 回包 isError 时 chip 可见(不再静默隐藏)", !!chip);
+  check("票04清单失败: 警告态(dsws-pchip-warn)", chip && String(chip.attributes["class"]).includes("dsws-pchip-warn"));
+  eq("票04清单失败: 活动项目身份未到手时显示占位", t.chipName(), "未知");
+  await t.openPop();
+  const pop = t.pop();
+  const errs = pop ? qsa(pop, "[data-deck-chip-error]") : [];
+  check("票04清单失败: 展开层人话错误(读取失败+原因)", errs.length >= 1 && textOf(errs[0]).includes("项目清单读取失败") && textOf(errs[0]).includes("权限被拒"), errs.length ? textOf(errs[0]) : "无错误行");
+  eq("票04清单失败: 没有可点项目(清单没到手)", t.items().length, 0);
+
+  const t2 = await bootChipPanel(LIST_CLEAN, { listMode: "throw" });
+  const chip2 = t2.chip();
+  check("票04清单失败: 桥异常时 chip 同样可见警告态", !!chip2 && String(chip2.attributes["class"]).includes("dsws-pchip-warn"));
+  await t2.openPop();
+  const errs2 = t2.pop() ? qsa(t2.pop(), "[data-deck-chip-error]") : [];
+  check("票04清单失败: 桥异常的原因也上墙", errs2.length >= 1 && textOf(errs2[0]).includes("工具桥断了"), errs2.length ? textOf(errs2[0]) : "无错误行");
+
+  const t3 = await bootChipPanel(LIST_MISSING);
+  check("票04清单失败: registry 明确 missing 才隐藏 chip", !t3.chip());
 }
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);
