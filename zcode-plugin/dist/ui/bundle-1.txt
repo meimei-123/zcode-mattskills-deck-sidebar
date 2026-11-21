@@ -43952,6 +43952,17 @@ ${formatProgressEntry(entry)}
         deckChip.open ? chipPopNode(data, narrow, busy) : null
       ]);
     };
+    const projectActionText = function(text2) {
+      const body = String(text2 == null ? "" : text2);
+      const a3 = deckChip.data && deckChip.data.active;
+      if (!a3 || a3.isHome !== false) return body;
+      const name = String(a3.name || "");
+      const root = String(a3.path || "");
+      if (!name || !root) return body;
+      const head = "项目：" + name + "（" + root + "）；以下操作都在该项目内进行。";
+      if (body.startsWith(head)) return body;
+      return head + "\n" + body;
+    };
     const DeckShell = function() {
       if (!deckPanelState.st) return h3("div", { className: "dsws-hold" });
       return h3(DeckBody, null);
@@ -44126,7 +44137,7 @@ ${formatProgressEntry(entry)}
       try {
         if (clientRef && typeof clientRef.sendMessage === "function") {
           st.injector = function(text2) {
-            clientRef.sendMessage(text2);
+            clientRef.sendMessage(projectActionText(text2));
           };
         }
       } catch (eInj) {

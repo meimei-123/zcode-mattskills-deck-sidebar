@@ -800,6 +800,24 @@ function apply(ctx) {
       deckChip.open ? chipPopNode(data, narrow, busy) : null,
     ]);
   };
+  // ---- 票 05(本仓补件,上游零改动):动作 prompt 的项目前言 ----
+  // 活动项目 ≠ home-repo 时,经 st.injector 注入的动作文本(领取/实施/诊断/评论/讨论/
+  // ChecksTab inject-prompt 等全部出口)前置恰好一行「项目:<name>(<root>);以下操作都在
+  // 该项目内进行。」(全角冒号/括号/分号,<root> 用活动项目根真实路径);home-repo 或身份
+  // 残缺时逐字放行,与上游一致;已带前言的文本不再二次前置(多次点击/重取不叠加)。
+  // 活动项目身份与 chip 同源(deckChip.data.active,票 04 的状态持有处),发话时现读:
+  // deck_project_use 成功回包落进 deckChip.data 即翻面,不等看板重取。
+  const projectActionText = function (text) {
+    const body = String(text == null ? "" : text);
+    const a = deckChip.data && deckChip.data.active;
+    if (!a || a.isHome !== false) return body; // home-repo/无清单/身份未落定 → 与现在逐字一致
+    const name = String(a.name || "");
+    const root = String(a.path || "");
+    if (!name || !root) return body;
+    const head = "项目：" + name + "（" + root + "）；以下操作都在该项目内进行。";
+    if (body.startsWith(head)) return body; // 已带前言:不叠加
+    return head + "\n" + body;
+  };
   const DeckShell = function () {
     if (!deckPanelState.st) return h("div", { className: "dsws-hold" });
     return h(DeckBody, null);
@@ -989,9 +1007,10 @@ function apply(ctx) {
     st.workspaceRoot = data.workspaceRoot || st.cwd;
     // U05:注入通道 —— 上游 inject(st, text) 读 st.injector(缺席时降级复制到剪贴板);
     // ZCode 等价物 = ui/message 桥发进当前对话(与旧 UI 动作栏同一条桥)。
+    // 票 05:收口包一层项目前言(见上方 projectActionText 补件;上游动作模板零改动)。
     try {
       if (clientRef && typeof clientRef.sendMessage === "function") {
-        st.injector = function (text) { clientRef.sendMessage(text); };
+        st.injector = function (text) { clientRef.sendMessage(projectActionText(text)); };
       }
     } catch (eInj) { /* 桥缺席时上游自己降级 copyText,不挡 boot */ }
     deckPanelState.st = st;
