@@ -20,6 +20,26 @@ _Avoid_: 工单文件、ticket file、条目
 `.scratch/` 里的工作单元(ticket/map/spec 三型之一;口语泛指全部卡片),卡片(Card)是它的看板/文件呈现。指文件时说「卡片文件」,不写「票文件」。
 _Avoid_: 票文件(指文件时用卡片文件)、票据
 
+**工作区根(Workspace root)**:
+宿主经 `ZCODE_WORKSPACE_ROOT` 注入的目录,即 home-repo 的路径;插件启动时据此定位项目清单。不是「活动项目」。
+_Avoid_: 工作区(指活动项目时)
+
+**项目根(Project root)**:
+一个拥有自己 `.scratch/` 看板的目录;看板数据、版本管理、环境检查都以它为界。home-repo 是其中一员。
+_Avoid_: 项目(泛指时)、代码仓(指项目根时)
+
+**home-repo(会话根项目)**:
+会话打开时所在目录对应的项目根。项目清单的第一项,隐式存在、不可删除,名字默认取目录名。
+_Avoid_: 主仓、根仓、本仓(指会话根时)
+
+**项目清单(Project registry)**:
+会话根 `.deck/projects.json` 里逐项声明的项目根集合。切换的唯一来源,也是路径的信任边界;缺省或为空时只有 home-repo。
+_Avoid_: 项目列表(口语可用)、配置(泛指时)
+
+**活动项目(Active project)**:
+当前被选中的项目根。列表、版本管理、环境检查三页都读它;默认是 home-repo,选择只存在当前会话的 MCP 服务进程里。
+_Avoid_: 当前仓库、工作区(指活动项目时)
+
 **DeckState**:
 MCP 服务从 `.scratch/` 解析出的看板状态投影,面板与 agent 工具消费同一形状。
 _Avoid_: 面板数据、store
