@@ -61,7 +61,17 @@ function workspaceRoot() {
 }
 
 // 工单 08:`.scratch/` 监听 + 数据修订号(发条见 watch.mjs;测试经 ZCODE_REFRESH_* 收短)。
-const deckWatch = createDeckWatch(workspaceRoot(), refreshFromEnv(process.env));
+// 票 02:监听随活动项目 —— 单例可重建;换根时 stop 旧(清定时器含退避重试、关旧 watcher,
+// 旧根不再推进)、新建挂新根;新实例从旧 revision 起步,初扫必推进一次 = 切换恰好 +1。
+let deckWatch = createDeckWatch(workspaceRoot(), refreshFromEnv(process.env));
+let deckWatchRoot = workspaceRoot();
+function ensureWatch(root) {
+  if (root === deckWatchRoot) return;
+  const prevRevision = deckWatch.state().revision;
+  deckWatch.stop();
+  deckWatch = createDeckWatch(root, { ...refreshFromEnv(process.env), startRevision: prevRevision });
+  deckWatchRoot = root;
+}
 
 // 票 01:活动项目进程内状态 —— 只存清单里的名字,null = home-repo。新会话复位,
 // 不持久化;每次工具调用经 readRegistry 现读清单再解析根(同名项改路径自然指新路径)。
@@ -457,8 +467,8 @@ function handleProjectList(reg, active) {
 
 /** deck_project_use:只认清单里的名字;切 home-repo 是幂等 noop;坏名字明确报错并列可用名,不猜。
  *  版本管理页有未确认的危险 git 动作时拒绝真正的切换(票 03;切到当前项目本身是幂等
- *  noop,根没动,不挡)。 */
-function handleProjectUse(a, reg, active, activeGitRoot) {
+ *  noop,根没动,不挡)。票 02:落定分支(含 home 幂等)重挂监听;拒绝分支不落定,不重挂。 */
+function handleProjectUse(a, reg, active, activeGitRoot, homeRoot) {
   const wanted = String(a.name === undefined || a.name === null ? "" : a.name).trim();
   if (!wanted) {
     return { content: [{ type: "text", text: "缺少 name:请给项目清单里的名字(deck_project_list 可看全量)。" }], isError: true };
@@ -484,6 +494,7 @@ function handleProjectUse(a, reg, active, activeGitRoot) {
   }
   if (toHome) {
     activeProjectName = null; // 回 home-repo:幂等 noop
+    ensureWatch(homeRoot); // 票 02:监听跟着切(已在 home 根上是 noop)
     return useReply({ root: reg.home.path, name: reg.home.name, isHome: true, note: null }, `活动项目已设为 home-repo(${reg.home.name})。`);
   }
   const hit = reg.projects.find((p) => p.valid && p.name.toLowerCase() === wanted.toLowerCase());
@@ -493,6 +504,7 @@ function handleProjectUse(a, reg, active, activeGitRoot) {
     return { content: [{ type: "text", text: `没有叫「${wanted}」的项目,不能猜。可用的项目:${available}。${why}` }], isError: true };
   }
   activeProjectName = hit.name;
+  ensureWatch(hit.path); // 票 02:切换落定时停旧挂新,取消待执行的退避重试
   return useReply({ root: hit.path, name: hit.name, isHome: false, note: null }, `活动项目已切到 ${hit.name}(${hit.path})。`);
 }
 
@@ -527,9 +539,11 @@ function handleCall(name, args) {
   if (name === "deck_skill_doc") return handleSkillDoc(a, homeRoot);
 
   if (name === "deck_project_list") return handleProjectList(reg, active);
-  if (name === "deck_project_use") return handleProjectUse(a, reg, active, gitRootOf(active, homeRoot));
+  // 票 02 + 票 03:use 带活动项目与 git 根(危险哨兵键控)与 home 根(监听重挂)。
+  if (name === "deck_project_use") return handleProjectUse(a, reg, active, gitRootOf(active, homeRoot), homeRoot);
 
   const scanRoot = active.isHome ? homeRoot : active.root;
+  ensureWatch(scanRoot); // 活动根变了(含失效回退到 home-repo)→ 停旧挂新
   const scan = scanWorkspace(scanRoot);
   deckWatch.observe(scan); // 请求即探测:签名变了推进 revision(监听离线时的降级新鲜度)
 
@@ -613,11 +627,10 @@ function handleCall(name, args) {
   // ---- 工单 03:环境检查链(链快照唯一渲染;按本地真实事实组装,不造假) ----
   if (name === "deck_env_check") {
     // scan 是 handleCall 顶部现扫的这一次(每个请求都重扫 —— 「真重扫」不是 force 才有的分支);
-    // 活动项目在内时本工具仍按工作区根(home-repo)组链,自扫一次(票 01 范围:环境检查
-    // 随活动项目走是后续票)。force 只表达调用意图(用户亲手点「重新检查」),非布尔按未传处理。
+    // 票 02:链随活动项目组 —— scratch/cards/watch/git 四步按活动根,技能步锚工作区根
+    // (home-repo,技能根不随项目)。force 只表达调用意图(用户亲手点「重新检查」),非布尔按未传处理。
     const force = a.force === true;
-    const envScan = active.isHome ? scan : scanWorkspace(homeRoot);
-    const snapshot = buildEnvChain(homeRoot, { scan: envScan, watchOnline: deckWatch.state().online, env: process.env });
+    const snapshot = buildEnvChain(scanRoot, { scan, watchOnline: deckWatch.state().online, env: process.env, skillRoot: homeRoot });
     const summary = summarizeEnvCheck(snapshot);
     return {
       content: [{ type: "text", text: force ? `已按当前状态重扫。${summary}` : summary }],
@@ -626,42 +639,49 @@ function handleCall(name, args) {
   }
 
   // ---- 工单 06:写工具六件套(全部走 write.mjs 的单写者队列;返回 Promise) ----
-  // 票 01 范围:写仍作用于工作区根(home-repo);随活动项目路由是后续票。
+  // 票 02:写落活动项目(scanRoot;活动项目是 home-repo 时与原来逐字一致)。
   if (name === "deck_issue_comment") {
-    return commentIssue(homeRoot, a.key, { body: a.body, actor: a.actor, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(homeRoot, res, name));
+    return commentIssue(scanRoot, a.key, { body: a.body, actor: a.actor, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(scanRoot, res, name, active));
   }
   if (name === "deck_issue_update") {
-    return updateStatusIssue(homeRoot, a.key, { status: a.status, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(homeRoot, res, name));
+    return updateStatusIssue(scanRoot, a.key, { status: a.status, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(scanRoot, res, name, active));
   }
   if (name === "deck_issue_close") {
-    return closeIssue(homeRoot, a.key, { reason: a.reason, actor: a.actor, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(homeRoot, res, name));
+    return closeIssue(scanRoot, a.key, { reason: a.reason, actor: a.actor, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(scanRoot, res, name, active));
   }
   if (name === "deck_issue_reopen") {
-    return reopenIssue(homeRoot, a.key, { expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(homeRoot, res, name));
+    return reopenIssue(scanRoot, a.key, { expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(scanRoot, res, name, active));
   }
   if (name === "deck_issue_set_labels") {
-    return setLabelsIssue(homeRoot, a.key, { labels: a.labels, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(homeRoot, res, name));
+    return setLabelsIssue(scanRoot, a.key, { labels: a.labels, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(scanRoot, res, name, active));
   }
   if (name === "deck_issue_create") {
-    return createIssue(homeRoot, { effort: a.effort, title: a.title, body: a.body, labels: a.labels }).then((res) => finishWrite(homeRoot, res, name));
+    return createIssue(scanRoot, { effort: a.effort, title: a.title, body: a.body, labels: a.labels }).then((res) => finishWrite(scanRoot, res, name, active));
   }
 
   return { content: [{ type: "text", text: `未知工具 ${name}` }], isError: true };
 }
 
+/** 写摘要的活动项目名前缀(票 02):仅活动项目不是 home-repo 时包一层;home-repo 逐字不变。 */
+function withProjectName(message, active) {
+  return active && !active.isHome ? `项目 ${active.name}:${message}` : message;
+}
+
 /** 写操作收尾:失败透人话;成功主动喂 watch 一次新扫描(revision 立即前进,不等 fs.watch 防抖/栅格)。 */
-function finishWrite(root, res, name) {
+function finishWrite(root, res, name, active) {
   if (!res || res.ok === false) {
-    return { content: [{ type: "text", text: (res && res.message) || `写操作 ${name} 失败` }], isError: true };
+    return { content: [{ type: "text", text: withProjectName((res && res.message) || `写操作 ${name} 失败`, active) }], isError: true };
   }
   try {
-    deckWatch.observe(scanWorkspace(root)); // 写后主动失效:面板下一拍 counts 就能看到新 revision
+    // 写后主动失效:面板下一拍 counts 就能看到新 revision。根仅与监听根一致时才喂
+    // (写排队期间发生切换的话,这次写属于旧根 —— 不许推进新根的 revision)。
+    if (root === deckWatchRoot) deckWatch.observe(scanWorkspace(root));
   } catch {}
   const card = res.card;
   // 可寻址 key(与 get 同口径):正常票带目录前缀;退化身份的 key 自带前缀不重复拼。
   const addrKey = card ? (String(card.key).includes("/") ? card.key : card.effortId ? `${card.effortId}/${card.key}` : card.key) : undefined;
   return {
-    content: [{ type: "text", text: res.message || "已写入。" }],
+    content: [{ type: "text", text: withProjectName(res.message || "已写入。", active) }],
     structuredContent: { ok: true, changed: !!res.changed, revision: deckWatch.state().revision, key: addrKey, card },
   };
 }
