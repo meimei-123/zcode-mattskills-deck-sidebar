@@ -844,5 +844,105 @@ if (U) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 切片 4(票 03):活动项目切换 → workspace 根跟随 → 版本管理页回到初始视图并取
+// 活动项目数据。上游 VersionControlTab 的 cwd 变化复位分支(staleCwd)接住「回初始
+// 视图」;vc 读数缓存按 cwd 键控(vcCacheSeedOf/vcCacheSave),不显示上一仓库的缓存。
+// 面板补件只有一件事:重取时把活动根与看板数据写回既有 store(refreshActiveProject)。
+// ---------------------------------------------------------------------------
+{
+  const doc2 = createFakeDom();
+  const state = { root: "X:/repo-a" }; // 服务端活动根:翻转它 = 模拟已有人切了项目
+  const calls2 = [];
+  const SCREEN_A = JSON.parse(JSON.stringify(SCREEN));
+  const SCREEN_B = JSON.parse(JSON.stringify(SCREEN));
+  SCREEN_B.identity.branch = "feature/proj-b";
+  SCREEN_B.identity.worktreeDisplay = "repo-b";
+  SCREEN_B.commits = [
+    {
+      oid: "bbbb0f5c9e2b4a7f8d1c3e5a7b9d0f2a4c6e8b10",
+      short: "bbbb0f5",
+      author: "Tester",
+      email: "t@example.com",
+      authorDateMs: 1795178983000,
+      commitDateMs: 1795178983000,
+      subject: "b 仓基线提交",
+      parents: [],
+    },
+  ];
+  const client2 = {
+    readResource: async (uri) => {
+      if (uri.endsWith("workspace.json")) return { contents: [{ text: JSON.stringify({ root: state.root, env: {} }) }] };
+      throw new Error("no asset " + uri);
+    },
+    callTool: async (name, args) => {
+      calls2.push({ name, args: args || {} });
+      if (name === "deck_issue_list") return { structuredContent: { rows: [], revision: 1 } };
+      if (name === "deck_issue_counts") return { structuredContent: { counts: { open: 0, closed: 0, total: 0 }, revision: 1 } };
+      if (name === "deck_issue_list_labels") return { structuredContent: { labels: [], colors: {} } };
+      if (name === "deck_git") {
+        const m = args.method;
+        const a = args.args || {};
+        const screen = state.root === "X:/repo-b" ? SCREEN_B : SCREEN_A;
+        if (m === "gitStatus") return { structuredContent: { ok: true, screen, tier: "full", gitVersion: "git version 2.42.0.windows.2", worktreesNul: true, readAtMs: 1795178982816 } };
+        if (m === "gitLog") return { structuredContent: { ok: true, commits: screen.commits, skip: a.skip, requested: 50, returned: screen.commits.length, hasMore: false } };
+        if (m === "gitTaskQuery") return { structuredContent: { ok: true, tasks: [] } };
+        return { structuredContent: { ok: false, error: { kind: "unknown-method", message: "no replay " + m } } };
+      }
+      throw new Error("no tool " + name);
+    },
+  };
+  const win2 = { innerWidth: 900, innerHeight: 700, addEventListener() {}, removeEventListener() {} };
+  try {
+    new Function("window", "document", `"use strict";\n${code}`)(win2, doc2);
+    const U2 = win2.MattSkillsUpstream;
+    await U2.boot({ client: client2, doc: doc2, fetchData: true });
+    await tick();
+    const st2 = U2.list.storeOf();
+    check("票03: boot 后面板 cwd 是项目 A", st2 && st2.cwd === "X:/repo-a", st2 && st2.cwd);
+    const surface2 = doc2.body.children[0];
+    const tabBtn2 = walk(surface2).filter((n) => n.attributes["data-log"] === "panel.tab.versioncontrol" && n.tagName === "BUTTON")[0];
+    if (st2 && tabBtn2) {
+      fireClick(tabBtn2);
+      await tick();
+      await settle(60);
+      check("票03: 版本页在且显示 A 的分支(main)", st2.tab === "versionControl" && textOf(surface2).includes("main"), st2.tab);
+      check(
+        "票03: 首屏 gitStatus 用 A 的 cwd",
+        calls2.some((c) => c.name === "deck_git" && c.args.method === "gitStatus" && c.args.args && c.args.args.cwd === "X:/repo-a"),
+        JSON.stringify(calls2.filter((c) => c.name === "deck_git").map((c) => c.args.method))
+      );
+      // 进到提交历史视图(非初始视图),确认旧仓数据在画面上
+      const commitsBtn = walk(surface2).filter((n) => n.attributes["data-vc-view"] === "commits")[0];
+      fireClick(commitsBtn);
+      await tick();
+      await settle(40);
+      check("票03: 已在提交历史视图(A 的提交标题在)", qsa(surface2, "[data-vc-commit]").length >= 1 && textOf(surface2).includes("第二次提交:补充一行"), textOf(surface2).slice(0, 120));
+
+      // 服务端活动项目已切到 B(workspace 资源回 B 的根)→ 面板重取
+      state.root = "X:/repo-b";
+      check("票03: 补件入口在(U2.projects.refreshActiveProject)", typeof U2.projects?.refreshActiveProject === "function", typeof U2.projects?.refreshActiveProject);
+      await U2.projects.refreshActiveProject();
+      await tick();
+      await settle(80);
+      check("票03: 重取后 cwd 是项目 B", st2.cwd === "X:/repo-b", st2.cwd);
+      check("票03: 仍停在版本管理页签(没有弹回列表)", st2.tab === "versionControl", st2.tab);
+      check("票03: 版本页回到初始改动视图(data-vc-changes 在)", qsa(surface2, "[data-vc-changes]").length >= 1);
+      check("票03: 上一仓库的提交行已清(不是 A 的缓存)", qsa(surface2, "[data-vc-commit]").length === 0, String(qsa(surface2, "[data-vc-commit]").length));
+      check(
+        "票03: 重取后 gitStatus 用 B 的 cwd(取活动项目数据)",
+        calls2.some((c) => c.name === "deck_git" && c.args.method === "gitStatus" && c.args.args && c.args.args.cwd === "X:/repo-b"),
+        JSON.stringify(calls2.filter((c) => c.name === "deck_git" && c.args.method === "gitStatus").map((c) => c.args.args && c.args.args.cwd))
+      );
+      check("票03: 显示 B 的分支(feature/proj-b)", textOf(surface2).includes("feature/proj-b"), textOf(surface2).slice(0, 160));
+      check("票03: A 的提交标题不再显示(不串仓)", !textOf(surface2).includes("第二次提交:补充一行"));
+    } else {
+      check("票03: boot 后面板 cwd 是项目 A", false, "boot/页签缺失");
+    }
+  } catch (e) {
+    check("票03: 切换重取切片不抛错", false, e && e.stack ? e.stack.split("\n").slice(0, 6).join(" | ") : String(e));
+  }
+}
+
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);
 process.exit(failures === 0 ? 0 : 1);

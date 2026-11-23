@@ -538,6 +538,28 @@ function apply(ctx) {
     ].join("\n")
   );
 
+  // ---- 票 04:项目 chip 样式(本仓补件,零上游改动) ----
+  // 只添自己的 dsws-pchip-* / [data-deck-chip*] 类(上游已有 .dsws-chip 是标签芯片,不碰);
+  // 令牌族与回退值照上游 kernel:styles 同款口径(bg-layer / border / label / state-warning)。
+  styles.insert(
+    [
+      "[data-deck-chip-wrap]{position:relative;margin-left:auto;flex:none}",
+      "[data-deck-chip]{display:inline-flex;align-items:center;gap:4px;max-width:220px;padding:2px 8px;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary,#8b949e);background:var(--dsw-alias-bg-layer-2,#1c2128);border:1px solid var(--dsw-alias-border-l1,#2a2d35);border-radius:99px;cursor:pointer;white-space:nowrap}",
+      "[data-deck-chip]:hover{border-color:var(--dsw-alias-border-l2,#3d444d);color:var(--dsw-alias-label-primary,#e6edf3)}",
+      "[data-deck-chip].dsws-pchip-warn{border-color:var(--dsw-alias-state-warning-primary,#d29922);color:var(--dsw-alias-state-warn-label,#e3b341)}",
+      "[data-deck-chip].dsws-pchip-busy{opacity:.55;pointer-events:none}",
+      "[data-deck-chip-name]{overflow:hidden;text-overflow:ellipsis;max-width:150px}",
+      "[data-deck-chip-caret]{font-size:9px;opacity:.75}",
+      "[data-deck-chip-pop]{position:absolute;top:calc(100% + 6px);right:0;z-index:40;min-width:200px;max-width:320px;padding:4px;background:var(--dsw-alias-bg-layer-1,#161b22);border:1px solid var(--dsw-alias-border-l1,#2a2d35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45)}",
+      "[data-deck-chip-item]{display:block;width:100%;text-align:left;padding:5px 8px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-primary,#e6edf3);background:transparent;border:0;border-radius:5px;cursor:pointer}",
+      "[data-deck-chip-item]:hover{background:var(--dsw-alias-interactive-bg-hover,#21262d)}",
+      "[data-deck-chip-item].dsws-pchip-active{color:var(--dsw-alias-state-success-primary,#3fb950)}",
+      "[data-deck-chip-path]{display:block;font-size:10px;color:var(--dsw-alias-label-caption,#7d8590);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+      "[data-deck-chip-warnrow]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#e3b341);white-space:normal;word-break:break-all;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35)}",
+      "[data-deck-chip-error]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#e3b341);white-space:normal;word-break:break-all}",
+    ].join("\n")
+  );
+
   // ---- 列表页全家 + 页签壳(工单 U04;上游 index.ts 标记序原位) ----
   // 链渲染器通用件(工单 03;上游标记序在 tabs 之前、checksums 之后 —— 本仓跳过 checksums 保序)
   // ==== leaf:chainRenderer (spliced by build) ====
@@ -689,6 +711,114 @@ function apply(ctx) {
   // 本仓只在渲染层兜底回列表,不改状态)。
   // 门组件(上游 #670 同款):无数据先画 dsws-hold 空壳,有数据才挂 DeckBody ——
   // hooks(useTabsRow 等)只在 DeckBody 里调,渲染次数变化不破坏 hook 次序。
+  // ---- 票 04(本仓补件,上游零改动):头部项目 chip ----
+  // 数据缝:deck_project_list(既有 callTool 缝)启动取一次;deck_project_use 成功后用回包
+  // 刷新活动项目身份;切换成功走票 03 的 refreshActiveProject 整体重取(不造第二套);
+  // 清单读取失败(isError/桥异常)亮警告态 chip 说明原因,registry 明确 missing 才隐藏。
+  // 三态:普通(显示活动项目名)/ 警告(清单 broken 或 warnings 非空 → dsws-pchip-warn)/
+  // 缺清单(registry.status==='missing' → 组件返回 null,头部与上游逐字一致)。
+  // 展开:home-repo 第一、有效项目可点、被跳过条目以 warning 附末尾;窄档只留名字。
+  // 切换在途(use + 重取都算在途):chip 禁点 + dsws-pchip-busy;拒绝(isError)→ chip 不变,
+  // 人话原因行内展示在展开层([data-deck-chip-error])。
+  const deckChip = { data: null, open: false, busy: false, error: null };
+  const chipToggle = function (e) {
+    if (deckChip.busy) return; // 在途禁点:busy 时不展开/收起(不因点击错乱展开层)
+    try {
+      if (e && e.stopPropagation) e.stopPropagation();
+    } catch (eT) {
+      /* 忽略 */
+    }
+    deckChip.open = !deckChip.open;
+    rerenderPanels();
+  };
+  const chipPopNode = function (data, narrow, busy) {
+    const kids = [];
+    if (data.registry && data.registry.status === "broken") {
+      kids.push(h("div", { "data-deck-chip-error": "" }, [String((data.registry && data.registry.error) || "项目清单读不出来,已按单根处理。")]));
+    }
+    if (deckChip.error) {
+      kids.push(h("div", { "data-deck-chip-error": "" }, [String(deckChip.error)]));
+    }
+    const projects = Array.isArray(data.projects) ? data.projects : [];
+    const active = data.active && data.active.name ? String(data.active.name) : "";
+    for (const p of projects) {
+      if (!p || p.valid !== true) continue;
+      const isActive = !!p.name && p.name.toLowerCase() === active.toLowerCase();
+      kids.push(
+        h(
+          "button",
+          {
+            type: "button",
+            key: p.name,
+            "data-deck-chip-item": "",
+            "data-name": String(p.name || ""),
+            "data-home": p.isHome ? "true" : "false",
+            className: "dsws-pchipitem" + (isActive ? " dsws-pchip-active" : ""),
+            disabled: busy,
+            onClick: function () {
+              useProjectFromChip(p.name);
+            },
+          },
+          [
+            h("span", { "data-deck-chip-pname": "" }, [(isActive ? "✓ " : "") + String(p.name || "")]),
+            narrow ? null : h("span", { "data-deck-chip-path": "" }, [String(p.path || "")]),
+          ]
+        )
+      );
+    }
+    // 被跳过的条目以 warning 附在末尾(有效项之后,不可点)
+    for (const p of projects) {
+      if (!p || p.valid === true) continue;
+      const why = p.reason ? `(${p.reason})` : "";
+      kids.push(h("div", { "data-deck-chip-warnrow": "" }, [`${String(p.name || "(未命名)")}${why} —— 不可切换`]));
+    }
+    return h("div", { "data-deck-chip-pop": "", role: "listbox" }, kids);
+  };
+  const ProjectChip = function (props) {
+    const data = deckChip.data;
+    if (!data || !data.registry || data.registry.status === "missing") return null; // 无清单:头部与上游逐字一致
+    const narrow = !!(props && props.narrow);
+    const busy = deckChip.busy === true;
+    const warn = (data.registry && data.registry.status === "broken") || (Array.isArray(data.warnings) && data.warnings.length > 0);
+    const kids = [h("span", { "data-deck-chip-name": "" }, [String((data.active && data.active.name) || "未知")])];
+    if (!narrow) kids.push(h("span", { "data-deck-chip-caret": "" }, ["▾"]));
+    return h("div", { "data-deck-chip-wrap": "" }, [
+      h(
+        "button",
+        {
+          type: "button",
+          "data-deck-chip": "",
+          className: "dsws-pchipbtn" + (warn ? " dsws-pchip-warn" : "") + (busy ? " dsws-pchip-busy" : ""),
+          title: warn ? "项目清单有警告" : "切换看板项目",
+          "aria-haspopup": "true",
+          "aria-expanded": deckChip.open ? "true" : "false",
+          "aria-busy": busy ? "true" : "false",
+          disabled: busy,
+          onClick: chipToggle,
+        },
+        kids
+      ),
+      deckChip.open ? chipPopNode(data, narrow, busy) : null,
+    ]);
+  };
+  // ---- 票 05(本仓补件,上游零改动):动作 prompt 的项目前言 ----
+  // 活动项目 ≠ home-repo 时,经 st.injector 注入的动作文本(领取/实施/诊断/评论/讨论/
+  // ChecksTab inject-prompt 等全部出口)前置恰好一行「项目:<name>(<root>);以下操作都在
+  // 该项目内进行。」(全角冒号/括号/分号,<root> 用活动项目根真实路径);home-repo 或身份
+  // 残缺时逐字放行,与上游一致;已带前言的文本不再二次前置(多次点击/重取不叠加)。
+  // 活动项目身份与 chip 同源(deckChip.data.active,票 04 的状态持有处),发话时现读:
+  // deck_project_use 成功回包落进 deckChip.data 即翻面,不等看板重取。
+  const projectActionText = function (text) {
+    const body = String(text == null ? "" : text);
+    const a = deckChip.data && deckChip.data.active;
+    if (!a || a.isHome !== false) return body; // home-repo/无清单/身份未落定 → 与现在逐字一致
+    const name = String(a.name || "");
+    const root = String(a.path || "");
+    if (!name || !root) return body;
+    const head = "项目：" + name + "（" + root + "）；以下操作都在该项目内进行。";
+    if (body.startsWith(head)) return body; // 已带前言:不叠加
+    return head + "\n" + body;
+  };
   const DeckShell = function () {
     if (!deckPanelState.st) return h("div", { className: "dsws-hold" });
     return h(DeckBody, null);
@@ -803,7 +933,8 @@ function apply(ctx) {
     // 上游 panel/Dock.ts 的窄档判据(容器宽 < 380):行内按钮收图标档、KPI 体检按钮三档
     const narrow = dw < 380;
     return h("div", { ref: panelRef, className: "dsws-panel" + (narrow ? " dsws-narrow" : "") }, [
-      h("div", { className: "dsws-head" }, [h("span", { className: "dsws-mtitle" }, [tr("panel.title")])]),
+      // 票 04 分叉(本仓补件):头部右侧项目 chip;无清单时 ProjectChip 返回 null,头部与上游逐字一致。
+      h("div", { className: "dsws-head" }, [h("span", { className: "dsws-mtitle" }, [tr("panel.title")]), h(ProjectChip, { narrow: narrow })]),
       h(
         "div",
         { className: "dsws-tabs dsws-ink-host", ref: function (el) { tabsRef.current = el; tabs.inkHostRef.current = el; }, style: { padding: "0 12px 7px", borderBottom: "1px solid var(--dsw-alias-border-l1,#2a2d35)", flex: "none", display: "flex", alignItems: "center", gap: 4 } },
@@ -877,14 +1008,17 @@ function apply(ctx) {
     st.workspaceRoot = data.workspaceRoot || st.cwd;
     // U05:注入通道 —— 上游 inject(st, text) 读 st.injector(缺席时降级复制到剪贴板);
     // ZCode 等价物 = ui/message 桥发进当前对话(与旧 UI 动作栏同一条桥)。
+    // 票 05:收口包一层项目前言(见上方 projectActionText 补件;上游动作模板零改动)。
     try {
       if (clientRef && typeof clientRef.sendMessage === "function") {
-        st.injector = function (text) { clientRef.sendMessage(text); };
+        st.injector = function (text) { clientRef.sendMessage(projectActionText(text)); };
       }
     } catch (eInj) { /* 桥缺席时上游自己降级 copyText,不挡 boot */ }
     deckPanelState.st = st;
     // emit→重画订阅挂在骨架层(不等组件 useEffect:上游面板在组件里订阅,本骨架单壳等价、更稳)
     try { sub(st, rerenderPanels); } catch (eSub) { /* 订阅失败不挡首渲 */ }
+    // 票 04:项目 chip 启动取一次活动项目身份(无清单时隐藏;读取失败亮警告态 chip,不挡面板)
+    try { loadProjectChip(); } catch (eChip) { /* 取不到保持隐藏 */ }
     // 控制台留档(工单验收:数据接通可见) —— 同池九口径 + 面板口径一起打出
     try {
       const stats = deriveDeck(trackerDeckOf(data.rows)).stats;
@@ -897,6 +1031,122 @@ function apply(ctx) {
     }
     rerenderPanels();
     return st;
+  };
+
+  // 票 03(本仓补件,上游零改动):活动项目跟随 —— 重取服务端的活动根与看板数据,写回
+  // 既有 store(不整只重建,用户停在当前页签)。服务端 workspace.json 资源的 root 现算为
+  // 活动项目根;「版本管理页回到初始视图」由上游 VersionControlTab 自己的 cwd 变化复位
+  // 分支(leaf:vcWriteView 的 staleCwd:setUi 回 changes + vcResetViewMemory + 重读)接住,
+  // vc 读数缓存本就按 cwd 键控(vcCacheSeedOf/vcCacheSave),上一仓库的缓存不会串到这里。
+  // 本补件只多管两件事:看板数据随根重取;上一项目的导航与详情缓存就地清掉(issueCache
+  // /issueDetail/activeIssue/activeMap/navStack 回初始值 —— 看板缓存不跨项目)。
+  // 票 04 的 chip 点击(deck_project_use 成功后整体重取)走这里。
+  const refreshActiveProject = function (target) {
+    const st = target || (deckPanelState.st || null);
+    if (!st || !clientRef) return Promise.resolve(null);
+    return (async function () {
+      const workspace = await fetchWorkspace(clientRef);
+      const root = workspace && workspace.root ? String(workspace.root) : st.cwd;
+      const data = await fetchDeckData(clientRef);
+      if (!data) return st;
+      const fresh = makeStore();
+      Object.assign(
+        st,
+        ingestSnapshot(
+          { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: root },
+          { planDeckCounts: planDeckCounts, rowCountsOf: rowCountsOf }
+        ),
+        {
+          cwd: root,
+          workspaceRoot: root,
+          snapMode: "real",
+          issueCache: fresh.issueCache,
+          issueMode: fresh.issueMode,
+          issueError: fresh.issueError,
+          issueDetail: fresh.issueDetail,
+          issueCommentsMoreLoading: fresh.issueCommentsMoreLoading,
+          activeIssue: fresh.activeIssue,
+          activeMap: fresh.activeMap,
+          navStack: fresh.navStack,
+        }
+      );
+      rerenderPanels();
+      return st;
+    })();
+  };
+
+  // 票 04:chip 的取数与切换(走既有 callTool 缝;loadProjectChip 在 showDeckDataRef 尾发车,
+  // 启动取一次活动项目身份)。deck_project_use 成功 → 回包(与 deck_project_list 同一份清单
+  // 状态形状)即新身份,覆盖 chip 数据并走 refreshActiveProject 整体重取;在途 busy 罩住整段
+  // 切换(use + 重取),期间禁点不叠发;拒绝(isError)/桥异常 → chip 数据不变,busy 退场,
+  // 人话原因展示在展开层([data-deck-chip-error])。
+  // 清单读取失败 ≠ 无清单:失败是可恢复的读取事故,亮警告态 chip 把原因说给人听
+  // (复用 broken 清单的展开层错误行路径);只有服务端明确 registry.status === "missing"
+  // (这个工作区没有项目清单)才让 chip 隐身,与零清单工作区的观感逐字一致。
+  const chipLoadFailed = function (reason) {
+    deckChip.data = {
+      ok: false,
+      active: null,
+      home: null,
+      projects: [],
+      warnings: [],
+      registry: { status: "broken", path: "", error: reason },
+    };
+    rerenderPanels();
+  };
+  const loadProjectChip = function () {
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") return;
+    client
+      .callTool("deck_project_list", {})
+      .then(function (res) {
+        if (res && res.isError) {
+          chipLoadFailed("项目清单读取失败:" + String((res.content && res.content[0] && res.content[0].text) || "工具回包失败。"));
+          return;
+        }
+        const sc = res && res.structuredContent;
+        if (sc && sc.ok === true) {
+          deckChip.data = sc;
+          rerenderPanels();
+          return;
+        }
+        chipLoadFailed("项目清单读取失败:回包不可用。"); // 形状不对也亮警告,不静默藏
+      })
+      .catch(function (e) {
+        chipLoadFailed("项目清单读取失败:" + String((e && e.message) || e || "工具桥异常。"));
+      });
+  };
+  const useProjectFromChip = function (name) {
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") return;
+    if (deckChip.busy) return; // 在途禁点:切换中不叠第二发
+    deckChip.busy = true;
+    deckChip.error = null;
+    rerenderPanels();
+    const finish = function () {
+      deckChip.busy = false;
+      rerenderPanels();
+    };
+    client
+      .callTool("deck_project_use", { name: String(name) })
+      .then(function (res) {
+        if (res && res.isError) {
+          deckChip.error = (res.content && res.content[0] && res.content[0].text) || "切换失败。";
+          finish();
+          return;
+        }
+        const sc = res && res.structuredContent;
+        if (sc && sc.ok === true) deckChip.data = sc; // 用回包刷新活动项目身份
+        Promise.resolve(refreshActiveProject())
+          .catch(function () {
+            /* 重取失败由数据面自己兜底;身份已按回包落定 */
+          })
+          .then(finish);
+      })
+      .catch(function (e) {
+        deckChip.error = String((e && e.message) || e || "切换失败。");
+        finish();
+      });
   };
 
   // kernel 自检面(工单验收:上游 kernel 算子可从外部驱动;测试与后续工单的接线口)
@@ -1027,6 +1277,11 @@ function apply(ctx) {
     branchBoardNode: function (board, props) {
       return vcBranchBoardNode(h, tr, Object.assign({}, props || {}, { board: board }));
     },
+  };
+  // 项目自检面(票 03):活动项目跟随的重取入口。chip(票 04)与测试都走这里;
+  // 上游零改动 —— 版本页复位由上游 cwd 变化分支接住(见 refreshActiveProject 注释)。
+  window.MattSkillsUpstream.projects = {
+    refreshActiveProject: refreshActiveProject,
   };
   // 地图详情自检面(M4):页面组件、页面模型与取数桶入口 —— 测试直接对着模型断言,
   // 不用把整页挂起来才看得到档案区/卡片流。

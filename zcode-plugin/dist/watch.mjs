@@ -48,7 +48,9 @@ export function signatureOf(scan) {
 export function createDeckWatch(root, opts = {}) {
   const cfg = { ...REFRESH_DEFAULTS, ...(opts || {}) };
   const scratch = join(String(root || "."), ".scratch");
-  let revision = 0;
+  // 起步 revision(票 02):换根重建时由调用方传入旧值,保证跨实例单调;
+  // 缺省 0,初扫照旧把首态推到 1。切换 = 旧值 + 初扫必推进一次 = 恰好 +1。
+  let revision = Math.max(0, Math.floor(Number(opts && opts.startRevision) || 0));
   let online = false;
   let lastSig = null;
   let watcher = null;

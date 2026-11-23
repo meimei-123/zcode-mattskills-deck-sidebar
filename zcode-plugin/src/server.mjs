@@ -14,6 +14,7 @@ import { createDeckWatch, refreshFromEnv } from "./watch.mjs";
 import { buildEnvChain, summarizeEnvCheck } from "./env-check.mjs";
 import { readSkillDoc } from "./skill-doc.mjs";
 import { mapTicketsFor } from "./map-tickets.mjs";
+import { readRegistry, resolveActive } from "./registry.mjs";
 import { createGitBridge } from "./git-entry.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -60,7 +61,55 @@ function workspaceRoot() {
 }
 
 // 工单 08:`.scratch/` 监听 + 数据修订号(发条见 watch.mjs;测试经 ZCODE_REFRESH_* 收短)。
-const deckWatch = createDeckWatch(workspaceRoot(), refreshFromEnv(process.env));
+// 票 02:监听随活动项目 —— 单例可重建;换根时 stop 旧(清定时器含退避重试、关旧 watcher,
+// 旧根不再推进)、新建挂新根;新实例从旧 revision 起步,初扫必推进一次 = 切换恰好 +1。
+let deckWatch = createDeckWatch(workspaceRoot(), refreshFromEnv(process.env));
+let deckWatchRoot = workspaceRoot();
+function ensureWatch(root) {
+  if (root === deckWatchRoot) return;
+  const prevRevision = deckWatch.state().revision;
+  deckWatch.stop();
+  deckWatch = createDeckWatch(root, { ...refreshFromEnv(process.env), startRevision: prevRevision });
+  deckWatchRoot = root;
+}
+
+// 票 01:活动项目进程内状态 —— 只存清单里的名字,null = home-repo。新会话复位,
+// 不持久化;每次工具调用经 readRegistry 现读清单再解析根(同名项改路径自然指新路径)。
+let activeProjectName = null;
+
+// 票 03:危险动作哨兵 —— 版本管理页有「预检签票已发、还没凭票执行」的写域动作时,
+// deck_project_use 拒绝切换,免得确认卡里的 push/reset 落到另一个仓库(spec 用户故事 19)。
+//
+// 为什么在 server 层记哨兵:上游签票状态住在 vc 家族的票据表(writeTickets/changesTickets
+// 等闭包 Map,versionControlCheck.ts 发票、versionControlWrite.ts 核票)里;桥(git-entry.mjs)
+// 的对外面只有 handleGit* 派生的电话,票据表不进方法表、电话回包也只带单张票 —— 从桥的
+// 既有电话查不到整表。所以按宿主垫片外的最小口径记:
+//   · 记入 —— deck_git 回包带票(result.ticket.id 且带 expiresAtMs)时,把哨兵推到该票自己
+//     的到期时刻(上游票期 = TICKET_TTL_MS,config/timeouts.yaml 的 120 秒,即「确认窗口」);
+//     缺 expiresAtMs 时退同值兜底。
+//   · 结清 —— args.ticketId 非空的电话(全部凭票执行档)无论成败都清零:票据已被赎回或
+//     已作废,这个动作不再算「未确认」。
+//   · 取消在面板侧只是关掉确认卡、不发任何电话,服务端看不到;这条路径由票据过期自然
+//     结清(与上游「票过期即作废」同一口径,最多一个票期后恢复可切)。
+// 按 gitRootOf 字符串键控:哨兵只对签票时的那个活动根生效,换根后互不影响。
+const dangerUntil = new Map();
+const TICKET_TTL_MS = 120000;
+function dangerArm(root, result) {
+  if (!result || result.ok !== true) return;
+  const t = result.ticket;
+  if (!t || typeof t.id !== "string" || !t.id) return;
+  const exp = Number(t.expiresAtMs);
+  const until = Number.isFinite(exp) && exp > 0 ? exp : Date.now() + TICKET_TTL_MS;
+  dangerUntil.set(root, Math.max(dangerUntil.get(root) || 0, until));
+}
+function dangerSettle(root, args) {
+  if (args && typeof args === "object" && typeof args.ticketId === "string" && args.ticketId !== "") {
+    dangerUntil.set(root, 0);
+  }
+}
+function dangerLive(root) {
+  return (dangerUntil.get(root) || 0) > Date.now();
+}
 
 const TOOLS = [
   {
@@ -235,6 +284,22 @@ const TOOLS = [
       required: ["method"],
     },
   },
+  {
+    name: "deck_project_list",
+    description:
+      "列出项目清单(home-repo 根 .deck/projects.json,现读现算):活动项目、home-repo 与全部条目(name/path/isHome/valid;被跳过的条目带原因)、warnings 与清单状态(存在/路径/解析错误)。没有清单文件时只有 home-repo。切换活动项目用 deck_project_use。",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "deck_project_use",
+    description:
+      "切换活动项目:只接受清单里的名字(不区分大小写),切到 home-repo 是幂等 noop;切换只影响之后的调用。活动项目被移出清单或改名后,下一次工具调用自动回退 home-repo 并在回包中说明。返回切换后的活动项目与同一份清单状态。",
+    inputSchema: {
+      type: "object",
+      properties: { name: { type: "string", description: "项目名(清单条目的 name;缺省名取目录名)" } },
+      required: ["name"],
+    },
+  },
 ];
 
 /** 卡的显示标签:#effort/编号(根级无目录前缀);退化身份的 key 已带目录前缀,不重复拼。 */
@@ -333,20 +398,31 @@ function deckGitReply(method, result) {
   };
 }
 
-/** deck_git:一条工具路由全部 git 电话。工具级异常(装配失败)才 isError;电话失败按结构化回包。 */
-function handleDeckGit(a) {
+/** deck_git:一条工具路由全部 git 电话,作用于活动项目仓库(票 03)。工具级异常(装配失败)
+ *  才 isError;电话失败按结构化回包。活动项目回退时说明附在人话尾部、结构化回包带 note
+ *  (仅回退时;home/无清单回包与原来逐字一致)。 */
+function handleDeckGit(a, root, active) {
   const method = String(a.method === undefined || a.method === null ? "" : a.method).trim();
+  dangerSettle(root, a.args); // 凭票执行档(ticketId 非空)先结清哨兵,成败另说
   let pending;
   try {
-    pending = deckGitBridge(workspaceRoot()).call(method, a.args);
+    pending = deckGitBridge(root).call(method, a.args);
   } catch (e) {
     return {
       content: [{ type: "text", text: `git 能力初始化失败:${e && e.message ? e.message : String(e)}` }],
       isError: true,
     };
   }
+  const settle = (reply, result) => {
+    if (result && typeof result === "object") dangerArm(root, result); // 带票回包:确认窗口开始
+    if (!active || !active.note) return reply;
+    return {
+      content: [{ type: "text", text: reply.content[0].text + activeNoteSuffix(active) }],
+      structuredContent: withActiveNote(reply.structuredContent, active),
+    };
+  };
   return Promise.resolve(pending).then(
-    (result) => deckGitReply(method, result),
+    (result) => settle(deckGitReply(method, result), result),
     (e) => ({
       content: [{ type: "text", text: `git 方法 ${method || "(空)"} 执行出错:${e && e.message ? e.message : String(e)}` }],
       isError: true,
@@ -354,15 +430,121 @@ function handleDeckGit(a) {
   );
 }
 
+// ---- 票 01:项目清单与活动项目(deck_project_list / deck_project_use) ----
+
+/** 清单回包的活动/清单状态形状(list 与 use 同一份)。 */
+function registryState(reg, active) {
+  return {
+    ok: true,
+    active: { name: active.name, path: active.root, isHome: active.isHome },
+    home: { name: reg.home.name, path: reg.home.path, isHome: true },
+    projects: [{ ...reg.home }, ...reg.projects],
+    warnings: reg.warnings,
+    registry: { status: reg.status, path: reg.file, error: reg.error },
+  };
+}
+
+/** 清单回包的中文摘要:活动项目 + 清单规模 + warnings/broken 全部可见(不只写日志)。 */
+function registrySummary(reg, active, head) {
+  const lines = [head];
+  if (reg.status === "missing") lines.push("没有 .deck/projects.json,项目只有 home-repo。");
+  else {
+    const skipped = reg.projects.filter((p) => !p.valid).length;
+    const avail = reg.projects.length - skipped + 1; // home-repo 恒可用
+    lines.push(`清单共 ${avail} 个可用项目(home-repo 第一${skipped > 0 ? `,另有 ${skipped} 条被跳过` : ""})。`);
+  }
+  for (const w of reg.warnings) lines.push(`警告:${w}`);
+  if (reg.status === "broken") lines.push(`清单读不出来:${reg.error};已按单根(home-repo)处理。`);
+  if (active.note) lines.push(active.note);
+  return lines.join("\n");
+}
+
+function handleProjectList(reg, active) {
+  const sc = { ...registryState(reg, active), note: active.note || null };
+  const head = `活动项目:${active.name}(${active.root})。`;
+  return { content: [{ type: "text", text: registrySummary(reg, active, head) }], structuredContent: sc };
+}
+
+/** deck_project_use:只认清单里的名字;切 home-repo 是幂等 noop;坏名字明确报错并列可用名,不猜。
+ *  版本管理页有未确认的危险 git 动作时拒绝真正的切换(票 03;切到当前项目本身是幂等
+ *  noop,根没动,不挡)。票 02:落定分支(含 home 幂等)重挂监听;拒绝分支不落定,不重挂。 */
+function handleProjectUse(a, reg, active, activeGitRoot, homeRoot) {
+  const wanted = String(a.name === undefined || a.name === null ? "" : a.name).trim();
+  if (!wanted) {
+    return { content: [{ type: "text", text: "缺少 name:请给项目清单里的名字(deck_project_list 可看全量)。" }], isError: true };
+  }
+  const useReply = (active, head) => ({
+    content: [{ type: "text", text: registrySummary(reg, active, head) }],
+    structuredContent: { ...registryState(reg, active), note: null },
+  });
+  const activeIsHome = active ? active.isHome : true;
+  // noop = 目标就是当前活动项目(名字同,或都是 home-repo):根没动,危险哨兵不挡。
+  const toHome = wanted.toLowerCase() === reg.home.name.toLowerCase();
+  const noop = toHome ? activeIsHome : !activeIsHome && active.name.toLowerCase() === wanted.toLowerCase();
+  if (!noop && dangerLive(activeGitRoot)) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `切换被拒:版本管理页还有未确认的危险 git 动作(预检签票未结)。请先在版本管理页确认执行,或取消后等票据过期(最多 ${Math.round(TICKET_TTL_MS / 1000)} 秒),再切换项目。`,
+        },
+      ],
+      isError: true,
+    };
+  }
+  if (toHome) {
+    activeProjectName = null; // 回 home-repo:幂等 noop
+    ensureWatch(homeRoot); // 票 02:监听跟着切(已在 home 根上是 noop)
+    return useReply({ root: reg.home.path, name: reg.home.name, isHome: true, note: null }, `活动项目已设为 home-repo(${reg.home.name})。`);
+  }
+  const hit = reg.projects.find((p) => p.valid && p.name.toLowerCase() === wanted.toLowerCase());
+  if (!hit) {
+    const available = [reg.home.name, ...reg.projects.filter((p) => p.valid).map((p) => p.name)].join("、");
+    const why = reg.status === "broken" ? `清单读不出来(${reg.error}),暂时只有 home-repo。` : "";
+    return { content: [{ type: "text", text: `没有叫「${wanted}」的项目,不能猜。可用的项目:${available}。${why}` }], isError: true };
+  }
+  activeProjectName = hit.name;
+  ensureWatch(hit.path); // 票 02:切换落定时停旧挂新,取消待执行的退避重试
+  return useReply({ root: hit.path, name: hit.name, isHome: false, note: null }, `活动项目已切到 ${hit.name}(${hit.path})。`);
+}
+
+// 活动项目回退说明:只在真回退时附加;home-repo/无清单时读工具回包与原来逐字一致。
+function withActiveNote(sc, active) {
+  return active.note ? { ...sc, active: { name: active.name, path: active.root, isHome: active.isHome }, note: active.note } : sc;
+}
+function activeNoteSuffix(active) {
+  return active.note ? `\n${active.note}` : "";
+}
+
+// 票 03:git 桥根按活动项目取。home-repo 仍用宿主注入的原样路径(与旧口径逐字一致,
+// 边界回包里出现的根路径不变);非 home 用清单解析出的项目根。桥缓存按这个字符串换根重建。
+function gitRootOf(active, homeRoot) {
+  return active.isHome ? homeRoot : active.root;
+}
+
 /** 工具实现:全部走同一次扫描,返回 {content, structuredContent} 或 {content, isError}。 */
 function handleCall(name, args) {
   const a = args && typeof args === "object" ? args : {};
-  const root = workspaceRoot();
+  const homeRoot = workspaceRoot();
+
+  // 票 01:入口解析活动项目 —— 清单现读现算,捕获-后用(deck_project_use 只影响之后的调用)。
+  const reg = readRegistry(homeRoot);
+  const active = resolveActive(reg, activeProjectName);
+  if (active.note) activeProjectName = null; // 回退即落定:清单是唯一信任边界,失效选择就地清掉
+
   // 版本管理 git 数据面先于 .scratch 扫描分派:.scratch 坏掉不挡 git(工单 01)。
-  if (name === "deck_git") return handleDeckGit(a);
-  // 技能原文与 .scratch 数据面无关:在扫描之前分派(本工具只读技能根)。
-  if (name === "deck_skill_doc") return handleSkillDoc(a, root);
-  const scan = scanWorkspace(root);
+  // 票 03:桥根随活动项目(home 仍用宿主注入的原样路径)。
+  if (name === "deck_git") return handleDeckGit(a, gitRootOf(active, homeRoot), active);
+  // 技能原文与 .scratch 数据面无关:在扫描之前分派(只读技能根;技能根与项目无关,不随活动项目)。
+  if (name === "deck_skill_doc") return handleSkillDoc(a, homeRoot);
+
+  if (name === "deck_project_list") return handleProjectList(reg, active);
+  // 票 02 + 票 03:use 带活动项目与 git 根(危险哨兵键控)与 home 根(监听重挂)。
+  if (name === "deck_project_use") return handleProjectUse(a, reg, active, gitRootOf(active, homeRoot), homeRoot);
+
+  const scanRoot = active.isHome ? homeRoot : active.root;
+  ensureWatch(scanRoot); // 活动根变了(含失效回退到 home-repo)→ 停旧挂新
+  const scan = scanWorkspace(scanRoot);
   deckWatch.observe(scan); // 请求即探测:签名变了推进 revision(监听离线时的降级新鲜度)
 
   if (name === "deck_issue_list") {
@@ -384,7 +566,7 @@ function handleCall(name, args) {
       rows = rows.filter((r) => keys.includes(r.key));
     }
     const sc = {
-      workspaceRoot: root,
+      workspaceRoot: scanRoot,
       revision: deckWatch.state().revision,
       empty: scan.empty,
       units: scan.units.map((u) => ({ effortId: u.effortId, kind: u.kind, legacy: u.legacy })),
@@ -392,7 +574,7 @@ function handleCall(name, args) {
       total: rows.length,
       rows: rows.map(thinRow),
     };
-    return { content: [{ type: "text", text: summarizeList({ ...sc, rows: sc.rows }) }], structuredContent: sc };
+    return { content: [{ type: "text", text: summarizeList({ ...sc, rows: sc.rows }) + activeNoteSuffix(active) }], structuredContent: withActiveNote(sc, active) };
   }
 
   if (name === "deck_issue_get") {
@@ -400,20 +582,20 @@ function handleCall(name, args) {
     if (!key) return { content: [{ type: "text", text: "缺少 key:请给卡编号(如 01)或退化身份(如 demo/03-撞号卡)。" }], isError: true };
     const card = findCardByScan(scan, key);
     if (!card) {
-      return { content: [{ type: "text", text: `找不到卡 ${key}:这个工作区没有这张卡(现有 ${scan.rows.length} 张,可先 deck_issue_list 看全量)。` }], isError: true };
+      return { content: [{ type: "text", text: `找不到卡 ${key}:这个工作区没有这张卡(现有 ${scan.rows.length} 张,可先 deck_issue_list 看全量)。` + activeNoteSuffix(active) }], isError: true };
     }
-    const sc = { workspaceRoot: root, card };
-    return { content: [{ type: "text", text: summarizeGet(card) }], structuredContent: sc };
+    const sc = { workspaceRoot: scanRoot, card };
+    return { content: [{ type: "text", text: summarizeGet(card) + activeNoteSuffix(active) }], structuredContent: withActiveNote(sc, active) };
   }
 
   if (name === "deck_map_tickets") {
     const res = mapTicketsFor(scan, a);
     if (res.ok !== true) {
-      return { content: [{ type: "text", text: String((res.error && res.error.message) || "地图子票没取到") }], isError: true };
+      return { content: [{ type: "text", text: String((res.error && res.error.message) || "地图子票没取到") + activeNoteSuffix(active) }], isError: true };
     }
     return {
-      content: [{ type: "text", text: `地图 ${res.key}:${res.stats.total} 张子票(已关闭 ${res.stats.closed} 张)。` }],
-      structuredContent: res,
+      content: [{ type: "text", text: `地图 ${res.key}:${res.stats.total} 张子票(已关闭 ${res.stats.closed} 张)。` + activeNoteSuffix(active) }],
+      structuredContent: withActiveNote(res, active),
     };
   }
 
@@ -421,17 +603,17 @@ function handleCall(name, args) {
     // 卡片文件读不动的分派(工单 02 遗留):监听在线按上游「整体拒绝」(不给偏小的数);
     // 离线是降级态,回落静默跳过(list 永远静默跳过)。
     if (deckWatch.state().online && Array.isArray(scan.unreadable) && scan.unreadable.length) {
-      const rel = scan.unreadable.map((p) => relative(root, p)).join("、");
+      const rel = scan.unreadable.map((p) => relative(scanRoot, p)).join("、");
       return {
         content: [
-          { type: "text", text: `有 ${scan.unreadable.length} 张卡片文件读不动(${rel}),counts 整体拒绝:不给偏小的数。可先 deck_issue_list 看可读部分,修复文件后会自动跟上。` },
+          { type: "text", text: `有 ${scan.unreadable.length} 张卡片文件读不动(${rel}),counts 整体拒绝:不给偏小的数。可先 deck_issue_list 看可读部分,修复文件后会自动跟上。` + activeNoteSuffix(active) },
         ],
         isError: true,
       };
     }
     const counts = computeCounts(scan.rows);
-    const sc = { workspaceRoot: root, revision: deckWatch.state().revision, empty: scan.empty, counts };
-    return { content: [{ type: "text", text: summarizeCounts(sc) }], structuredContent: sc };
+    const sc = { workspaceRoot: scanRoot, revision: deckWatch.state().revision, empty: scan.empty, counts };
+    return { content: [{ type: "text", text: summarizeCounts(sc) + activeNoteSuffix(active) }], structuredContent: withActiveNote(sc, active) };
   }
 
   if (name === "deck_issue_list_labels") {
@@ -445,9 +627,10 @@ function handleCall(name, args) {
   // ---- 工单 03:环境检查链(链快照唯一渲染;按本地真实事实组装,不造假) ----
   if (name === "deck_env_check") {
     // scan 是 handleCall 顶部现扫的这一次(每个请求都重扫 —— 「真重扫」不是 force 才有的分支);
-    // force 只表达调用意图(用户亲手点「重新检查」),非布尔按未传处理,容错不报错。
+    // 票 02:链随活动项目组 —— scratch/cards/watch/git 四步按活动根,技能步锚工作区根
+    // (home-repo,技能根不随项目)。force 只表达调用意图(用户亲手点「重新检查」),非布尔按未传处理。
     const force = a.force === true;
-    const snapshot = buildEnvChain(root, { scan, watchOnline: deckWatch.state().online, env: process.env });
+    const snapshot = buildEnvChain(scanRoot, { scan, watchOnline: deckWatch.state().online, env: process.env, skillRoot: homeRoot });
     const summary = summarizeEnvCheck(snapshot);
     return {
       content: [{ type: "text", text: force ? `已按当前状态重扫。${summary}` : summary }],
@@ -456,41 +639,49 @@ function handleCall(name, args) {
   }
 
   // ---- 工单 06:写工具六件套(全部走 write.mjs 的单写者队列;返回 Promise) ----
+  // 票 02:写落活动项目(scanRoot;活动项目是 home-repo 时与原来逐字一致)。
   if (name === "deck_issue_comment") {
-    return commentIssue(root, a.key, { body: a.body, actor: a.actor, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(root, res, name));
+    return commentIssue(scanRoot, a.key, { body: a.body, actor: a.actor, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(scanRoot, res, name, active));
   }
   if (name === "deck_issue_update") {
-    return updateStatusIssue(root, a.key, { status: a.status, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(root, res, name));
+    return updateStatusIssue(scanRoot, a.key, { status: a.status, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(scanRoot, res, name, active));
   }
   if (name === "deck_issue_close") {
-    return closeIssue(root, a.key, { reason: a.reason, actor: a.actor, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(root, res, name));
+    return closeIssue(scanRoot, a.key, { reason: a.reason, actor: a.actor, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(scanRoot, res, name, active));
   }
   if (name === "deck_issue_reopen") {
-    return reopenIssue(root, a.key, { expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(root, res, name));
+    return reopenIssue(scanRoot, a.key, { expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(scanRoot, res, name, active));
   }
   if (name === "deck_issue_set_labels") {
-    return setLabelsIssue(root, a.key, { labels: a.labels, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(root, res, name));
+    return setLabelsIssue(scanRoot, a.key, { labels: a.labels, expectedUpdatedAt: a.expectedUpdatedAt }).then((res) => finishWrite(scanRoot, res, name, active));
   }
   if (name === "deck_issue_create") {
-    return createIssue(root, { effort: a.effort, title: a.title, body: a.body, labels: a.labels }).then((res) => finishWrite(root, res, name));
+    return createIssue(scanRoot, { effort: a.effort, title: a.title, body: a.body, labels: a.labels }).then((res) => finishWrite(scanRoot, res, name, active));
   }
 
   return { content: [{ type: "text", text: `未知工具 ${name}` }], isError: true };
 }
 
+/** 写摘要的活动项目名前缀(票 02):仅活动项目不是 home-repo 时包一层;home-repo 逐字不变。 */
+function withProjectName(message, active) {
+  return active && !active.isHome ? `项目 ${active.name}:${message}` : message;
+}
+
 /** 写操作收尾:失败透人话;成功主动喂 watch 一次新扫描(revision 立即前进,不等 fs.watch 防抖/栅格)。 */
-function finishWrite(root, res, name) {
+function finishWrite(root, res, name, active) {
   if (!res || res.ok === false) {
-    return { content: [{ type: "text", text: (res && res.message) || `写操作 ${name} 失败` }], isError: true };
+    return { content: [{ type: "text", text: withProjectName((res && res.message) || `写操作 ${name} 失败`, active) }], isError: true };
   }
   try {
-    deckWatch.observe(scanWorkspace(root)); // 写后主动失效:面板下一拍 counts 就能看到新 revision
+    // 写后主动失效:面板下一拍 counts 就能看到新 revision。根仅与监听根一致时才喂
+    // (写排队期间发生切换的话,这次写属于旧根 —— 不许推进新根的 revision)。
+    if (root === deckWatchRoot) deckWatch.observe(scanWorkspace(root));
   } catch {}
   const card = res.card;
   // 可寻址 key(与 get 同口径):正常票带目录前缀;退化身份的 key 自带前缀不重复拼。
   const addrKey = card ? (String(card.key).includes("/") ? card.key : card.effortId ? `${card.effortId}/${card.key}` : card.key) : undefined;
   return {
-    content: [{ type: "text", text: res.message || "已写入。" }],
+    content: [{ type: "text", text: withProjectName(res.message || "已写入。", active) }],
     structuredContent: { ok: true, changed: !!res.changed, revision: deckWatch.state().revision, key: addrKey, card },
   };
 }
@@ -534,14 +725,18 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     case "resources/read": {
       const uri = String(m.params?.uri || "");
       if (uri === WORKSPACE_URI) {
-        // 静态工作区根(运行时现算,不落盘):root 与 env 同 manifest 注入口径
+        // 工作区根(运行时现算,不落盘):票 03 起 root 为活动项目根(面板版本页 cwd 的取数
+        // 来源,切换后跟着走);env.ZCODE_WORKSPACE_ROOT 仍是宿主注入的 home 根(home-repo 身份)。
+        // 无清单时活动项目就是 home-repo,root 与旧口径逐字一致。
+        const reg = readRegistry(workspaceRoot());
+        const active = resolveActive(reg, activeProjectName);
         return reply(m.id, {
           contents: [
             {
               uri: WORKSPACE_URI,
               mimeType: "application/json",
               text: JSON.stringify({
-                root: workspaceRoot(),
+                root: gitRootOf(active, workspaceRoot()),
                 plugin: PLUGIN_NAME,
                 version: VERSION,
                 env: { ZCODE_WORKSPACE_ROOT: process.env.ZCODE_WORKSPACE_ROOT || "" },

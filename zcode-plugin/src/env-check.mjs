@@ -71,7 +71,8 @@ function stepOf(id, status, show, actions) {
 
 /**
  * 按本地真实事实组链。
- * facts: { scan: scanWorkspace(root) 的返回, watchOnline: deckWatch.state().online }
+ * facts: { scan: scanWorkspace(root) 的返回, watchOnline: deckWatch.state().online,
+ *          skillRoot: 技能步的锚根(票 02:技能根不随项目,跨项目调用时传工作区根;缺省随 root) }
  */
 export function buildEnvChain(root, facts) {
   const scan = (facts && facts.scan) || { exists: false, rows: [], units: [], unreadable: [] };
@@ -142,7 +143,9 @@ export function buildEnvChain(root, facts) {
   );
 
   // 5) 技能根可读:逐档探测(顺序与 deck_skill_doc 同一真源 skill-roots.mjs),至少一处可读即通过。
-  const roots = skillRootsFor(root, (facts && facts.env) || process.env);
+  //    锚根用 facts.skillRoot(票 02:技能根是用户级事实,不随活动项目;跨项目时 server 传工作区根)。
+  const skillAnchor = facts && facts.skillRoot !== undefined ? facts.skillRoot : root;
+  const roots = skillRootsFor(skillAnchor, (facts && facts.env) || process.env);
   const readable = roots.filter((r) => dirReadable(r.dir));
   steps.push(
     stepOf(

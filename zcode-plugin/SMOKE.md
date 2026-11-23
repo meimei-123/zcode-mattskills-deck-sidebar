@@ -21,6 +21,12 @@
 | 2k | 子模块/维护/迁移/配置钩子/诊断/平台各页 | 按上游能力账本渲染;只读页出数,写页预检签票;缺外部工具/能力时回诚实说明 | server-git-admin 覆盖(维护/迁移/配置钩子/诊断/平台);server-git-history 覆盖(子模块) |
 | 2l | 换到另一个工作区再切回 | VC 读数与写状态整体复位:分支/差异/任务面板不串仓 | **待人工(真机)**(跨工作区复位无自动化断言) |
 | 2m | 点列表里的地图/规格行 | 进上游 V2 地图详情页:顶栏(返回/面包屑/三态主按钮)、档案区(标题/目的地/进度/「本图 N 张子票（已关闭 C 张）」)、子票卡片流(在办/可接/被挡/已完成,含快照里没有的已关闭子票);点档案进这张图自己的详情页,返回逐级弹回,再返回回列表 | upstream-list(M4 切片:进页/档案/取数/卡片流/档案跳转/返回)、upstream-mapdetail(十三叶与接线)、server-map(电话契约与目的地解析) |
+| 2n | 准备两份工作区对照:先不开清单打开面板,再在 home-repo 根放 `.deck/projects.json`(至少一条同机绝对路径 + 一条相对路径,再故意放一条坏条目如指向不存在的目录) | 无清单时头部没有 chip,面板与 0.5.0 逐字一致;有清单时头部右侧出现项目 chip,显示活动项目(home-repo);坏条目被跳过,chip 转警告态,展开层末尾附跳过原因 | server-project(清单缺失/坏条目/坏 JSON/相对路径解析)、upstream-chip(隐藏/三态/warning 行)覆盖 |
+| 2o | 点 chip 展开,点选另一个项目 | 展开层 home-repo 第一、有效项可点;切换后 chip 换名并打勾,切换在途禁点;列表/计数/详情来自新项目,home-repo 的卡片文件一字不动;卡片 key 仍是项目内 `effort/NN` | server-project、server-project-writes、upstream-chip(点选切换/整体重取)覆盖 |
+| 2p | 切换后走三页:版本管理(改动/历史)、环境检查、再回列表 | 版本管理页回到初始视图并读新仓(分支/改动是新仓的,越界 cwd 被拒);环境检查链按新项目根组(git:repo 反映新根,技能步不变);看板继续跟随磁盘变化(切到新项目后改它的卡片,面板自动跟上) | server-git-project(桥根随活动项目/路径边界)、server-project-writes(监听重挂/切换恰好 +1)、upstream-versioncontrol(切换复位)覆盖 |
+| 2q | 从新项目卡片点动作按钮(领取/实施/诊断) | 发进对话的 prompt 恰好前置一行「项目:<name>(<项目根>);以下操作都在该项目内进行。」,其后动作模板与上游一致;切回 home-repo 后同一按钮不再带前言 | upstream-inject 覆盖(前置一行/不叠加/逐字放行) |
+| 2r | 版本管理页发起危险动作(如重置)只出预检签票、不确认,直接点 chip 切项目 | 切换被拒,人话说明要确认执行或等票据过期(最多 120 秒);确认执行(凭票)或等票据过期后可切;切到当前项目本身不受影响 | server-git-project(哨兵布防/结清/幂等 noop 不挡)覆盖 |
+| 2s | 切回 home-repo;再手改清单:删掉或改名当前活动项目条目后,任做一次操作(如刷新列表) | 切回 home-repo 正常,头部与看板回 home-repo;活动项目不在清单后,下一次操作自动回退 home-repo 并在回包/面板说明原因 | server-project(现读回退)、server-project-writes(同名改路径下一次用新路径)覆盖 |
 | 3 | 对 agent 说"用 /to-tickets 在 m1-core-board 下建几张测试卡" | agent 调 `deck_issue_create`,卡片落盘 `.scratch/m1-core-board/issues/` | server-write 覆盖 |
 | 4 | 看板(不刷新面板) | 防抖后自动出现新卡;计数胶囊条变 | live-refresh 覆盖 |
 | 5 | 点开一张卡 | 详情:元行/正文/评论时间线;长文折叠可展开 | upstream-detail 覆盖 |
@@ -41,10 +47,22 @@
 - 版本管理页的真机观感(窄侧栏/宽页签):四枚页签行是否折叠得当,改动/历史/工作树三视图与差异区在窄档是否可读、无横向溢出。截图备料在工作区本地(不入库),偏差由人工目检裁定。**待人工**
 - 地图详情页的真机观感:档案区标题/目的地/进度条在窄档是否折行得当;子票卡片流的四段顺序与卡片密度;点档案进 IssueDetail 的面包屑与逐级返回。**待人工**
 - 地图详情页在「一张子票都没有」与「取数失败」两态:档案区应显示占位短横与原因截断,不显示假的 0 张;真机断网可试。**待人工**
+- 跨项目切换真机复走(0.6.0):在 dtz-team-repo 装 0.6.0,配 `.deck/projects.json`(示例见 `.scratch/m5-project-switch/spec.md` Further Notes:dsh-forge 同机绝对路径、jxkh/ehm/fw-bench 相对路径),按 2n–2s 走一遍:chip 出现与三态 → chip 切到 dsh-forge → 列表/版本管理/环境检查三页跟随 → 从 dsh-forge 卡片点动作,prompt 首行带 dsh-forge 根与「以下操作都在该项目内进行」→ 写一张卡确认落盘在 dsh-forge、摘要带项目名 → 版本页危险预检未结时拒切 → 切回 home-repo。重点确认:相对路径在同构目录布局下解析正确、junction 指同一板只出现一次、清单手改后不重开即生效。**待人工**
 - 真实远端(https/ssh)的凭据提示与失败话术:自动化只用本地 bare 仓与静默 TCP 冒充;真远端要确认凭据助手提示、超时与失败文案是否诚实。**待人工**
 - `git-filter-repo` 等外部工具缺席时的提示:历史改写/维护页应回上游的诚实错误(说明缺什么),不静默失败。**待人工**
 - 非 git 工作区的「不是仓库」引导态:真机要在协调根这类非 git 工作区确认 VC 页给引导而不是报错。**待人工**
 - (可选)双击工作区本地的 m1-ui-preview.html 原型副本对照快照原型(U06 已随新 UI 重生成;源在 ui-preview 分支 `zcode-plugin/prototype/`);差异以真机为准——原型是一次性快照,不随代码日常更新。**待人工**
+
+## 自动化实测记录(m5 收口,0.6.0,2026-11-21,离线)
+
+| 面 | 跑法 | 结果 |
+|---|---|---|
+| 构建 | `node build.mjs`(src→dist + build-upstream 拼包 + build-git 打包) | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html;bundle-1.txt code.length=2361507(UTF-16 码元),2516944 字节;dist/git.mjs code.length=955015,1021356 字节 |
+| 测试 | `npm test` | ✓ 二十五套 2253 断言全绿(scaffold 53 / server-read 124 / server-map 34 / server-project 51 / server-project-writes 49 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 191 / upstream-mapdetail 78 / upstream-detail 90 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 318 / upstream-chip 69 / upstream-inject 22 / server-git 35 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106 / server-git-project 26) |
+| 清单面 | `deck_project_list` / `deck_project_use`(临时工作区真清单,server-project/server-project-writes) | ✓ 文件缺失静默单根;条目级容错(路径不存在/不是目录/重名/非法名/指向 home-repo 均跳过带人话);整份坏 JSON 退单根 + 错误;相对路径按 home-repo 根解析;realpath 去重;home-repo 恒第一;坏名字拒绝并列可用名,不猜 |
+| 跟随面 | 切换后读写/监听/环境检查/git(真 mkdtemp 仓,server-project-writes/server-git-project) | ✓ 六件写工具落活动项目、home-repo 文件一字不动、摘要带项目名;旧根编辑不再推进 revision、切换恰好 +1;环境检查前五步按活动根、技能步锚工作区根;git 桥根随活动项目重建、越界 cwd 拒;危险动作预检未结时拒切、凭票执行后放行、切到当前项目本身不挡 |
+| 面板面 | upstream-chip + upstream-inject(真 bundle + 假 DOM) | ✓ 无清单 chip 隐藏(头部与上游逐字一致);普通/警告/busy 三态;展开层 home-repo 第一、坏条目以警告附末、拒绝原因行内可见;点选切换整体重取、版本页回初始视图;注入前言仅活动项目非 home 时恰好一行,home/无清单逐字放行,不叠加 |
+| 版本 | 双清单 + scaffold(先改断言验红,再升双清单转绿) | ✓ plugin.json / marketplace.json / scaffold 断言均 0.6.0;package.json 保持 0.1.0;dist 重建可复现(版本 bump 未动产物) |
 
 ## 自动化实测记录(0.5.0 收口,2026-11-21,离线)
 
