@@ -728,7 +728,9 @@ function apply(ctx) {
   // 展开:home-repo 第一、有效项目可点、被跳过条目以 warning 附末尾;窄档只留名字。
   // 切换在途(use + 重取都算在途):chip 禁点 + dsws-pchip-busy;拒绝(isError)→ chip 不变,
   // 人话原因行内展示在展开层([data-deck-chip-error])。
-  const deckChip = { data: null, open: false, busy: false, error: null, entryBusy: false };
+  // errorIsFallback:error 里那一条是不是回退说明(是则根不再变化后的下一拍撤掉;chip 切换
+  // 被拒写进去的错误不是,留到用户下一次操作)。
+  const deckChip = { data: null, open: false, busy: false, error: null, errorIsFallback: false, entryBusy: false };
   // 票 02:清单状态刷新拍的管理件(拍本身挂在 DeckBody 的 effect 上,见 REGISTRY_TICK_MS 处)。
   let registryTickId = null; // 在跑的那一枚(setInterval 句柄)
   let registryTickArmed = false; // DeckBody 在不在(卸载后拍不再重挂)
@@ -1245,8 +1247,17 @@ function apply(ctx) {
           // 解析,会落到 home 的同号卡上。所以根一变就整体重取,并把回退说明亮出来。
           const after = sc.active ? String(sc.active.path || "") : "";
           if (before && after && before !== after) return followActiveChange(sc, before);
+          // 这一拍没有发生根变化:上一拍的回退说明已经过期(清单现在就是 home,没有「正在回退」
+          // 这回事),撤掉。只撤回退说明自己 —— chip 切换被拒时写进同一个字段的错误要留到
+          // 用户下一次操作,不在这里动。
+          let fallbackNoteCleared = false;
+          if (deckChip.errorIsFallback) {
+            deckChip.error = null;
+            deckChip.errorIsFallback = false;
+            fallbackNoteCleared = true;
+          }
           // 回包与上次相同就不重画:刷新拍每 5 秒一次,没变化时不动整个面板
-          if (!registryChanged && sameChipData(prev, sc)) return true;
+          if (!registryChanged && sameChipData(prev, sc) && !fallbackNoteCleared) return true;
           rerenderPanels();
           return true;
         }
@@ -1268,10 +1279,12 @@ function apply(ctx) {
     });
     if (typeof sc.note === "string" && sc.note) {
       deckChip.error = sc.note;
+      deckChip.errorIsFallback = true; // 这条是回退说明,根不再变化后的下一拍撤掉
     } else if (!prevStillListed) {
       deckChip.error = sc.registry && sc.registry.status === "broken"
         ? "项目清单读不出来,活动项目已回退到 home-repo。"
         : "上一个活动项目已不在项目清单里,活动项目已回退到 home-repo。";
+      deckChip.errorIsFallback = true;
     }
     // 上一个项目仍在清单里且没有回退说明 = 会话里主动切换,面板跟着走,不说明
     if (deckChip.error) deckChip.open = true;
@@ -1329,6 +1342,7 @@ function apply(ctx) {
     if (deckChip.busy) return; // 在途禁点:切换中不叠第二发
     deckChip.busy = true;
     deckChip.error = null;
+    deckChip.errorIsFallback = false;
     rerenderPanels();
     const finish = function () {
       deckChip.busy = false;
@@ -1339,6 +1353,7 @@ function apply(ctx) {
       .then(function (res) {
         if (res && res.isError) {
           deckChip.error = (res.content && res.content[0] && res.content[0].text) || "切换失败。";
+          deckChip.errorIsFallback = false;
           finish();
           return;
         }
@@ -1352,6 +1367,7 @@ function apply(ctx) {
       })
       .catch(function (e) {
         deckChip.error = String((e && e.message) || e || "切换失败。");
+        deckChip.errorIsFallback = false;
         finish();
       });
   };

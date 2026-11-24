@@ -43881,7 +43881,7 @@ ${formatProgressEntry(entry)}
         return h3(DswsCtx.Provider, { value: cx }, h3(Comp, props));
       };
     };
-    const deckChip = { data: null, open: false, busy: false, error: null, entryBusy: false };
+    const deckChip = { data: null, open: false, busy: false, error: null, errorIsFallback: false, entryBusy: false };
     let registryTickId = null;
     let registryTickArmed = false;
     let registryTickBusy = false;
@@ -44330,7 +44330,13 @@ ${formatProgressEntry(entry)}
           if (registryChanged) deckChip.open = false;
           const after = sc.active ? String(sc.active.path || "") : "";
           if (before && after && before !== after) return followActiveChange(sc, before);
-          if (!registryChanged && sameChipData(prev, sc)) return true;
+          let fallbackNoteCleared = false;
+          if (deckChip.errorIsFallback) {
+            deckChip.error = null;
+            deckChip.errorIsFallback = false;
+            fallbackNoteCleared = true;
+          }
+          if (!registryChanged && sameChipData(prev, sc) && !fallbackNoteCleared) return true;
           rerenderPanels();
           return true;
         }
@@ -44347,8 +44353,10 @@ ${formatProgressEntry(entry)}
       });
       if (typeof sc.note === "string" && sc.note) {
         deckChip.error = sc.note;
+        deckChip.errorIsFallback = true;
       } else if (!prevStillListed) {
         deckChip.error = sc.registry && sc.registry.status === "broken" ? "项目清单读不出来,活动项目已回退到 home-repo。" : "上一个活动项目已不在项目清单里,活动项目已回退到 home-repo。";
+        deckChip.errorIsFallback = true;
       }
       if (deckChip.error) deckChip.open = true;
       rerenderPanels();
@@ -44404,6 +44412,7 @@ ${formatProgressEntry(entry)}
       if (deckChip.busy) return;
       deckChip.busy = true;
       deckChip.error = null;
+      deckChip.errorIsFallback = false;
       rerenderPanels();
       const finish = function() {
         deckChip.busy = false;
@@ -44412,6 +44421,7 @@ ${formatProgressEntry(entry)}
       client.callTool("deck_project_use", { name: String(name) }).then(function(res) {
         if (res && res.isError) {
           deckChip.error = res.content && res.content[0] && res.content[0].text || "切换失败。";
+          deckChip.errorIsFallback = false;
           finish();
           return;
         }
@@ -44421,6 +44431,7 @@ ${formatProgressEntry(entry)}
         }).then(finish);
       }).catch(function(e3) {
         deckChip.error = String(e3 && e3.message || e3 || "切换失败。");
+        deckChip.errorIsFallback = false;
         finish();
       });
     };

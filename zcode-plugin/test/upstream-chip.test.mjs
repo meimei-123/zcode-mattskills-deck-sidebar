@@ -968,6 +968,13 @@ const LIST_FORGE_ACTIVE = {
   check("票02回退: 说明自动打开展开层(不悄悄换项目)", !!t.pop());
   const errs = qsa(t.pop() || t.surface, "[data-deck-chip-error]");
   check("票02回退: 展开层里有说明", errs.length === 1 && textOf(errs[0]).includes("已不在项目清单里"), errs.map(textOf).join(" | "));
+  // 说明只在这一刻有效:之后的清单回包是正常的(没有回退),再过一拍说明就该撤。
+  // 否则每 5 秒的刷新拍都带着一句过期的「已回退」,挂到用户切换一次项目为止。
+  t.state.list = { ...LIST_CLEAN, projects: [{ ...HOME, valid: true }], note: null };
+  await t.fireChipTick();
+  check("票02回退: 下一拍清单正常后说明撤掉", !qsa(t.surface, "[data-deck-chip-error]").some((n) => textOf(n).includes("已不在项目清单里")),
+    qsa(t.surface, "[data-deck-chip-error]").map(textOf).join(" | "));
+  eq("票02回退: 说明撤掉后 chip 仍是 home(没有跟着变)", t.chipName(), "home");
 }
 {
   // 变体二:说明已被别的调用带走(agent 改完清单后按技能收尾先调过 deck_project_list),
