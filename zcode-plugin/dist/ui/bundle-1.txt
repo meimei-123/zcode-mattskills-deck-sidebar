@@ -24022,7 +24022,15 @@ ${formatProgressEntry(entry)}
         "[data-deck-chip-item].dsws-pchip-active{color:var(--dsw-alias-state-success-primary,#3fb950)}",
         "[data-deck-chip-path]{display:block;font-size:10px;color:var(--dsw-alias-label-caption,#7d8590);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
         "[data-deck-chip-warnrow]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#e3b341);white-space:normal;word-break:break-all;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35)}",
-        "[data-deck-chip-error]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#e3b341);white-space:normal;word-break:break-all}"
+        "[data-deck-chip-error]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#e3b341);white-space:normal;word-break:break-all}",
+        // 票 02(0.6.1)清单入口:低强调度小按钮 —— 透明底、次级文字色、与 chip 同高同圆角,悬停才亮边。
+        // 窄档只收文案(「＋」),尺寸不另设;在途沿用 dsws-pchip-busy 的变淡 + 禁点。
+        "[data-deck-chip-entry]{display:inline-flex;align-items:center;padding:2px 8px;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary,#8b949e);background:transparent;border:1px solid transparent;border-radius:99px;cursor:pointer;white-space:nowrap}",
+        "[data-deck-chip-entry]:hover{border-color:var(--dsw-alias-border-l2,#3d444d);color:var(--dsw-alias-label-primary,#e6edf3)}",
+        "[data-deck-chip-entry].dsws-pchip-busy{opacity:.55;pointer-events:none}",
+        // 展开层末行的修正动作:通栏文字按钮,与 warning 行同一道虚线分隔
+        "[data-deck-chip-fix]{display:block;width:100%;text-align:left;padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-primary,#e6edf3);background:transparent;border:0;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35);border-radius:0 0 5px 5px;cursor:pointer}",
+        "[data-deck-chip-fix]:hover{background:var(--dsw-alias-interactive-bg-hover,#21262d)}"
       ].join("\n")
     );
     const CHAIN_RENDERER_VERSION = 1;
@@ -43873,7 +43881,11 @@ ${formatProgressEntry(entry)}
         return h3(DswsCtx.Provider, { value: cx }, h3(Comp, props));
       };
     };
-    const deckChip = { data: null, open: false, busy: false, error: null };
+    const deckChip = { data: null, open: false, busy: false, error: null, entryBusy: false };
+    let registryTickId = null;
+    let registryTickArmed = false;
+    let registryTickBusy = false;
+    let entryRelease = null;
     const chipToggle = function(e3) {
       if (deckChip.busy) return;
       try {
@@ -43923,12 +43935,43 @@ ${formatProgressEntry(entry)}
         const why = p3.reason ? `(${p3.reason})` : "";
         kids.push(h3("div", { "data-deck-chip-warnrow": "" }, [`${String(p3.name || "(未命名)")}${why} —— 不可切换`]));
       }
+      if (data.registry && data.registry.status === "broken" || Array.isArray(data.warnings) && data.warnings.length > 0) {
+        const fixBusy = busy || deckChip.entryBusy === true;
+        kids.push(
+          h3("button", { type: "button", "data-deck-chip-fix": "", className: "dsws-pchipfix" + (fixBusy ? " dsws-pchip-busy" : ""), disabled: fixBusy, onClick: sendRegistryEntry }, [
+            CHIP_FIX_LABEL
+          ])
+        );
+      }
       return h3("div", { "data-deck-chip-pop": "", role: "listbox" }, kids);
     };
+    const CHIP_ENTRY_LABEL = "＋ 项目";
+    const CHIP_ENTRY_COMMAND = "/setup-home-repo";
+    const CHIP_FIX_LABEL = "让 agent 修正清单";
+    const REGISTRY_TICK_MS = 5e3;
     const ProjectChip = function(props) {
       const data = deckChip.data;
-      if (!data || !data.registry || data.registry.status === "missing") return null;
+      if (!data || !data.registry) return null;
       const narrow = !!(props && props.narrow);
+      const entryBusy = deckChip.entryBusy === true || deckChip.busy === true;
+      if (data.registry.status === "missing") {
+        return h3("div", { "data-deck-chip-wrap": "" }, [
+          h3(
+            "button",
+            {
+              type: "button",
+              "data-deck-chip-entry": "",
+              className: "dsws-pchipentry" + (entryBusy ? " dsws-pchip-busy" : ""),
+              title: CHIP_ENTRY_LABEL,
+              "aria-label": CHIP_ENTRY_LABEL,
+              "aria-busy": entryBusy ? "true" : "false",
+              disabled: entryBusy,
+              onClick: sendRegistryEntry
+            },
+            [narrow ? "＋" : CHIP_ENTRY_LABEL]
+          )
+        ]);
+      }
       const busy = deckChip.busy === true;
       const warn = data.registry && data.registry.status === "broken" || Array.isArray(data.warnings) && data.warnings.length > 0;
       const kids = [h3("span", { "data-deck-chip-name": "" }, [String(data.active && data.active.name || "未知")])];
@@ -43952,8 +43995,58 @@ ${formatProgressEntry(entry)}
         deckChip.open ? chipPopNode(data, narrow, busy) : null
       ]);
     };
+    const registryEntryText = function(data) {
+      const d3 = data || {};
+      const reg = d3.registry || {};
+      const st = deckPanelState.st;
+      const root = String(d3.home && d3.home.path || st && st.workspaceRoot || "");
+      const skipped = (Array.isArray(d3.projects) ? d3.projects : []).filter(function(p3) {
+        return p3 && p3.valid !== true;
+      });
+      let state;
+      if (reg.status === "missing") state = "清单尚不存在。";
+      else if (reg.status === "broken") state = "清单已损坏，解析错误是「" + String(reg.error || "服务端没给原因") + "」。";
+      else state = "清单里有 " + skipped.length + " 条被跳过：" + skipped.map(function(p3) {
+        return String(p3.name || "(未命名)");
+      }).join("、") + "。";
+      return [
+        CHIP_ENTRY_COMMAND,
+        "工作区根：" + root,
+        "清单路径：" + root + "/.deck/projects.json",
+        "现状：" + state,
+        "先给一张候选项目表等我确认，确认之后再写清单文件；写完用 deck_project_list 验证，直到 warnings 为空。"
+      ].join("\n");
+    };
+    const sendRegistryEntry = function() {
+      const st = deckPanelState.st;
+      if (!deckChip.data || !st || typeof st.injector !== "function") return;
+      if (deckChip.entryBusy) return;
+      deckChip.entryBusy = true;
+      rerenderPanels();
+      const release = function() {
+        if (!deckChip.entryBusy) return;
+        deckChip.entryBusy = false;
+        entryRelease = null;
+        rerenderPanels();
+      };
+      entryRelease = release;
+      try {
+        const p3 = st.injector(registryEntryText(deckChip.data));
+        if (p3 && typeof p3.then === "function") {
+          p3.catch(release);
+        }
+      } catch (e3) {
+        release();
+        return;
+      }
+      armRegistryTick();
+    };
+    const isRegistryEntryText = function(text2) {
+      return String(text2 == null ? "" : text2).split("\n")[0] === CHIP_ENTRY_COMMAND;
+    };
     const projectActionText = function(text2) {
       const body = String(text2 == null ? "" : text2);
+      if (isRegistryEntryText(body)) return body;
       const a3 = deckChip.data && deckChip.data.active;
       if (!a3 || a3.isHome !== false) return body;
       const name = String(a3.name || "");
@@ -44030,6 +44123,11 @@ ${formatProgressEntry(entry)}
         };
       }, [st, st.tab]);
       React.useEffect(function() {
+        registryTickArmed = true;
+        armRegistryTick();
+        return disarmRegistryTick;
+      }, []);
+      React.useEffect(function() {
         const applyFold = function() {
           const t3 = tabsRef.current;
           if (!t3) return;
@@ -44085,7 +44183,7 @@ ${formatProgressEntry(entry)}
       }, []);
       const narrow = dw < 380;
       return h3("div", { ref: panelRef, className: "dsws-panel" + (narrow ? " dsws-narrow" : "") }, [
-        // 票 04 分叉(本仓补件):头部右侧项目 chip;无清单时 ProjectChip 返回 null,头部与上游逐字一致。
+        // 票 04 分叉(本仓补件):头部右侧项目 chip;无清单时 chip 位置是清单入口(票 02)。
         h3("div", { className: "dsws-head" }, [h3("span", { className: "dsws-mtitle" }, [tr("panel.title")]), h3(ProjectChip, { narrow })]),
         h3(
           "div",
@@ -44207,24 +44305,98 @@ ${formatProgressEntry(entry)}
       };
       rerenderPanels();
     };
+    const sameChipData = function(a3, b3) {
+      if (!a3 || !b3) return false;
+      try {
+        return JSON.stringify([a3.registry, a3.projects, a3.warnings, a3.active, a3.note || null]) === JSON.stringify([b3.registry, b3.projects, b3.warnings, b3.active, b3.note || null]);
+      } catch (e3) {
+        return false;
+      }
+    };
     const loadProjectChip = function() {
       const client = clientRef;
-      if (!client || typeof client.callTool !== "function") return;
-      client.callTool("deck_project_list", {}).then(function(res) {
+      if (!client || typeof client.callTool !== "function") return Promise.resolve(false);
+      const before = deckChip.data && deckChip.data.active ? String(deckChip.data.active.path || "") : "";
+      return client.callTool("deck_project_list", {}).then(function(res) {
         if (res && res.isError) {
           chipLoadFailed("项目清单读取失败:" + String(res.content && res.content[0] && res.content[0].text || "工具回包失败。"));
-          return;
+          return false;
         }
         const sc = res && res.structuredContent;
         if (sc && sc.ok === true) {
+          const prev = deckChip.data;
+          const registryChanged = !prev || !prev.registry || !sc.registry || prev.registry.status !== sc.registry.status;
           deckChip.data = sc;
+          if (registryChanged) deckChip.open = false;
+          const after = sc.active ? String(sc.active.path || "") : "";
+          if (before && after && before !== after) return followActiveChange(sc, before);
+          if (!registryChanged && sameChipData(prev, sc)) return true;
           rerenderPanels();
-          return;
+          return true;
         }
         chipLoadFailed("项目清单读取失败:回包不可用。");
+        return false;
       }).catch(function(e3) {
         chipLoadFailed("项目清单读取失败:" + String(e3 && e3.message || e3 || "工具桥异常。"));
+        return false;
       });
+    };
+    const followActiveChange = function(sc, prevRoot) {
+      const prevStillListed = (Array.isArray(sc.projects) ? sc.projects : []).some(function(p3) {
+        return p3 && p3.valid === true && String(p3.path || "") === prevRoot;
+      });
+      if (typeof sc.note === "string" && sc.note) {
+        deckChip.error = sc.note;
+      } else if (!prevStillListed) {
+        deckChip.error = sc.registry && sc.registry.status === "broken" ? "项目清单读不出来,活动项目已回退到 home-repo。" : "上一个活动项目已不在项目清单里,活动项目已回退到 home-repo。";
+      }
+      if (deckChip.error) deckChip.open = true;
+      rerenderPanels();
+      return Promise.resolve(refreshActiveProject()).catch(function() {
+      }).then(function() {
+        return true;
+      });
+    };
+    const registryTick = function() {
+      if (registryTickBusy || deckChip.busy) return;
+      registryTickBusy = true;
+      let settled = false;
+      const settle = function() {
+        if (settled) return;
+        settled = true;
+        registryTickBusy = false;
+        if (entryRelease) entryRelease();
+      };
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return settle();
+      try {
+        const p3 = loadProjectChip();
+        if (p3 && typeof p3.then === "function") p3.then(settle, settle);
+        else settle();
+      } catch (e3) {
+        settle();
+      }
+    };
+    const armRegistryTick = function() {
+      if (!registryTickArmed) return;
+      if (typeof setInterval !== "function" || typeof clearInterval !== "function") return;
+      if (registryTickId !== null) {
+        try {
+          clearInterval(registryTickId);
+        } catch (e3) {
+        }
+      }
+      registryTickId = setInterval(registryTick, REGISTRY_TICK_MS);
+    };
+    const disarmRegistryTick = function() {
+      registryTickArmed = false;
+      if (registryTickId !== null) {
+        try {
+          clearInterval(registryTickId);
+        } catch (e3) {
+        }
+        registryTickId = null;
+      }
+      if (entryRelease) entryRelease();
     };
     const useProjectFromChip = function(name) {
       const client = clientRef;
@@ -44437,7 +44609,12 @@ ${formatProgressEntry(entry)}
       }
     };
     window.MattSkillsUpstream.projects = {
-      refreshActiveProject
+      refreshActiveProject,
+      // 停掉面板的常驻定时器(目前只有清单状态刷新拍)。面板靴起来之后事件循环里就有了一枚
+      // 定时器,靴它的进程想退出得先调这个 —— 测试舱与非浏览器宿主用;浏览器里随页面走。
+      unmount: function() {
+        disarmRegistryTick();
+      }
     };
     window.MattSkillsUpstream.map = {
       MapDetailV2Page,

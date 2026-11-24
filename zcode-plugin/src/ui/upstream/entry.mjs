@@ -557,6 +557,14 @@ function apply(ctx) {
       "[data-deck-chip-path]{display:block;font-size:10px;color:var(--dsw-alias-label-caption,#7d8590);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
       "[data-deck-chip-warnrow]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#e3b341);white-space:normal;word-break:break-all;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35)}",
       "[data-deck-chip-error]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#e3b341);white-space:normal;word-break:break-all}",
+      // 票 02(0.6.1)清单入口:低强调度小按钮 —— 透明底、次级文字色、与 chip 同高同圆角,悬停才亮边。
+      // 窄档只收文案(「＋」),尺寸不另设;在途沿用 dsws-pchip-busy 的变淡 + 禁点。
+      "[data-deck-chip-entry]{display:inline-flex;align-items:center;padding:2px 8px;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary,#8b949e);background:transparent;border:1px solid transparent;border-radius:99px;cursor:pointer;white-space:nowrap}",
+      "[data-deck-chip-entry]:hover{border-color:var(--dsw-alias-border-l2,#3d444d);color:var(--dsw-alias-label-primary,#e6edf3)}",
+      "[data-deck-chip-entry].dsws-pchip-busy{opacity:.55;pointer-events:none}",
+      // 展开层末行的修正动作:通栏文字按钮,与 warning 行同一道虚线分隔
+      "[data-deck-chip-fix]{display:block;width:100%;text-align:left;padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-primary,#e6edf3);background:transparent;border:0;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35);border-radius:0 0 5px 5px;cursor:pointer}",
+      "[data-deck-chip-fix]:hover{background:var(--dsw-alias-interactive-bg-hover,#21262d)}",
     ].join("\n")
   );
 
@@ -714,13 +722,18 @@ function apply(ctx) {
   // ---- 票 04(本仓补件,上游零改动):头部项目 chip ----
   // 数据缝:deck_project_list(既有 callTool 缝)启动取一次;deck_project_use 成功后用回包
   // 刷新活动项目身份;切换成功走票 03 的 refreshActiveProject 整体重取(不造第二套);
-  // 清单读取失败(isError/桥异常)亮警告态 chip 说明原因,registry 明确 missing 才隐藏。
+  // 清单读取失败(isError/桥异常)亮警告态 chip 说明原因。
   // 三态:普通(显示活动项目名)/ 警告(清单 broken 或 warnings 非空 → dsws-pchip-warn)/
-  // 缺清单(registry.status==='missing' → 组件返回 null,头部与上游逐字一致)。
+  // 缺清单(registry.status==='missing' → chip 位置换成清单入口,见下方票 02 补件)。
   // 展开:home-repo 第一、有效项目可点、被跳过条目以 warning 附末尾;窄档只留名字。
   // 切换在途(use + 重取都算在途):chip 禁点 + dsws-pchip-busy;拒绝(isError)→ chip 不变,
   // 人话原因行内展示在展开层([data-deck-chip-error])。
-  const deckChip = { data: null, open: false, busy: false, error: null };
+  const deckChip = { data: null, open: false, busy: false, error: null, entryBusy: false };
+  // 票 02:清单状态刷新拍的管理件(拍本身挂在 DeckBody 的 effect 上,见 REGISTRY_TICK_MS 处)。
+  let registryTickId = null; // 在跑的那一枚(setInterval 句柄)
+  let registryTickArmed = false; // DeckBody 在不在(卸载后拍不再重挂)
+  let registryTickBusy = false; // 上一拍的读取还没回:后续拍不叠发
+  let entryRelease = null; // 清单入口的在途放行函数(在途时非空)
   const chipToggle = function (e) {
     if (deckChip.busy) return; // 在途禁点:busy 时不展开/收起(不因点击错乱展开层)
     try {
@@ -772,12 +785,47 @@ function apply(ctx) {
       const why = p.reason ? `(${p.reason})` : "";
       kids.push(h("div", { "data-deck-chip-warnrow": "" }, [`${String(p.name || "(未命名)")}${why} —— 不可切换`]));
     }
+    // 票 02:清单损坏或有条目被跳过 → 末行一枚修正动作,与头部入口发同一段 prompt
+    if ((data.registry && data.registry.status === "broken") || (Array.isArray(data.warnings) && data.warnings.length > 0)) {
+      const fixBusy = busy || deckChip.entryBusy === true; // 请求在途:与头部入口同一个在途口径
+      kids.push(
+        h("button", { type: "button", "data-deck-chip-fix": "", className: "dsws-pchipfix" + (fixBusy ? " dsws-pchip-busy" : ""), disabled: fixBusy, onClick: sendRegistryEntry }, [
+          CHIP_FIX_LABEL,
+        ])
+      );
+    }
     return h("div", { "data-deck-chip-pop": "", role: "listbox" }, kids);
   };
+  const CHIP_ENTRY_LABEL = "＋ 项目";
+  const CHIP_ENTRY_COMMAND = "/setup-home-repo";
+  const CHIP_FIX_LABEL = "让 agent 修正清单";
+  const REGISTRY_TICK_MS = 5000; // 清单状态刷新拍(同检查页可见拍:config/intervals.yaml 的 probeIntervalMs)
   const ProjectChip = function (props) {
     const data = deckChip.data;
-    if (!data || !data.registry || data.registry.status === "missing") return null; // 无清单:头部与上游逐字一致
+    if (!data || !data.registry) return null; // 清单状态还没到手:先不画
     const narrow = !!(props && props.narrow);
+    const entryBusy = deckChip.entryBusy === true || deckChip.busy === true;
+    if (data.registry.status === "missing") {
+      // 票 02(0.6.1):没有清单 → chip 位置是一枚低强调度的清单入口(头部唯一与上游不同的地方);
+      // 窄档文案收成「＋」,title/aria-label 留全文案。有清单后不走这个分支。
+      // 在途(请求已发出、这一拍刷新还没落定)变淡 + 禁点,不叠发。
+      return h("div", { "data-deck-chip-wrap": "" }, [
+        h(
+          "button",
+          {
+            type: "button",
+            "data-deck-chip-entry": "",
+            className: "dsws-pchipentry" + (entryBusy ? " dsws-pchip-busy" : ""),
+            title: CHIP_ENTRY_LABEL,
+            "aria-label": CHIP_ENTRY_LABEL,
+            "aria-busy": entryBusy ? "true" : "false",
+            disabled: entryBusy,
+            onClick: sendRegistryEntry,
+          },
+          [narrow ? "＋" : CHIP_ENTRY_LABEL]
+        ),
+      ]);
+    }
     const busy = deckChip.busy === true;
     const warn = (data.registry && data.registry.status === "broken") || (Array.isArray(data.warnings) && data.warnings.length > 0);
     const kids = [h("span", { "data-deck-chip-name": "" }, [String((data.active && data.active.name) || "未知")])];
@@ -801,6 +849,64 @@ function apply(ctx) {
       deckChip.open ? chipPopNode(data, narrow, busy) : null,
     ]);
   };
+  // ---- 票 02(0.6.1,本仓补件,上游零改动):清单入口 ----
+  // 没有清单时 chip 位置是一枚「＋ 项目」;清单损坏或有条目被跳过时展开层末行是
+  // 「让 agent 修正清单」。两处经面板唯一的注入收口 st.injector 发同一段 prompt:首行是
+  // 技能名 setup-home-repo,其后给 agent 不然得先问一遍的三样 —— 工作区根(home-repo 根,
+  // 与活动项目无关)、清单路径、现状。现状三态照规格:尚不存在 / 已损坏并附 registry.error /
+  // 有几条被跳过并附条目名。
+  const registryEntryText = function (data) {
+    const d = data || {};
+    const reg = d.registry || {};
+    const st = deckPanelState.st;
+    const root = String((d.home && d.home.path) || (st && st.workspaceRoot) || "");
+    const skipped = (Array.isArray(d.projects) ? d.projects : []).filter(function (p) {
+      return p && p.valid !== true;
+    });
+    let state;
+    if (reg.status === "missing") state = "清单尚不存在。";
+    else if (reg.status === "broken") state = "清单已损坏，解析错误是「" + String(reg.error || "服务端没给原因") + "」。";
+    else state = "清单里有 " + skipped.length + " 条被跳过：" + skipped.map(function (p) { return String(p.name || "(未命名)"); }).join("、") + "。";
+    return [
+      CHIP_ENTRY_COMMAND,
+      "工作区根：" + root,
+      "清单路径：" + root + "/.deck/projects.json",
+      "现状：" + state,
+      "先给一张候选项目表等我确认，确认之后再写清单文件；写完用 deck_project_list 验证，直到 warnings 为空。",
+    ].join("\n");
+  };
+  // 在途窗口:从点击起重新对齐刷新拍的相位,满一个周期(那一拍刷新落定)才放行。发送
+  // 失败立即放行;发送成功不放行 —— 桥是异步的,成功了立刻放行等于没有窗口,连点会叠发。
+  // 也不设计成「一直等到清单出现」:agent 写盘是异步的,那样用户想重发时点不动。
+  const sendRegistryEntry = function () {
+    const st = deckPanelState.st;
+    if (!deckChip.data || !st || typeof st.injector !== "function") return; // 清单状态未到手/无发话桥:无事可做
+    if (deckChip.entryBusy) return; // 在途不叠发
+    deckChip.entryBusy = true;
+    rerenderPanels();
+    const release = function () {
+      if (!deckChip.entryBusy) return;
+      deckChip.entryBusy = false;
+      entryRelease = null;
+      rerenderPanels();
+    };
+    entryRelease = release;
+    try {
+      const p = st.injector(registryEntryText(deckChip.data));
+      if (p && typeof p.then === "function") {
+        p.catch(release); // 发送失败:没有请求在路上,立刻放行
+      }
+    } catch (e) {
+      release();
+      return;
+    }
+    armRegistryTick(); // 相位对齐:从这次点击起满一个周期,那一拍落定时放行
+  };
+  // 认出清单入口的话:首行就是技能名。与上面 prompt 的首行同读 CHIP_ENTRY_COMMAND 这一处,
+  // 注入收口的项目前言包装(projectActionText)据此放行,不在这里之外再散落子串判断。
+  const isRegistryEntryText = function (text) {
+    return String(text == null ? "" : text).split("\n")[0] === CHIP_ENTRY_COMMAND;
+  };
   // ---- 票 05(本仓补件,上游零改动):动作 prompt 的项目前言 ----
   // 活动项目 ≠ home-repo 时,经 st.injector 注入的动作文本(领取/实施/诊断/评论/讨论/
   // ChecksTab inject-prompt 等全部出口)前置恰好一行「项目:<name>(<root>);以下操作都在
@@ -810,6 +916,7 @@ function apply(ctx) {
   // deck_project_use 成功回包落进 deckChip.data 即翻面,不等看板重取。
   const projectActionText = function (text) {
     const body = String(text == null ? "" : text);
+    if (isRegistryEntryText(body)) return body; // 票 02:清单入口的话改的是 home-repo 的清单,与活动项目无关,不前置
     const a = deckChip.data && deckChip.data.active;
     if (!a || a.isHome !== false) return body; // home-repo/无清单/身份未落定 → 与现在逐字一致
     const name = String(a.name || "");
@@ -878,6 +985,14 @@ function apply(ctx) {
         try { clearInterval(id); } catch (e) { /* 忽略 */ }
       };
     }, [st, st.tab]);
+    // ---- 票 02(0.6.1):清单状态刷新拍 ----
+    // 与检查拍分开挂:这一拍不挑页签,面板在就跑。依赖数组留空 —— 换页签、看板数据重取都
+    // 不重挂(st 是原地改的同一个对象);卸载时停拍并放行在途的清单入口。
+    React.useEffect(function () {
+      registryTickArmed = true;
+      armRegistryTick();
+      return disarmRegistryTick;
+    }, []);
     // 页签折叠机(工单 01:上游 panel/Dock.ts 的 applyFold 逐字移植;tabsRef 已由 useTabsRow 持有)。
     // 三道触发与上游一致:ResizeObserver(页签行宽变)+ window resize + document.fonts.ready;
     // 卸载时断开。判据只有 scrollWidth/clientWidth 的 DOM 测量 —— 上游纯函数 tabsLevelDecide
@@ -933,7 +1048,7 @@ function apply(ctx) {
     // 上游 panel/Dock.ts 的窄档判据(容器宽 < 380):行内按钮收图标档、KPI 体检按钮三档
     const narrow = dw < 380;
     return h("div", { ref: panelRef, className: "dsws-panel" + (narrow ? " dsws-narrow" : "") }, [
-      // 票 04 分叉(本仓补件):头部右侧项目 chip;无清单时 ProjectChip 返回 null,头部与上游逐字一致。
+      // 票 04 分叉(本仓补件):头部右侧项目 chip;无清单时 chip 位置是清单入口(票 02)。
       h("div", { className: "dsws-head" }, [h("span", { className: "dsws-mtitle" }, [tr("panel.title")]), h(ProjectChip, { narrow: narrow })]),
       h(
         "div",
@@ -1094,27 +1209,119 @@ function apply(ctx) {
     };
     rerenderPanels();
   };
+  // 两份 deck_project_list 回包在面板看得到的地方是否相同(状态、条目、警告、活动项目、
+  // 回退说明)。刷新拍靠它判断这一拍要不要重画。
+  const sameChipData = function (a, b) {
+    if (!a || !b) return false;
+    try {
+      return JSON.stringify([a.registry, a.projects, a.warnings, a.active, a.note || null]) === JSON.stringify([b.registry, b.projects, b.warnings, b.active, b.note || null]);
+    } catch (e) {
+      return false; // 比不了就当不同,宁可多画一次
+    }
+  };
   const loadProjectChip = function () {
     const client = clientRef;
-    if (!client || typeof client.callTool !== "function") return;
-    client
+    if (!client || typeof client.callTool !== "function") return Promise.resolve(false);
+    const before = deckChip.data && deckChip.data.active ? String(deckChip.data.active.path || "") : "";
+    return client
       .callTool("deck_project_list", {})
       .then(function (res) {
         if (res && res.isError) {
           chipLoadFailed("项目清单读取失败:" + String((res.content && res.content[0] && res.content[0].text) || "工具回包失败。"));
-          return;
+          return false;
         }
         const sc = res && res.structuredContent;
         if (sc && sc.ok === true) {
+          const prev = deckChip.data;
+          // 展开层画的是某一份清单。清单身份变了(出现/被删/损坏)才把展开态归位 ——
+          // 继续开着会指到已经不存在的项。清单没变就保持用户的开合状态:刷新拍每 5 秒走
+          // 一次这里,无条件收起会让正看着的项目列表自己关掉。
+          const registryChanged = !prev || !prev.registry || !sc.registry || prev.registry.status !== sc.registry.status;
           deckChip.data = sc;
+          if (registryChanged) deckChip.open = false;
+          // 票 02:这一拍发现活动项目根变了 —— 服务端已把活动项目回退到 home-repo
+          // (清单被手改,当前项目被移出或改名),或会话里另有调用切了项目。只换 chip 不换
+          // 看板会出现「chip 显示 home、列表还是旧项目的卡」,此时点写操作服务端已按 home
+          // 解析,会落到 home 的同号卡上。所以根一变就整体重取,并把回退说明亮出来。
+          const after = sc.active ? String(sc.active.path || "") : "";
+          if (before && after && before !== after) return followActiveChange(sc, before);
+          // 回包与上次相同就不重画:刷新拍每 5 秒一次,没变化时不动整个面板
+          if (!registryChanged && sameChipData(prev, sc)) return true;
           rerenderPanels();
-          return;
+          return true;
         }
         chipLoadFailed("项目清单读取失败:回包不可用。"); // 形状不对也亮警告,不静默藏
+        return false;
       })
       .catch(function (e) {
         chipLoadFailed("项目清单读取失败:" + String((e && e.message) || e || "工具桥异常。"));
+        return false;
       });
+  };
+  // 票 02:活动项目根变了之后 —— 走票 03 的整体重取,再把说明放进既有的行内说明路径
+  // (deckChip.error,展开层里显示)并打开展开层。说明在服务端只附在「触发落定的那一次
+  // 调用」上:这一拍自己触发落定时 sc.note 有;若 agent 改完清单后按技能收尾先调过
+  // deck_project_list,note 就被那次带走,这时用面板自己知道的事实说。
+  const followActiveChange = function (sc, prevRoot) {
+    const prevStillListed = (Array.isArray(sc.projects) ? sc.projects : []).some(function (p) {
+      return p && p.valid === true && String(p.path || "") === prevRoot;
+    });
+    if (typeof sc.note === "string" && sc.note) {
+      deckChip.error = sc.note;
+    } else if (!prevStillListed) {
+      deckChip.error = sc.registry && sc.registry.status === "broken"
+        ? "项目清单读不出来,活动项目已回退到 home-repo。"
+        : "上一个活动项目已不在项目清单里,活动项目已回退到 home-repo。";
+    }
+    // 上一个项目仍在清单里且没有回退说明 = 会话里主动切换,面板跟着走,不说明
+    if (deckChip.error) deckChip.open = true;
+    rerenderPanels();
+    return Promise.resolve(refreshActiveProject())
+      .catch(function () {})
+      .then(function () { return true; });
+  };
+  // ---- 票 02(0.6.1):清单状态刷新拍 ----
+  // 本仓面板没有看板周期刷新可挂(旧层的 counts 轮询随 U06 删除,上游复刻没补回),所以
+  // 清单状态自成一拍:面板在就跑,不挑页签;页面隐藏跳过;上一拍未回、或切项目在途时跳过,
+  // 每拍至多一次 deck_project_list。面板只认回包,不为 .deck 加文件监听。
+  // 节奏同检查页可见拍(config/intervals.yaml 的 probeIntervalMs)。
+  const registryTick = function () {
+    if (registryTickBusy || deckChip.busy) return;
+    registryTickBusy = true;
+    let settled = false;
+    const settle = function () {
+      if (settled) return;
+      settled = true;
+      registryTickBusy = false;
+      // 在途窗口到期:这一拍刷新已落定,放行清单入口。放行放在 tick 尾而不是发送成功时 ——
+      // 桥是异步的,发送成功只说明话发出去了,不说明 agent 已经动过清单。
+      if (entryRelease) entryRelease();
+    };
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return settle();
+    try {
+      const p = loadProjectChip();
+      if (p && typeof p.then === "function") p.then(settle, settle);
+      else settle();
+    } catch (e) {
+      settle();
+    }
+  };
+  const armRegistryTick = function () {
+    if (!registryTickArmed) return; // DeckBody 已卸载:不重挂
+    if (typeof setInterval !== "function" || typeof clearInterval !== "function") return;
+    if (registryTickId !== null) {
+      try { clearInterval(registryTickId); } catch (e) { /* 忽略 */ }
+    }
+    registryTickId = setInterval(registryTick, REGISTRY_TICK_MS);
+  };
+  // 停拍并放行在途的清单入口。DeckBody 卸载时的收尾与对外的 unmount() 共用这一处。
+  const disarmRegistryTick = function () {
+    registryTickArmed = false;
+    if (registryTickId !== null) {
+      try { clearInterval(registryTickId); } catch (e) { /* 忽略 */ }
+      registryTickId = null;
+    }
+    if (entryRelease) entryRelease();
   };
   const useProjectFromChip = function (name) {
     const client = clientRef;
@@ -1282,6 +1489,11 @@ function apply(ctx) {
   // 上游零改动 —— 版本页复位由上游 cwd 变化分支接住(见 refreshActiveProject 注释)。
   window.MattSkillsUpstream.projects = {
     refreshActiveProject: refreshActiveProject,
+    // 停掉面板的常驻定时器(目前只有清单状态刷新拍)。面板靴起来之后事件循环里就有了一枚
+    // 定时器,靴它的进程想退出得先调这个 —— 测试舱与非浏览器宿主用;浏览器里随页面走。
+    unmount: function () {
+      disarmRegistryTick();
+    },
   };
   // 地图详情自检面(M4):页面组件、页面模型与取数桶入口 —— 测试直接对着模型断言,
   // 不用把整页挂起来才看得到档案区/卡片流。
