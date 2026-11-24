@@ -311,6 +311,20 @@ const LIST_BROKEN = {
   warnings: [],
   registry: { status: "broken", path: "X:/home/.deck/projects.json", error: "JSON 解析失败:Unexpected token } in JSON" },
 };
+// 活动项目是非 home 项目、清单里有两条被跳过(票 02:修正入口免项目前言 + 跳过条目名并列)
+const LIST_TWO_BAD_FORGE_ACTIVE = {
+  ok: true,
+  active: { name: "forge", path: "X:/forge", isHome: false },
+  home: HOME,
+  projects: [
+    { ...HOME, valid: true },
+    { name: "forge", path: "X:/forge", isHome: false, valid: true },
+    { name: "bad", path: "X:/gone", isHome: false, valid: false, reason: "路径不存在" },
+    { name: "dup", path: "X:/dup", isHome: false, valid: false, reason: "名字「dup」与已有项目重名" },
+  ],
+  warnings: ["第 3 条(bad)路径不存在,已跳过", "第 4 条(dup)名字「dup」与已有项目重名,已跳过"],
+  registry: { status: "ok", path: "X:/home/.deck/projects.json", error: null },
+};
 const USE_OK_FORGE = {
   ok: true,
   active: { name: "forge", path: "X:/forge", isHome: false },
@@ -335,12 +349,16 @@ const USE_REJECTED = {
 
 // boot 助手:一份 bundle 代码 + 一份 fake DOM + 一份 stub client,回放面板所需工具。
 async function bootChipPanel(listReply, opts = {}) {
+  const intervalsAtBoot = intervals.length;
   const doc = createFakeDom();
-  const state = { root: "X:/home", list: listReply };
+  const state = { root: opts.root || "X:/home", list: listReply };
   const calls = [];
   const reads = [];
   const useCalls = [];
+  const sent = []; // sendMessage 实参(票 02:清单入口发进对话的文本)
   let releaseUse = null;
+  let holdList = false; // 票 02:把下一次 deck_project_list 的回包挂起,演「上一拍未回」
+  let releaseList = null;
   const useMode = opts.useMode || "hold"; // hold=挂起等测试放行;reject=回 isError;ok=立即成功
   const client = {
     readResource: async (uri) => {
@@ -348,7 +366,10 @@ async function bootChipPanel(listReply, opts = {}) {
       if (uri.endsWith("workspace.json")) return { contents: [{ text: JSON.stringify({ root: state.root, env: {} }) }] };
       throw new Error("no asset " + uri);
     },
-    sendMessage: async () => ({ ok: true }),
+    sendMessage: async (text) => {
+      sent.push(String(text == null ? "" : text));
+      return { ok: true };
+    },
     callTool: async (name, args) => {
       calls.push({ name, args: args || {} });
       if (name === "deck_project_list") {
@@ -356,6 +377,12 @@ async function bootChipPanel(listReply, opts = {}) {
           return { isError: true, content: [{ type: "text", text: "读取 .deck/projects.json 失败:权限被拒" }] };
         }
         if (opts.listMode === "throw") throw new Error("工具桥断了");
+        if (holdList) {
+          holdList = false;
+          return new Promise((resolve) => {
+            releaseList = resolve;
+          });
+        }
         return { structuredContent: state.list };
       }
       if (name === "deck_project_use") {
@@ -393,9 +420,11 @@ async function bootChipPanel(listReply, opts = {}) {
   await flush();
   const surface = doc.body.children[0];
   return {
-    U, doc, surface, calls, reads, useCalls, state,
+    U, doc, surface, calls, reads, useCalls, sent, state,
     st: U.list.storeOf(),
     chip: () => qsa(surface, "[data-deck-chip]")[0] || null,
+    entry: () => qsa(surface, "[data-deck-chip-entry]")[0] || null,
+    fix: () => qsa(surface, "[data-deck-chip-fix]")[0] || null,
     chipName: () => {
       const n = qsa(surface, "[data-deck-chip-name]")[0];
       return n ? textOf(n) : null;
@@ -412,8 +441,53 @@ async function bootChipPanel(listReply, opts = {}) {
       releaseUse = null;
       if (r) r(reply);
     },
+    holdNextList: () => {
+      holdList = true;
+    },
+    releaseList: () => {
+      const r = releaseList;
+      releaseList = null;
+      if (r) r({ structuredContent: state.list });
+    },
+    listCalls: () => calls.filter((c) => c.name === "deck_project_list"),
+    intervalsAtBoot,
+    // 本面板的清单刷新拍(只认 boot 之后注册的)
+    curChipTick: () => tickSince(intervalsAtBoot),
+    fireChipTick: async () => {
+      const rec = tickSince(intervalsAtBoot);
+      if (rec) rec.fire();
+      await flush();
+    },
   };
 }
+
+// ---------------------------------------------------------------------------
+// 票 02:清单状态刷新拍 —— boot 前把全局 setInterval/clearInterval 换成可控桩(照
+// upstream-checks 舱模式)。桩记下每一次注册;fire() 遵循浏览器语义,已清除的拍不再派发回调。
+// ---------------------------------------------------------------------------
+const intervals = [];
+let intervalSeq = 0;
+globalThis.setInterval = function (fn, ms) {
+  const rec = {
+    id: ++intervalSeq,
+    ms,
+    cleared: false,
+    fire() {
+      if (!rec.cleared) return fn();
+      return undefined;
+    },
+  };
+  intervals.push(rec);
+  return rec.id;
+};
+globalThis.clearInterval = function (id) {
+  const rec = intervals.find((r) => r.id === id);
+  if (rec) rec.cleared = true;
+};
+// intervals 是整个文件共享的累积数组:每个切片各 boot 一只新面板,旧面板的 effect 从不收尾,它们
+// 注册的拍都还「没被清」。所以认拍只认本面板 boot 之后注册的 —— 按节奏全表找会认到前面切片
+// 留下的检查页可见拍(同为 5000ms),把检查重扫当成清单重取,或者反过来。
+const tickSince = (from) => intervals.slice(from).filter((r) => r.ms === 5000 && !r.cleared).slice(-1)[0] || null;
 
 // ---------------------------------------------------------------------------
 // 切片 1:内容缝 —— chip 挂点与工具缝在 bundle 里
@@ -425,6 +499,10 @@ if (code) {
   has("chip 挂点(data-deck-chip)", /data-deck-chip/);
   has("chip 数据缝 deck_project_list", /callTool\(["']deck_project_list["']/);
   has("chip 切换缝 deck_project_use", /callTool\(["']deck_project_use["']/);
+  has("清单入口(data-deck-chip-entry)", /data-deck-chip-entry/);
+  has("修正入口(data-deck-chip-fix)", /data-deck-chip-fix/);
+  has("清单入口的首行技能名 /setup-home-repo", /\/setup-home-repo/);
+  check("bundle 没有 .deck 文件监听(无 FileSystemObserver)", !/FileSystemObserver/.test(code));
   has("切换成功走整体重取 refreshActiveProject", /refreshActiveProject\(\)/);
   check("bundle 无拼接标记残留", !/\(spliced by build\)/.test(code));
   check("bundle 无锚点残留", !/@splice-anchor/.test(code));
@@ -438,7 +516,9 @@ if (code) {
 globalThis.ResizeObserver = FakeResizeObserver;
 
 // ---------------------------------------------------------------------------
-// 切片 2:无清单 —— 头部与现在完全一致,无 chip
+// 切片 2:无清单 —— 没有 chip,chip 位置换成清单入口(票 02 起:头部不再与上游逐字一致,
+// 0.6.1 规格「面板入口」;head 里 span 数不变靠入口文案是裸文本节点保住)。入口的发话、
+// 在途与窄档见切片 10–13。
 // ---------------------------------------------------------------------------
 {
   const t = await bootChipPanel(LIST_MISSING);
@@ -446,9 +526,24 @@ globalThis.ResizeObserver = FakeResizeObserver;
   check("票04缺清单: 无 chip", !t.chip(), t.chip() && textOf(t.chip()));
   const head = qsa(t.surface, ".dsws-head")[0];
   check("票04缺清单: 头部在", !!head);
-  eq("票04缺清单: head 子元素只有标题一件", head ? head.children.length : -1, 1);
+  const entry = t.entry();
+  check("票02入口: 无清单时 chip 位置有清单入口(data-deck-chip-entry)", !!entry);
+  check("票02入口: 是 button(可聚焦可点)", !!entry && entry.tagName === "BUTTON");
+  eq("票02入口: 文案是「＋ 项目」", entry ? textOf(entry) : null, "＋ 项目");
+  eq("票02入口: title 是全文案", entry ? entry.getAttribute("title") : null, "＋ 项目");
+  eq("票02入口: aria-label 是全文案", entry ? entry.getAttribute("aria-label") : null, "＋ 项目");
+  check(
+    "票02入口: 低强调度(挂 dsws-pchipentry,不挂警告态)",
+    !!entry && String(entry.attributes["class"]).includes("dsws-pchipentry") && !String(entry.attributes["class"]).includes("dsws-pchip-warn"),
+    entry && entry.attributes["class"]
+  );
+  check("票02入口: 落在 chip 的位置(与 chip 同一个 data-deck-chip-wrap)", !!entry && !!entry.parentNode && entry.parentNode.getAttribute("data-deck-chip-wrap") === "");
+  check("票02入口: 平时可点(未禁用、不在途)", !!entry && entry.attributes.disabled === undefined && !String(entry.attributes["class"]).includes("dsws-pchip-busy"));
+  eq("票04缺清单: head 子元素是标题与清单入口两件(0.6.0 时为只有标题一件)", head ? head.children.length : -1, 2);
+  check("票04缺清单: 标题仍是 head 的第一件", !!head && head.children[0] === qsa(head, ".dsws-mtitle")[0]);
   eq("票04缺清单: head 里 span 数不变", qsa(head || t.surface, "span").length, 1);
   check("票04缺清单: 页签行照常", qsa(t.surface, ".dsws-tabs").length === 1);
+  check("票02入口: 入口不在页签行里(不挤占页签行)", qsa(qsa(t.surface, ".dsws-tabs")[0] || t.surface, "[data-deck-chip-entry]").length === 0);
   check("票04缺清单: 启动取过一次清单", t.calls.some((c) => c.name === "deck_project_list"));
 }
 
@@ -459,6 +554,7 @@ globalThis.ResizeObserver = FakeResizeObserver;
   const t = await bootChipPanel(LIST_WITH_BAD);
   const chip = t.chip();
   check("票04有清单: chip 在", !!chip);
+  check("票02入口: 有清单时入口不渲染(头部只有 chip)", !t.entry());
   check("票04有清单: 是 button 语义(可 Tab 聚焦)", chip && chip.tagName === "BUTTON");
   eq("票04有清单: chip 显示活动项目名 home", t.chipName(), "home");
   check("票04有清单: 有被跳过条目 → 警告态", chip && String(chip.attributes["class"]).includes("dsws-pchip-warn"));
@@ -475,7 +571,7 @@ globalThis.ResizeObserver = FakeResizeObserver;
   const warns = qsa(pop, "[data-deck-chip-warnrow]");
   eq("票04有清单: 坏条目 warning 行一枚", warns.length, 1);
   check("票04有清单: warning 行带原因(路径不存在)", warns[0] && textOf(warns[0]).includes("路径不存在"));
-  check("票04有清单: warning 行附在末尾(pop 最后一个子节点)", pop && warns[0] === pop.children[pop.children.length - 1]);
+  check("票04有清单: warning 行仍附在全部可点项之后(pop 倒数第二个子节点;0.6.0 时为最后一个)", pop && warns[0] === pop.children[pop.children.length - 2]);
   check("票04有清单: 坏条目不是可点项(没有 data-name=bad 的 item)", !t.itemOf("bad"));
   check("票04有清单: 当前活动项 home 带高亮标记", items[0] && String(items[0].attributes["class"]).includes("dsws-pchip-active") && textOf(items[0]).includes("✓"));
   check("票04有清单: 宽档展开项带根路径", qsa(pop, "[data-deck-chip-path]").length >= 2);
@@ -493,6 +589,7 @@ globalThis.ResizeObserver = FakeResizeObserver;
   const t = await bootChipPanel(LIST_BROKEN);
   const chip = t.chip();
   check("票04损坏: chip 在(清单存在但坏了也显示)", !!chip);
+  check("票02入口: 清单损坏时头部没有入口(修正入口在展开层里)", !t.entry());
   check("票04损坏: 警告态(dsws-pchip-warn)", chip && String(chip.attributes["class"]).includes("dsws-pchip-warn"));
   eq("票04损坏: 活动项目回退显示 home", t.chipName(), "home");
   await t.openPop();
@@ -510,8 +607,10 @@ globalThis.ResizeObserver = FakeResizeObserver;
   const t = await bootChipPanel(LIST_CLEAN);
   const chip = t.chip();
   check("票04切换: chip 在且无警告态", !!chip && !String(chip.attributes["class"]).includes("dsws-pchip-warn"));
+  check("票02入口: 干净清单没有入口", !t.entry());
   await t.openPop();
   eq("票04切换: 干净清单两枚可点项", t.items().length, 2);
+  check("票02修正: 清单完好无警告时展开层没有修正入口", !t.fix());
 
   const listCallsBefore = t.calls.filter((c) => c.name === "deck_issue_list").length;
   const readsBefore = t.reads.length;
@@ -629,6 +728,276 @@ globalThis.ResizeObserver = FakeResizeObserver;
 
   const t3 = await bootChipPanel(LIST_MISSING);
   check("票04清单失败: registry 明确 missing 才隐藏 chip", !t3.chip());
+}
+
+// ---------------------------------------------------------------------------
+// 切片 10(票 02):点入口 → 发进对话的文本。首行是技能名 /setup-home-repo,其后带工作区根、
+// 清单路径与现状;活动项目是 home-repo,不带项目前言。期望值是独立字面量(照 0.6.1 规格
+// 「面板入口」一节写,不从实现抄)。
+// ---------------------------------------------------------------------------
+{
+  const t = await bootChipPanel(LIST_MISSING);
+  fireClick(t.entry());
+  await flush();
+  eq("票02发话: 点入口恰好发一条", t.sent.length, 1);
+  eq(
+    "票02发话: 全文 = 首行技能名 + 工作区根 + 清单路径 + 现状(尚不存在) + 先给候选表等确认 + 验证到 warnings 为空",
+    t.sent[0],
+    "/setup-home-repo\n工作区根：X:/home\n清单路径：X:/home/.deck/projects.json\n现状：清单尚不存在。\n先给一张候选项目表等我确认，确认之后再写清单文件；写完用 deck_project_list 验证，直到 warnings 为空。"
+  );
+  eq("票02发话: 首行是 /setup-home-repo", (t.sent[0] || "").split("\n")[0], "/setup-home-repo");
+  check("票02发话: 不带项目前言", !(t.sent[0] || "").includes("以下操作都在该项目内进行"));
+}
+
+// ---------------------------------------------------------------------------
+// 切片 11(票 02):修正入口 —— 清单损坏、warnings 非空两种情况下,展开层末行有
+// 「让 agent 修正清单」,发与头部入口同一段 prompt(只有现状一行不同)。活动项目是非 home
+// 项目时,修正入口的话不带项目前言(它改的是 home-repo 的清单,不是那个项目);同一状态下
+// 普通动作照旧带前言。
+// ---------------------------------------------------------------------------
+const entryPrompt = (state) =>
+  [
+    "/setup-home-repo",
+    "工作区根：X:/home",
+    "清单路径：X:/home/.deck/projects.json",
+    "现状：" + state,
+    "先给一张候选项目表等我确认，确认之后再写清单文件；写完用 deck_project_list 验证，直到 warnings 为空。",
+  ].join("\n");
+{
+  // 清单损坏
+  const t = await bootChipPanel(LIST_BROKEN);
+  check("票02修正: 损坏时修正入口不常驻(收在展开层里)", !t.fix());
+  await t.openPop();
+  const fix = t.fix();
+  check("票02修正: 清单损坏 → 展开层有修正入口(data-deck-chip-fix)", !!fix);
+  check("票02修正: 是 button", !!fix && fix.tagName === "BUTTON");
+  eq("票02修正: 文案是「让 agent 修正清单」", fix ? textOf(fix) : null, "让 agent 修正清单");
+  check("票02修正: 在展开层末行(pop 最后一个子节点,错误说明之后)", !!fix && fix === t.pop().children[t.pop().children.length - 1]);
+  fireClick(fix);
+  await flush();
+  eq("票02修正: 损坏时发话恰好一条", t.sent.length, 1);
+  eq("票02修正: 损坏时全文(现状 = 已损坏并附解析错误)", t.sent[0], entryPrompt("清单已损坏，解析错误是「JSON 解析失败:Unexpected token } in JSON」。"));
+}
+{
+  // warnings 非空,活动项目是 home-repo
+  const t = await bootChipPanel(LIST_WITH_BAD);
+  await t.openPop();
+  const warns = qsa(t.pop(), "[data-deck-chip-warnrow]");
+  check("票02修正: 有跳过条目 → 展开层有修正入口", !!t.fix());
+  check("票02修正: 修正入口排在 warning 行之后", warns.length === 1 && !!t.fix() && warns[0].parentNode === t.fix().parentNode && warns[0].nextSibling === t.fix());
+  fireClick(t.fix());
+  await flush();
+  eq("票02修正: 有跳过条目时全文(现状 = 有几条被跳过并附条目名)", t.sent[0], entryPrompt("清单里有 1 条被跳过：bad。"));
+}
+{
+  // warnings 非空,活动项目是非 home 项目:修正入口免前言,普通动作仍带前言
+  const t = await bootChipPanel(LIST_TWO_BAD_FORGE_ACTIVE);
+  await t.openPop();
+  fireClick(t.fix());
+  await flush();
+  eq("票02修正: 非home活动时首行仍是 /setup-home-repo", (t.sent[0] || "").split("\n")[0], "/setup-home-repo");
+  check("票02修正: 非home活动时不带项目前言", !(t.sent[0] || "").includes("以下操作都在该项目内进行"), t.sent[0]);
+  eq("票02修正: 两条被跳过时全文(条目名并列)", t.sent[0], entryPrompt("清单里有 2 条被跳过：bad、dup。"));
+  t.st.injector("认领 04");
+  await flush();
+  eq("票02修正: 同一状态下普通动作照旧带项目前言", t.sent[1], "项目：forge（X:/forge）；以下操作都在该项目内进行。\n认领 04");
+}
+
+// ---------------------------------------------------------------------------
+// 切片 12(票 02):清单状态的自动感知 —— 清单状态跟着一条刷新拍重取,每拍至多一次
+// deck_project_list。本仓面板没有看板周期刷新可挂(旧层的 counts 轮询随 U06 删除),所以
+// 清单状态自成一拍;面板只认 deck_project_list 的回包,不为 .deck 加文件监听。清单落盘 → chip
+// 冒出来,清单被删 → 入口回来,清单损坏 → 修正入口出现,都不用重开面板。
+// ---------------------------------------------------------------------------
+{
+  const t = await bootChipPanel(LIST_MISSING);
+  eq("票02刷新: 面板起来那一次清单读取", t.listCalls().length, 1);
+  const tick = t.curChipTick();
+  check("票02刷新: 面板挂载即注册清单刷新拍(5000ms)", !!tick && tick.ms === 5000, JSON.stringify(intervals.slice(t.intervalsAtBoot).map((r) => ({ ms: r.ms, cleared: r.cleared }))));
+  check("票02刷新: (前置)本切片 boot 之前已经有别的面板留下的 5000ms 拍 —— 认拍必须按 boot 之后来", t.intervalsAtBoot > 0, String(t.intervalsAtBoot));
+  eq("票02刷新: 没到拍不重取", t.listCalls().length, 1);
+
+  // 这一拍不挑页签
+  const tabBtn = (id) => walk(t.surface).filter((n) => n.attributes["data-log"] === "panel.tab." + id && n.tagName === "BUTTON")[0];
+  fireClick(tabBtn("skills"));
+  await flush();
+  check("票02刷新: 这一拍不挑页签(切到技能页仍在)", !!(tick && !tick.cleared && t.curChipTick() === tick));
+  fireClick(tabBtn("list"));
+  await flush();
+
+  // 清单落盘:stub 的回包从 missing 变 ok;下一拍之前面板照旧
+  t.state.list = LIST_CLEAN;
+  check("票02刷新: 清单落盘后、下一拍之前,头部还是入口", !!t.entry() && !t.chip());
+  eq("票02刷新: 落盘本身不触发读取(面板不监听 .deck)", t.listCalls().length, 1);
+  await t.fireChipTick();
+  eq("票02刷新: 一拍恰好一次 deck_project_list", t.listCalls().length, 2);
+  check("票02刷新: 清单出现后 chip 冒出来", !!t.chip() && t.chipName() === "home");
+  check("票02刷新: 入口同时消失", !t.entry());
+  check("票02刷新: 冒出来的 chip 平时收起", !t.pop());
+
+  // 展开着、清单没变、过了一拍:展开层不该自己收起(用户正看着项目列表)。收起只发生在
+  // 清单身份变了的时候(出现/被删/损坏),见下。
+  await t.openPop();
+  check("票02刷新: (前置)chip 展开着", !!t.pop());
+  await t.fireChipTick();
+  check("票02刷新: 清单没变时展开层不会自己收起", !!t.pop());
+  await t.fireChipTick();
+  check("票02刷新: 连过两拍展开层仍然开着", !!t.pop());
+
+  // 展开着的 chip:清单被删 → chip 消失、入口回来;清单再出现时不会自己弹开
+  check("票02刷新: (前置)chip 已展开", !!t.pop());
+  t.state.list = LIST_MISSING;
+  await t.fireChipTick();
+  check("票02刷新: 清单被删后 chip 消失", !t.chip());
+  check("票02刷新: 清单被删后入口回来", !!t.entry() && textOf(t.entry()) === "＋ 项目");
+  t.state.list = LIST_BROKEN;
+  await t.fireChipTick();
+  check("票02刷新: chip 再出现时是收起的(展开态不跨清单留存)", !!t.chip() && !t.pop());
+  await t.openPop();
+  check("票02刷新: 清单损坏后展开层出现修正入口", !!t.fix());
+
+  // 页面隐藏:这一拍不取;回可见照常
+  const before = t.listCalls().length;
+  t.doc.visibilityState = "hidden";
+  await t.fireChipTick();
+  eq("票02刷新: 页面隐藏时这一拍不取", t.listCalls().length, before);
+  t.doc.visibilityState = "visible";
+  await t.fireChipTick();
+  eq("票02刷新: 页面回可见后照常取", t.listCalls().length, before + 1);
+}
+{
+  // 上一拍没回:后续拍不叠发
+  const t = await bootChipPanel(LIST_MISSING);
+  t.holdNextList();
+  await t.fireChipTick(); // 这一拍的读取挂起未回
+  await t.fireChipTick();
+  await t.fireChipTick();
+  eq("票02刷新: 上一拍未回时后续拍不叠发(一个周期内至多一次)", t.listCalls().length, 2);
+  t.releaseList();
+  await flush();
+  await t.fireChipTick();
+  eq("票02刷新: 上一拍落定后下一拍照常取", t.listCalls().length, 3);
+}
+{
+  // 点击在途不叠发:点了入口之后、这一拍刷新落定之前,再点不发;放行后能再点
+  const t = await bootChipPanel(LIST_MISSING);
+  const clickAgain = async () => {
+    fireClick(t.entry());
+    await flush();
+  };
+  await clickAgain();
+  eq("票02在途: 第一次点击发一条", t.sent.length, 1);
+  const entry = t.entry();
+  check("票02在途: 点击后入口进入在途(挂 dsws-pchip-busy)", !!entry && String(entry.attributes["class"]).includes("dsws-pchip-busy"), entry && entry.attributes["class"]);
+  eq("票02在途: 点击后入口禁点", entry ? entry.attributes.disabled : null, "true");
+  eq("票02在途: aria-busy 置真", entry ? entry.getAttribute("aria-busy") : null, "true");
+  await clickAgain();
+  await clickAgain();
+  eq("票02在途: 刷新落定前连点不叠发", t.sent.length, 1);
+  // 点入口时相位重新对齐:旧的那一枚拍被清掉,新的一枚从点击起算
+  // 只数本面板 boot 之后注册的(intervals 是全文件共享的累积数组,见 tickSince)
+  const mine = intervals.slice(t.intervalsAtBoot);
+  const live = mine.filter((r) => r.ms === 5000 && !r.cleared);
+  eq("票02在途: 点击后在跑的 5000ms 拍只有一枚(旧的已清)", live.length, 1);
+  eq("票02在途: 点击确实重新挂了拍(注册数 2 = boot 一枚 + 点击一枚)", mine.filter((r) => r.ms === 5000).length, 2);
+  await t.fireChipTick();
+  eq("票02在途: 这一拍落定后放行(入口不再在途)", t.entry() ? t.entry().attributes.disabled : "gone", undefined);
+  check("票02在途: 放行后不挂在途样式", !!t.entry() && !String(t.entry().attributes["class"]).includes("dsws-pchip-busy"));
+  await clickAgain();
+  eq("票02在途: 放行后能再点", t.sent.length, 2);
+}
+{
+  // 发送失败:没有请求在路上,立刻放行
+  const t = await bootChipPanel(LIST_MISSING);
+  t.st.injector = function () { return Promise.reject(new Error("桥断了")); };
+  await flush();
+  fireClick(t.entry());
+  await flush();
+  await flush();
+  eq("票02在途: 发送失败后入口已放行", t.entry() ? t.entry().attributes.disabled : "gone", undefined);
+  check("票02在途: 发送失败后不挂在途样式", !!t.entry() && !String(t.entry().attributes["class"]).includes("dsws-pchip-busy"));
+}
+{
+  // 修正入口与头部入口是同一个在途口径
+  const t = await bootChipPanel(LIST_BROKEN);
+  await t.openPop();
+  fireClick(t.fix());
+  await flush();
+  eq("票02在途: 修正入口点击发一条", t.sent.length, 1);
+  eq("票02在途: 修正入口随后禁点", t.fix() ? t.fix().attributes.disabled : null, "true");
+  fireClick(t.fix());
+  await flush();
+  eq("票02在途: 修正入口在途不叠发", t.sent.length, 1);
+}
+
+// ---------------------------------------------------------------------------
+// 切片 13(票 02):回退跟随 —— 刷新拍发现活动项目根变了(清单被手改,当前项目被移出),
+// 面板跟着整体重取,并把说明亮出来。只换 chip 不换看板会出现「chip 显示 home、列表还是
+// 旧项目的卡」,此时点写操作服务端已按 home 解析,会落到 home 的同号卡上。
+// ---------------------------------------------------------------------------
+const LIST_FORGE_ACTIVE = {
+  ok: true,
+  active: { name: "forge", path: "X:/forge", isHome: false },
+  home: HOME,
+  projects: [
+    { ...HOME, valid: true },
+    { name: "forge", path: "X:/forge", isHome: false, valid: true },
+  ],
+  warnings: [],
+  registry: { status: "ok", path: "X:/home/.deck/projects.json", error: null },
+  note: null,
+};
+{
+  // 变体一:这一拍自己触发落定,服务端在回包里带了说明
+  const t = await bootChipPanel(LIST_FORGE_ACTIVE, { root: "X:/forge" });
+  eq("票02回退: (前置)活动项目是 forge", t.chipName(), "forge");
+  eq("票02回退: (前置)面板的工作区根是 forge", t.st.workspaceRoot, "X:/forge");
+  const listCallsBefore = t.calls.filter((c) => c.name === "deck_issue_list").length;
+  t.state.root = "X:/home"; // workspace.json 资源的 root 现算为活动项目根,跟着回 home
+  t.state.list = {
+    ...LIST_CLEAN,
+    projects: [{ ...HOME, valid: true }], // forge 被从清单里删掉了
+    note: "活动项目「forge」已不在项目清单里(被移出或改名),回退到 home-repo。",
+  };
+  await t.fireChipTick();
+  eq("票02回退: chip 换成 home", t.chipName(), "home");
+  eq("票02回退: 面板的工作区根跟回 home", t.st.workspaceRoot, "X:/home");
+  check("票02回退: 看板数据整体重取(deck_issue_list 再取了一次)",
+    t.calls.filter((c) => c.name === "deck_issue_list").length === listCallsBefore + 1,
+    JSON.stringify({ before: listCallsBefore, after: t.calls.filter((c) => c.name === "deck_issue_list").length }));
+  check("票02回退: 说明自动打开展开层(不悄悄换项目)", !!t.pop());
+  const errs = qsa(t.pop() || t.surface, "[data-deck-chip-error]");
+  check("票02回退: 展开层里有说明", errs.length === 1 && textOf(errs[0]).includes("已不在项目清单里"), errs.map(textOf).join(" | "));
+}
+{
+  // 变体二:说明已被别的调用带走(agent 改完清单后按技能收尾先调过 deck_project_list),
+  // 这一拍只看到根变了、note 为空;上一个项目已不在清单里 → 面板用自己知道的事实说
+  const t = await bootChipPanel(LIST_FORGE_ACTIVE, { root: "X:/forge" });
+  t.state.root = "X:/home";
+  t.state.list = { ...LIST_CLEAN, projects: [{ ...HOME, valid: true }], note: null };
+  await t.fireChipTick();
+  eq("票02回退: note 为空时 chip 同样换回 home", t.chipName(), "home");
+  check("票02回退: note 为空时仍给出说明(上一个项目已不在清单里)", !!t.pop() && textOf(qsa(t.pop(), "[data-deck-chip-error]")[0] || {}).includes("已不在项目清单里"));
+}
+{
+  // 变体三:根没变(清单内容变了、活动项目没动)→ 不重取看板、不说明
+  const t = await bootChipPanel(LIST_FORGE_ACTIVE, { root: "X:/forge" });
+  const listCallsBefore = t.calls.filter((c) => c.name === "deck_issue_list").length;
+  t.state.list = LIST_TWO_BAD_FORGE_ACTIVE; // 多了两条被跳过的,活动项目仍是 forge
+  await t.fireChipTick();
+  eq("票02回退: 根没变时 chip 仍是 forge", t.chipName(), "forge");
+  eq("票02回退: 根没变时不重取看板", t.calls.filter((c) => c.name === "deck_issue_list").length, listCallsBefore);
+  check("票02回退: 根没变时展开层没有回退说明", !qsa(t.surface, "[data-deck-chip-error]").some((n) => textOf(n).includes("回退")));
+}
+{
+  // 变体四:清单整份坏掉 → 说明用清单读不出来那句
+  const t = await bootChipPanel(LIST_FORGE_ACTIVE, { root: "X:/forge" });
+  t.state.root = "X:/home";
+  t.state.list = { ...LIST_BROKEN, note: null };
+  await t.fireChipTick();
+  eq("票02回退: 清单损坏时 chip 换回 home", t.chipName(), "home");
+  const errs = qsa(t.pop() || t.surface, "[data-deck-chip-error]");
+  check("票02回退: 清单损坏时说明点名清单读不出来", errs.some((n) => textOf(n).includes("项目清单读不出来")), errs.map(textOf).join(" | "));
 }
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);

@@ -16,6 +16,7 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url))); // zcode-plugin/
 const BUNDLE = join(ROOT, "dist", "ui", "bundle-1.txt");
 
 let failures = 0;
+let bootedUpstream = null; // 靴起来的面板的公开对象,留给文件末尾收尾(面板挂载后有常驻定时器)
 function check(name, cond, detail = "") {
   if (cond) console.log(`ok - ${name}`);
   else {
@@ -307,6 +308,7 @@ async function bootInjectPanel(listReply) {
   const code = existsSync(BUNDLE) ? readFileSync(BUNDLE, "utf8") : "";
   new Function("window", "document", `"use strict";\n${code}`)(win, doc);
   const U = win.MattSkillsUpstream;
+  bootedUpstream = U; // 留给文件末尾收尾(U 是块作用域的)
   await U.boot({ client, doc, fetchData: true });
   await flush();
   const surface = doc.body.children[0];
@@ -439,3 +441,7 @@ if (failures > 0) {
   process.exit(1);
 }
 console.log("\n全部通过");
+// 0.6.1 起面板挂载后有一枚常驻定时器(清单状态刷新拍),事件循环不会自己清空。靴过面板的
+// 进程要显式收尾才退得出去,否则这套会打着「全部通过」一直挂着,把整条测试链卡在这里。
+if (bootedUpstream && bootedUpstream.projects && typeof bootedUpstream.projects.unmount === "function") bootedUpstream.projects.unmount();
+process.exit(0);

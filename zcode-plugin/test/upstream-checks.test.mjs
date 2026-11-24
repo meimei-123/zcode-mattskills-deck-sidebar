@@ -419,6 +419,9 @@ if (U) {
 
   // ---- 点「环境检查」页签:st.tab 切换 + 首次链取数(force=false) ----
   check("环境检查页签按钮在(panel.tab.checks)", !!tabBtn("panel.tab.checks"));
+  // 0.6.1 起面板挂载时另有一枚同节奏的清单状态拍,所以检查页可见拍按「点开检查页时新注册」
+  // 来认,不按节奏认 —— 认错拍会把清单重取当成检查重扫。
+  const intervalsBeforeChecks = intervals.length;
   fireClick(tabBtn("panel.tab.checks"));
   await settle();
   eq("页签壳状态:st.tab = checks", st && st.tab, "checks");
@@ -470,8 +473,8 @@ if (U) {
   check("没有恢复九格视图(wf.status 目录格)", qsa(surface, ".dsws-check-grid").length === 0 && !headText.includes("wf.status"));
 
   // ---- P1-1:检查页可见拍 —— 页签可见时每 5 秒自问一次真实重扫,离页即停 ----
-  const tickInterval = intervals.find((it) => it.ms === 5000);
-  check("打开检查页注册 5 秒可见拍(setInterval 5000ms)", !!tickInterval, JSON.stringify(intervals.map((it) => ({ ms: it.ms, cleared: it.cleared }))));
+  const tickInterval = intervals.slice(intervalsBeforeChecks).find((it) => it.ms === 5000);
+  check("打开检查页注册 5 秒可见拍(setInterval 5000ms)", !!tickInterval, JSON.stringify(intervals.slice(intervalsBeforeChecks).map((it) => ({ ms: it.ms, cleared: it.cleared }))));
   check("可见拍注册后未被清掉(页签仍在 checks)", !!tickInterval && !tickInterval.cleared);
 
   // 页面隐藏时这一拍跳过测量/重扫
