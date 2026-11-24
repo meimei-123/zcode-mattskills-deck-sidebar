@@ -2,7 +2,7 @@
 // list / get / counts 的返回、坏卡容忍与空态语义。沿用 scaffold.test.mjs 的 spawn 会话模式,无框架。
 // 工作区根经 ZCODE_WORKSPACE_ROOT 环境变量注入(模拟宿主 manifest 的 ${ZCODE_PROJECT_DIR})。
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -533,6 +533,54 @@ async function sliceSkillDoc() {
   }
 }
 await sliceSkillDoc();
+
+// ---------------------------------------------------------------------------
+// 切片 10:插件内置技能 setup-home-repo 随插件分发(m6 票 01)——
+//   ZCODE_PLUGIN_ROOT 指向本仓 zcode-plugin/(真实分发布局,不造替身目录):
+//   deck_skill_doc 读到它且来源是 plugin;deck_env_check 的技能根一步因此 done。
+//   空临时工作区 + 假 HOME 收窄其余三档技能根(工作区 .zcode/skills、~/.zcode/skills、
+//   ~/.agents/skills),两处结论只归因于插件内置档。
+// ---------------------------------------------------------------------------
+async function sliceBundledSkill() {
+  const base = mkdtempSync(join(tmpdir(), "deck-bundled-skill-"));
+  const ws = join(base, "ws");
+  const fakeHome = join(base, "home");
+  const fakeHomeEnv = { HOME: fakeHome, USERPROFILE: fakeHome, HOMEDRIVE: "", HOMEPATH: "" };
+  const skillFile = join(ROOT, "skills", "setup-home-repo", "SKILL.md");
+  const stepOf = (sc, id) => (sc.snapshot?.steps || []).find((s) => s.id === id);
+  try {
+    for (const p of [ws, fakeHome]) mkdirSync(p, { recursive: true });
+    const s = await startServer(ws, { ...fakeHomeEnv, ZCODE_PLUGIN_ROOT: ROOT });
+    try {
+      const r = await s.call("deck_skill_doc", { name: "setup-home-repo" });
+      const sc = r.result?.structuredContent || {};
+      check("bundled: 应答无错误", !r.error && !r.result?.isError, JSON.stringify(r.error || r.result?.isError));
+      check("bundled: setup-home-repo 读到原文 ok=true(不是 missing)",
+        sc.ok === true && typeof sc.md === "string" && sc.md.length > 0, JSON.stringify({ ok: sc.ok, reason: sc.reason }));
+      check("bundled: 来源是插件内置(source=plugin)", sc.source === "plugin", sc.source);
+      check("bundled: path 落在插件根 skills/setup-home-repo/SKILL.md", sc.path === skillFile, sc.path);
+      const raw = existsSync(skillFile) ? readFileSync(skillFile, "utf8") : "";
+      check("bundled: 回的是文件正文(文件头 frontmatter 已剥掉)",
+        raw.length > 0 && typeof sc.md === "string" && raw.endsWith(sc.md) && sc.md.length < raw.length && !/^\s*---/.test(sc.md),
+        JSON.stringify({ raw: raw.length, md: typeof sc.md === "string" ? sc.md.length : sc.md }));
+      check("bundled: 摘要点名来源 plugin",
+        /来源[:：]\s*plugin/.test(r.result?.content?.[0]?.text || ""), r.result?.content?.[0]?.text);
+
+      const e = await s.call("deck_env_check", {});
+      const esc = e.result?.structuredContent || {};
+      const skills = stepOf(esc, "env:skills");
+      check("bundled: deck_env_check 技能根一步 done(插件内置档算作可读)", skills?.status === "done", JSON.stringify(skills));
+      check("bundled: 可读技能根只有插件内置一处(结论不靠用户级技能根成立)",
+        /可读技能根 1 处/.test(String(skills?.show?.desc || "")) && String(skills?.show?.desc || "").includes("插件内置 skills"),
+        JSON.stringify(skills?.show));
+    } finally {
+      await s.stop();
+    }
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}
+await sliceBundledSkill();
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);
 process.exit(failures === 0 ? 0 : 1);
