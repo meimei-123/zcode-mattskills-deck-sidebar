@@ -736,6 +736,10 @@ function apply(ctx) {
   let registryTickArmed = false; // DeckBody 在不在(卸载后拍不再重挂)
   let registryTickBusy = false; // 上一拍的读取还没回:后续拍不叠发
   let entryRelease = null; // 清单入口的在途放行函数(在途时非空)
+  // 列表跟随:面板上这份数据对应的数据修订号。undefined = 还不知道(首帧没拿到,或读失败过),
+  // 这时不拿它去比,只把下一次读到的数记下来当基准。
+  let deckRevision = undefined;
+  let deckTickBusy = false; // 上一次 deckTick 还没跑完(读得慢时下一拍不叠发)
   const chipToggle = function (e) {
     if (deckChip.busy) return; // 在途禁点:busy 时不展开/收起(不因点击错乱展开层)
     try {
@@ -993,6 +997,10 @@ function apply(ctx) {
     React.useEffect(function () {
       registryTickArmed = true;
       armRegistryTick();
+      // 列表跟随:页面转回可见立即补一格,不等下一拍 —— 用户刚切回来,最想看到的就是最新状态。
+      if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+        document.addEventListener("visibilitychange", onVisibilityChange);
+      }
       return disarmRegistryTick;
     }, []);
     // 页签折叠机(工单 01:上游 panel/Dock.ts 的 applyFold 逐字移植;tabsRef 已由 useTabsRow 持有)。
@@ -1123,6 +1131,7 @@ function apply(ctx) {
     ));
     st.snapMode = "real"; // 快照已到手(上游 hydrateFromCache 同款拨位)
     st.workspaceRoot = data.workspaceRoot || st.cwd;
+    deckRevision = data.revision; // 列表跟随:首帧的修订号就是基准
     // U05:注入通道 —— 上游 inject(st, text) 读 st.injector(缺席时降级复制到剪贴板);
     // ZCode 等价物 = ui/message 桥发进当前对话(与旧 UI 动作栏同一条桥)。
     // 票 05:收口包一层项目前言(见上方 projectActionText 补件;上游动作模板零改动)。
@@ -1158,6 +1167,27 @@ function apply(ctx) {
   // 本补件只多管两件事:看板数据随根重取;上一项目的导航与详情缓存就地清掉(issueCache
   // /issueDetail/activeIssue/activeMap/navStack 回初始值 —— 看板缓存不跨项目)。
   // 票 04 的 chip 点击(deck_project_use 成功后整体重取)走这里。
+  // 列表跟随(0.6.1):取一份看板数据写回既有 store。只换数据不换状态 —— ingestSnapshot 的
+  // 返回里只有快照与工作区根,导航栈、筛选、当前开着的卡都不在里面,所以用户正开着的东西
+  // 原样保留。成功返回取到的数据(带 revision),失败返回 null、store 一字不动。
+  // 周期刷新(清单状态拍里发现修订号变了)与切项目(refreshActiveProject)共用这一处。
+  const applyDeckData = function (st, data, root) {
+    if (!st || !data) return null;
+    try {
+      Object.assign(
+        st,
+        ingestSnapshot(
+          { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: root },
+          { planDeckCounts: planDeckCounts, rowCountsOf: rowCountsOf }
+        )
+      );
+    } catch (e) {
+      if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 看板数据写回失败:", e);
+      return null;
+    }
+    st.snapMode = "real";
+    return data;
+  };
   const refreshActiveProject = function (target) {
     const st = target || (deckPanelState.st || null);
     if (!st || !clientRef) return Promise.resolve(null);
@@ -1166,13 +1196,11 @@ function apply(ctx) {
       const root = workspace && workspace.root ? String(workspace.root) : st.cwd;
       const data = await fetchDeckData(clientRef);
       if (!data) return st;
+      if (!applyDeckData(st, data, root)) return st;
+      deckRevision = data.revision; // 列表跟随:换项目后以新项目的修订号为基准
       const fresh = makeStore();
       Object.assign(
         st,
-        ingestSnapshot(
-          { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: root },
-          { planDeckCounts: planDeckCounts, rowCountsOf: rowCountsOf }
-        ),
         {
           cwd: root,
           workspaceRoot: root,
@@ -1298,6 +1326,50 @@ function apply(ctx) {
   // 清单状态自成一拍:面板在就跑,不挑页签;页面隐藏跳过;上一拍未回、或切项目在途时跳过,
   // 每拍至多一次 deck_project_list。面板只认回包,不为 .deck 加文件监听。
   // 节奏同检查页可见拍(config/intervals.yaml 的 probeIntervalMs)。
+  // ---- 列表跟随(0.6.1):看板数据的修订号比对 ----
+  // 面板没有看板的周期刷新是 0.3.0 起的既有缺陷:U06 删旧面板层时把 counts 轮询一起删了,
+  // 上游复刻没补回。agent 建卡、改状态、外部编辑器改文件之后,面板要切一次项目或重开会话
+  // 才看得到。这里并进清单状态那一拍(同节奏、同生命周期、同互斥),不另起定时器:
+  // 每拍读一次 deck_issue_counts(轻量,只回三个数和修订号),修订号与基准不同才拉整套数据。
+  // 重取走 applyDeckData,只换数据,用户开着的卡、筛选、导航栈原样保留。
+  // 基准只在重取成功后更新:重取失败时基准不动,下一拍发现修订号仍然不同,会再试一次。
+  const deckTick = async function () {
+    if (deckTickBusy) return;
+    const st = deckPanelState.st || null;
+    const client = clientRef;
+    if (!st || !client || typeof client.callTool !== "function") return;
+    // 这一格是给「此刻的工作区」拉的。中途切了项目,取回来的数据就不归这个 store 了。
+    const rootAtStart = String(st.workspaceRoot || st.cwd || "");
+    deckTickBusy = true;
+    try {
+      let res;
+      try {
+        res = await client.callTool("deck_issue_counts", {});
+      } catch (e) {
+        return; // 读失败:保留已显示的内容,下一拍再试
+      }
+      if (!res || res.isError || !res.structuredContent) return;
+      const seen = res.structuredContent.revision;
+      if (!Number.isFinite(seen)) return; // 服务端没给修订号:不比,也不动基准
+      if (deckRevision === undefined) {
+        deckRevision = seen; // 还不知道基准:这一次读到的数就是基准,不据此重取
+        return;
+      }
+      if (seen === deckRevision) return;
+      const data = await fetchDeckData(client);
+      if (!data) return; // 重取失败:store 一字不动,基准也不动
+      // 重取在途期间可能切了项目(切项目走 refreshActiveProject,自己重取并换基准)。那时这份
+      // 取给旧项目的数据不能写回去,基准也不归这里管。凭工作区根判断,不凭 busy —— 切换结束
+      // 时 busy 就清了,迟到的重取往往在那之后才回来。
+      if (String(st.workspaceRoot || st.cwd || "") !== rootAtStart || deckChip.busy) return;
+      if (!applyDeckData(st, data, rootAtStart)) return;
+      // 基准取重取拿到的修订号;取不到才退回重取之前读到的那个
+      deckRevision = Number.isFinite(data.revision) ? data.revision : seen;
+      rerenderPanels();
+    } finally {
+      deckTickBusy = false;
+    }
+  };
   const registryTick = function () {
     if (registryTickBusy || deckChip.busy) return;
     registryTickBusy = true;
@@ -1312,6 +1384,7 @@ function apply(ctx) {
     };
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return settle();
     try {
+      deckTick(); // 列表跟随:与清单状态的读取并行,自己吞失败
       const p = loadProjectChip();
       if (p && typeof p.then === "function") p.then(settle, settle);
       else settle();
@@ -1328,8 +1401,15 @@ function apply(ctx) {
     registryTickId = setInterval(registryTick, REGISTRY_TICK_MS);
   };
   // 停拍并放行在途的清单入口。DeckBody 卸载时的收尾与对外的 unmount() 共用这一处。
+  const onVisibilityChange = function () {
+    if (typeof document === "undefined" || document.visibilityState === "hidden") return;
+    registryTick();
+  };
   const disarmRegistryTick = function () {
     registryTickArmed = false;
+    if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+      try { document.removeEventListener("visibilitychange", onVisibilityChange); } catch (e) { /* 忽略 */ }
+    }
     if (registryTickId !== null) {
       try { clearInterval(registryTickId); } catch (e) { /* 忽略 */ }
       registryTickId = null;
@@ -1554,6 +1634,9 @@ async function fetchDeckData(client) {
     ]);
     const rows = (listRes && listRes.structuredContent && listRes.structuredContent.rows) || [];
     const counts = (countsRes && countsRes.structuredContent && countsRes.structuredContent.counts) || null;
+    // 数据修订号:面板靠它判断磁盘上的卡片有没有变(列表跟随)。读不到时为 undefined,
+    // 调用方按「未知」处理,不拿它去比。
+    const revision = countsRes && countsRes.structuredContent && Number.isFinite(countsRes.structuredContent.revision) ? countsRes.structuredContent.revision : undefined;
     // 标签色板(deck_issue_list_labels)单独容忍缺席:拿不到时 ingest 回落行面聚合,
     // 卡面标签墨块退缺省紫,不算失败。
     let labels = null;
@@ -1569,7 +1652,7 @@ async function fetchDeckData(client) {
     } catch (e2) {
       void e2; // 色板缺席走聚合兜底
     }
-    return { rows: rows, counts: counts, labels: labels };
+    return { rows: rows, counts: counts, labels: labels, revision: revision };
   } catch (e) {
     if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 工具数据拉取失败:", e);
     return null;
@@ -1594,7 +1677,7 @@ async function boot(deps) {
   const data = d.deckData || (d.fetchData === true ? await fetchDeckData(client) : null);
   if (data && showDeckDataRef) {
     try {
-      showDeckDataRef({ rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: (workspace && workspace.root) || "" });
+      showDeckDataRef({ rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: (workspace && workspace.root) || "", revision: data.revision });
     } catch (e) {
       if (typeof console !== "undefined" && console.warn) console.warn("[upstream] ingest 接驳失败:", e);
     }

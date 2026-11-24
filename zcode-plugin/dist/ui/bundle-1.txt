@@ -43886,6 +43886,8 @@ ${formatProgressEntry(entry)}
     let registryTickArmed = false;
     let registryTickBusy = false;
     let entryRelease = null;
+    let deckRevision = void 0;
+    let deckTickBusy = false;
     const chipToggle = function(e3) {
       if (deckChip.busy) return;
       try {
@@ -44125,6 +44127,9 @@ ${formatProgressEntry(entry)}
       React.useEffect(function() {
         registryTickArmed = true;
         armRegistryTick();
+        if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+          document.addEventListener("visibilitychange", onVisibilityChange);
+        }
         return disarmRegistryTick;
       }, []);
       React.useEffect(function() {
@@ -44232,6 +44237,7 @@ ${formatProgressEntry(entry)}
       ));
       st.snapMode = "real";
       st.workspaceRoot = data.workspaceRoot || st.cwd;
+      deckRevision = data.revision;
       try {
         if (clientRef && typeof clientRef.sendMessage === "function") {
           st.injector = function(text2) {
@@ -44261,6 +44267,23 @@ ${formatProgressEntry(entry)}
       rerenderPanels();
       return st;
     };
+    const applyDeckData = function(st, data, root) {
+      if (!st || !data) return null;
+      try {
+        Object.assign(
+          st,
+          ingestSnapshot(
+            { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: root },
+            { planDeckCounts, rowCountsOf }
+          )
+        );
+      } catch (e3) {
+        if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 看板数据写回失败:", e3);
+        return null;
+      }
+      st.snapMode = "real";
+      return data;
+    };
     const refreshActiveProject = function(target) {
       const st = target || (deckPanelState.st || null);
       if (!st || !clientRef) return Promise.resolve(null);
@@ -44269,13 +44292,11 @@ ${formatProgressEntry(entry)}
         const root = workspace && workspace.root ? String(workspace.root) : st.cwd;
         const data = await fetchDeckData(clientRef);
         if (!data) return st;
+        if (!applyDeckData(st, data, root)) return st;
+        deckRevision = data.revision;
         const fresh = makeStore();
         Object.assign(
           st,
-          ingestSnapshot(
-            { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: root },
-            { planDeckCounts, rowCountsOf }
-          ),
           {
             cwd: root,
             workspaceRoot: root,
@@ -44365,6 +44386,38 @@ ${formatProgressEntry(entry)}
         return true;
       });
     };
+    const deckTick = async function() {
+      if (deckTickBusy) return;
+      const st = deckPanelState.st || null;
+      const client = clientRef;
+      if (!st || !client || typeof client.callTool !== "function") return;
+      const rootAtStart = String(st.workspaceRoot || st.cwd || "");
+      deckTickBusy = true;
+      try {
+        let res;
+        try {
+          res = await client.callTool("deck_issue_counts", {});
+        } catch (e3) {
+          return;
+        }
+        if (!res || res.isError || !res.structuredContent) return;
+        const seen = res.structuredContent.revision;
+        if (!Number.isFinite(seen)) return;
+        if (deckRevision === void 0) {
+          deckRevision = seen;
+          return;
+        }
+        if (seen === deckRevision) return;
+        const data = await fetchDeckData(client);
+        if (!data) return;
+        if (String(st.workspaceRoot || st.cwd || "") !== rootAtStart || deckChip.busy) return;
+        if (!applyDeckData(st, data, rootAtStart)) return;
+        deckRevision = Number.isFinite(data.revision) ? data.revision : seen;
+        rerenderPanels();
+      } finally {
+        deckTickBusy = false;
+      }
+    };
     const registryTick = function() {
       if (registryTickBusy || deckChip.busy) return;
       registryTickBusy = true;
@@ -44377,6 +44430,7 @@ ${formatProgressEntry(entry)}
       };
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return settle();
       try {
+        deckTick();
         const p3 = loadProjectChip();
         if (p3 && typeof p3.then === "function") p3.then(settle, settle);
         else settle();
@@ -44395,8 +44449,18 @@ ${formatProgressEntry(entry)}
       }
       registryTickId = setInterval(registryTick, REGISTRY_TICK_MS);
     };
+    const onVisibilityChange = function() {
+      if (typeof document === "undefined" || document.visibilityState === "hidden") return;
+      registryTick();
+    };
     const disarmRegistryTick = function() {
       registryTickArmed = false;
+      if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+        try {
+          document.removeEventListener("visibilitychange", onVisibilityChange);
+        } catch (e3) {
+        }
+      }
       if (registryTickId !== null) {
         try {
           clearInterval(registryTickId);
@@ -44658,6 +44722,7 @@ ${formatProgressEntry(entry)}
       ]);
       const rows = listRes && listRes.structuredContent && listRes.structuredContent.rows || [];
       const counts = countsRes && countsRes.structuredContent && countsRes.structuredContent.counts || null;
+      const revision = countsRes && countsRes.structuredContent && Number.isFinite(countsRes.structuredContent.revision) ? countsRes.structuredContent.revision : void 0;
       let labels = null;
       try {
         const lr = await client.callTool("deck_issue_list_labels", {});
@@ -44671,7 +44736,7 @@ ${formatProgressEntry(entry)}
         }
       } catch (e22) {
       }
-      return { rows, counts, labels };
+      return { rows, counts, labels, revision };
     } catch (e3) {
       if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 工具数据拉取失败:", e3);
       return null;
@@ -44694,7 +44759,7 @@ ${formatProgressEntry(entry)}
     const data = d3.deckData || (d3.fetchData === true ? await fetchDeckData(client) : null);
     if (data && showDeckDataRef) {
       try {
-        showDeckDataRef({ rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: workspace && workspace.root || "" });
+        showDeckDataRef({ rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: workspace && workspace.root || "", revision: data.revision });
       } catch (e3) {
         if (typeof console !== "undefined" && console.warn) console.warn("[upstream] ingest 接驳失败:", e3);
       }

@@ -189,8 +189,20 @@ function createFakeDom() {
     return n;
   };
   doc.createDocumentFragment = () => createFakeNode(11, "#fragment");
-  doc.addEventListener = () => {};
-  doc.removeEventListener = () => {};
+  // document 级事件登记(列表跟随用:面板在 visibilitychange 时立即补一格)。原先这里是空函数,
+  // 登记了也没法派发;现在记下来,测试可经 doc.__fireVisibility() 触发。
+  const docListeners = {};
+  doc.addEventListener = (t, fn) => {
+    (docListeners[t] = docListeners[t] || []).push(fn);
+  };
+  doc.removeEventListener = (t, fn) => {
+    const a = docListeners[t] || [];
+    const i = a.indexOf(fn);
+    if (i >= 0) a.splice(i, 1);
+  };
+  doc.__fireVisibility = () => {
+    for (const fn of (docListeners.visibilitychange || []).slice()) fn({ type: "visibilitychange" });
+  };
   doc.head = createFakeNode(1, "head");
   doc.body = createFakeNode(1, "body");
   doc.head.ownerDocument = doc;
@@ -351,7 +363,8 @@ const USE_REJECTED = {
 async function bootChipPanel(listReply, opts = {}) {
   const intervalsAtBoot = intervals.length;
   const doc = createFakeDom();
-  const state = { root: opts.root || "X:/home", list: listReply };
+  // deck:看板数据的回放位(列表修复用:rows 与 revision 可编排)。默认与原先写死的空行一致。
+  const state = { root: opts.root || "X:/home", list: listReply, deck: { rows: [], revision: 1 } };
   const calls = [];
   const reads = [];
   const useCalls = [];
@@ -359,6 +372,10 @@ async function bootChipPanel(listReply, opts = {}) {
   let releaseUse = null;
   let holdList = false; // 票 02:把下一次 deck_project_list 的回包挂起,演「上一拍未回」
   let releaseList = null;
+  let holdDeckList = false; // 列表跟随:把下一次 deck_issue_list 的回包挂起,演「重取在途」
+  let releaseDeckList = null;
+  let holdCounts = false; // 把下一次 deck_issue_counts 的回包挂起,演「上一拍没回」
+  let releaseCounts = null;
   const useMode = opts.useMode || "hold"; // hold=挂起等测试放行;reject=回 isError;ok=立即成功
   const client = {
     readResource: async (uri) => {
@@ -407,8 +424,28 @@ async function bootChipPanel(listReply, opts = {}) {
           },
         };
       }
-      if (name === "deck_issue_list") return { structuredContent: { rows: [], revision: 1 } };
-      if (name === "deck_issue_counts") return { structuredContent: { counts: { open: 0, closed: 0, total: 0 }, revision: 1 } };
+      if (name === "deck_issue_list") {
+        if (holdDeckList) {
+          holdDeckList = false;
+          // 回包在挂起这一刻固定:之后测试改了 state.deck,这份也还是「当时」的数据
+          const held = { structuredContent: { rows: state.deck.rows, revision: state.deck.revision } };
+          return new Promise((resolve) => {
+            releaseDeckList = () => resolve(held);
+          });
+        }
+        if (state.deck.listError) return { isError: true, content: [{ type: "text", text: "读工作区时出错:磁盘被占" }] };
+        return { structuredContent: { rows: state.deck.rows, revision: state.deck.revision } };
+      }
+      if (name === "deck_issue_counts") {
+        if (state.deck.countsError) return { isError: true, content: [{ type: "text", text: "读工作区时出错:磁盘被占" }] };
+        if (holdCounts) {
+          holdCounts = false;
+          return new Promise((resolve) => {
+            releaseCounts = resolve;
+          });
+        }
+        return { structuredContent: { counts: state.deck.counts || { open: state.deck.rows.length, closed: 0, total: state.deck.rows.length }, revision: state.deck.revision } };
+      }
       if (name === "deck_issue_list_labels") return { structuredContent: { labels: [], colors: {} } };
       throw new Error("no tool " + name);
     },
@@ -450,6 +487,24 @@ async function bootChipPanel(listReply, opts = {}) {
       if (r) r({ structuredContent: state.list });
     },
     listCalls: () => calls.filter((c) => c.name === "deck_project_list"),
+    deckListCalls: () => calls.filter((c) => c.name === "deck_issue_list"),
+    countsCalls: () => calls.filter((c) => c.name === "deck_issue_counts"),
+    holdNextDeckList: () => {
+      holdDeckList = true;
+    },
+    releaseDeckList: () => {
+      const r = releaseDeckList;
+      releaseDeckList = null;
+      if (r) r();
+    },
+    holdNextCounts: () => {
+      holdCounts = true;
+    },
+    releaseCounts: (reply) => {
+      const r = releaseCounts;
+      releaseCounts = null;
+      if (r) r(reply || { structuredContent: { counts: { open: 0, closed: 0, total: 0 }, revision: state.deck.revision } });
+    },
     intervalsAtBoot,
     // 本面板的清单刷新拍(只认 boot 之后注册的)
     curChipTick: () => tickSince(intervalsAtBoot),
@@ -1031,6 +1086,193 @@ const LIST_FORGE_ACTIVE = {
   eq("票02回退: 清单损坏时 chip 换回 home", t.chipName(), "home");
   const errs = qsa(t.pop() || t.surface, "[data-deck-chip-error]");
   check("票02回退: 清单损坏时说明点名清单读不出来", errs.some((n) => textOf(n).includes("项目清单读不出来")), errs.map(textOf).join(" | "));
+}
+
+// ---------------------------------------------------------------------------
+// 切片 14(列表跟随):面板没有看板的周期刷新是 0.3.0 起的既有缺陷 —— U06 删旧面板层时把
+// counts 轮询一起删了,上游复刻没补回。agent 建卡、改状态、外部编辑器改文件之后,面板要切
+// 一次项目或重开会话才看得到。修法:并进清单状态那一拍(同节奏、同生命周期、同互斥),每拍
+// 读一次 deck_issue_counts,revision 变了才重取看板;重取只换数据,用户开着的卡、筛选、
+// 导航栈原样保留。
+// 行数据是 test/fixtures/u04-list 经真解析器(thinRow)生成的,不手编形状:
+//   U04_ROWS_A 原样;U04_ROWS_B 是外部编辑之后的样子 —— dogfood-test/01 被关掉、
+//   新增 dogfood-test/04(fixture 里 03 已被占用;编号唯一是卡片文件的既有约束)。
+// ---------------------------------------------------------------------------
+const U04_ROWS_A = [{"key":"00","effortId":"dogfood-done","type":"map","title":"kernel 域搬入","state":"open","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0},{"key":"01","effortId":"dogfood-done","type":"issue","title":"kernel 域语言族闭包","state":"closed","labels":[],"parentKey":"00","blockedBy":[],"commentCount":0,"assignees":[]},{"key":"02","effortId":"dogfood-done","type":"issue","title":"counts 对拍测试","state":"closed","labels":[],"parentKey":"00","blockedBy":[],"commentCount":0,"assignees":[]},{"key":"00","effortId":"dogfood-empty","type":"map","title":"详情页侦查","state":"open","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0},{"key":"00","effortId":"dogfood-spec","type":"spec","title":"面板保真度规格","state":"open","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0},{"key":"01","effortId":"dogfood-spec","type":"issue","title":"规格子票执行","state":"open","labels":[{"name":"ready-for-agent","color":"","description":""}],"parentKey":"00","blockedBy":[],"commentCount":0,"assignees":[]},{"key":"00","effortId":"dogfood-test","type":"map","title":"列表页搬入地图","state":"open","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0,"destination":"把上游列表页搬进 ZCode 面板。"},{"key":"01","effortId":"dogfood-test","type":"issue","title":"拼接骨架立起来","state":"open","labels":[{"name":"bug","color":"","description":""}],"parentKey":"00","blockedBy":[],"commentCount":0,"assignees":[]},{"key":"02","effortId":"dogfood-test","type":"issue","title":"工具数据接上游状态机","state":"open","labels":[{"name":"needs-triage","color":"","description":""}],"parentKey":"00","blockedBy":[{"key":"01","title":"拼接骨架立起来","state":"open"}],"commentCount":0,"assignees":[]},{"key":"03","effortId":"dogfood-test","type":"issue","title":"面板壳上线","state":"closed","labels":[],"parentKey":"00","blockedBy":[],"commentCount":0,"assignees":[]},{"key":"01","effortId":"m2-planning","type":"issue","title":"U04 列表页上线","state":"open","labels":[{"name":"ready-for-agent","color":"","description":""}],"parentKey":null,"blockedBy":[],"commentCount":0,"assignees":[]},{"key":"02","effortId":"m2-planning","type":"issue","title":"U05 详情页","state":"open","labels":[{"name":"needs-triage","color":"","description":""}],"parentKey":null,"blockedBy":[],"commentCount":0,"assignees":[{"login":"dev","kind":"user"}]},{"key":"03","effortId":"m2-planning","type":"issue","title":"评审修复","state":"closed","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0,"assignees":[]},{"key":"04","effortId":"m2-planning","type":"issue","title":"遗留跟进","state":"closed","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0,"assignees":[]},{"key":"05","effortId":"m2-planning","type":"issue","title":"架构记录","state":"closed","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0,"assignees":[]}];
+const U04_ROWS_B = [{"key":"00","effortId":"dogfood-done","type":"map","title":"kernel 域搬入","state":"open","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0},{"key":"01","effortId":"dogfood-done","type":"issue","title":"kernel 域语言族闭包","state":"closed","labels":[],"parentKey":"00","blockedBy":[],"commentCount":0,"assignees":[]},{"key":"02","effortId":"dogfood-done","type":"issue","title":"counts 对拍测试","state":"closed","labels":[],"parentKey":"00","blockedBy":[],"commentCount":0,"assignees":[]},{"key":"00","effortId":"dogfood-empty","type":"map","title":"详情页侦查","state":"open","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0},{"key":"00","effortId":"dogfood-spec","type":"spec","title":"面板保真度规格","state":"open","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0},{"key":"01","effortId":"dogfood-spec","type":"issue","title":"规格子票执行","state":"open","labels":[{"name":"ready-for-agent","color":"","description":""}],"parentKey":"00","blockedBy":[],"commentCount":0,"assignees":[]},{"key":"00","effortId":"dogfood-test","type":"map","title":"列表页搬入地图","state":"open","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0,"destination":"把上游列表页搬进 ZCode 面板。"},{"key":"01","effortId":"dogfood-test","type":"issue","title":"拼接骨架立起来","state":"closed","labels":[{"name":"bug","color":"","description":""}],"parentKey":"00","blockedBy":[],"commentCount":0,"assignees":[]},{"key":"02","effortId":"dogfood-test","type":"issue","title":"工具数据接上游状态机","state":"open","labels":[{"name":"needs-triage","color":"","description":""}],"parentKey":"00","blockedBy":[{"key":"01","title":"拼接骨架立起来","state":"open"}],"commentCount":0,"assignees":[]},{"key":"03","effortId":"dogfood-test","type":"issue","title":"面板壳上线","state":"closed","labels":[],"parentKey":"00","blockedBy":[],"commentCount":0,"assignees":[]},{"key":"01","effortId":"m2-planning","type":"issue","title":"U04 列表页上线","state":"open","labels":[{"name":"ready-for-agent","color":"","description":""}],"parentKey":null,"blockedBy":[],"commentCount":0,"assignees":[]},{"key":"02","effortId":"m2-planning","type":"issue","title":"U05 详情页","state":"open","labels":[{"name":"needs-triage","color":"","description":""}],"parentKey":null,"blockedBy":[],"commentCount":0,"assignees":[{"login":"dev","kind":"user"}]},{"key":"03","effortId":"m2-planning","type":"issue","title":"评审修复","state":"closed","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0,"assignees":[]},{"key":"04","effortId":"m2-planning","type":"issue","title":"遗留跟进","state":"closed","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0,"assignees":[]},{"key":"05","effortId":"m2-planning","type":"issue","title":"架构记录","state":"closed","labels":[],"parentKey":null,"blockedBy":[],"commentCount":0,"assignees":[]},{"key":"04","effortId":"dogfood-test","type":"issue","title":"外部编辑新加的一张卡","state":"open","labels":[],"parentKey":"00","blockedBy":[],"commentCount":0,"assignees":[]}];
+const deckOf = (rows, revision) => ({ rows, revision });
+/** 某工作单元下各票的「编号:状态」,排好序,用来断言列表数据跟着磁盘变。 */
+// store 里状态是大写(上游 prepareRow 的归一),容器行(编号 0)也在 snapshot.issues 里 —— 这里只看票,状态转小写比。
+const ticketRows = (st) => (st.snapshot.issues || []).filter((i) => i.type === "issue");
+const issueStates = (st, effortId) =>
+  ticketRows(st)
+    .filter((i) => i.effortId === effortId)
+    .map((i) => String(i.number).padStart(2, "0") + ":" + String(i.state).toLowerCase())
+    .sort();
+const issueTitles = (st) => ticketRows(st).map((i) => i.title);
+const bootWithDeck = async (rows, revision, opts) => {
+  const t = await bootChipPanel(LIST_CLEAN, opts);
+  // 舱在 boot 时回的是默认的空行;把真行数据喂进去,再走一次整体重取让面板吃到
+  t.state.deck = deckOf(rows, revision);
+  await t.U.projects.refreshActiveProject();
+  await flush();
+  return t;
+};
+{
+  // 块 A:卡片被外部改了(agent 改状态、建新卡)→ 下一拍列表跟着变
+  const t = await bootWithDeck(U04_ROWS_A, 1);
+  eq("列表跟随: (前置)启动时吃到 A 版数据", issueStates(t.st, "dogfood-test"), ["01:open", "02:open", "03:closed"]);
+  check("列表跟随: (前置)还没有外部编辑新加的那张卡", !issueTitles(t.st).includes("外部编辑新加的一张卡"));
+  const listsBefore = t.deckListCalls().length;
+  t.state.deck = deckOf(U04_ROWS_B, 2); // 磁盘变了:一张被关、一张新建,服务端 revision 推进
+  await t.fireChipTick();
+  eq("列表跟随: revision 变了之后重取了一次看板", t.deckListCalls().length, listsBefore + 1);
+  eq("列表跟随: 被关掉的那张在列表里变成 closed", issueStates(t.st, "dogfood-test"), ["01:closed", "02:open", "03:closed", "04:open"]);
+  check("列表跟随: 外部新加的卡出现在列表里", issueTitles(t.st).includes("外部编辑新加的一张卡"), issueTitles(t.st).join(" | "));
+  eq("列表跟随: 票的行数跟着变", ticketRows(t.st).length, U04_ROWS_B.filter((r) => r.type === "issue").length);
+}
+{
+  // 块 B:revision 没变就不重取(每 5 秒一次的是一次轻量的 counts,不是整套数据)
+  const t = await bootWithDeck(U04_ROWS_A, 1);
+  const lists = t.deckListCalls().length;
+  const counts = t.countsCalls().length;
+  await t.fireChipTick();
+  await t.fireChipTick();
+  await t.fireChipTick();
+  eq("列表跟随: revision 没变 → 连过三拍不重取看板", t.deckListCalls().length, lists);
+  eq("列表跟随: 每拍读一次 counts(三拍三次)", t.countsCalls().length, counts + 3);
+}
+{
+  // 块 C:重取只换数据 —— 用户开着的卡、筛选、导航栈原样保留。直接在 store 上摆出
+  // 「用户正看着一张卡、设了筛选」,让 revision 变,再看这些字段还在不在。
+  const t = await bootWithDeck(U04_ROWS_A, 1);
+  t.st.stateFilter = "closed";
+  t.st.lblFilters = ["bug"];
+  t.st.activeIssue = 2;
+  t.st.activeEffortId = "dogfood-test";
+  t.st.navStack = [{ kind: "issue", n: 2, effortId: "dogfood-test" }];
+  const navBefore = JSON.stringify(t.st.navStack);
+  t.state.deck = deckOf(U04_ROWS_B, 2);
+  await t.fireChipTick();
+  eq("列表跟随: 重取后看板数据是新的", issueStates(t.st, "dogfood-test"), ["01:closed", "02:open", "03:closed", "04:open"]);
+  eq("列表跟随: 重取后用户的状态筛选还在", t.st.stateFilter, "closed");
+  eq("列表跟随: 重取后用户的标签筛选还在", JSON.stringify(t.st.lblFilters), JSON.stringify(["bug"]));
+  eq("列表跟随: 重取后用户开着的卡还在", t.st.activeIssue, 2);
+  eq("列表跟随: 重取后工作单元还在", t.st.activeEffortId, "dogfood-test");
+  eq("列表跟随: 重取后导航栈原样(没被清空)", JSON.stringify(t.st.navStack), navBefore);
+  eq("列表跟随: 重取后面板仍在同一个工作区根", t.st.workspaceRoot, "X:/home");
+}
+{
+  // 块 D:页面隐藏不取;转回可见立即补一格(不等下一拍)
+  const t = await bootWithDeck(U04_ROWS_A, 1);
+  t.doc.visibilityState = "hidden";
+  const lists = t.deckListCalls().length;
+  const counts = t.countsCalls().length;
+  t.state.deck = deckOf(U04_ROWS_B, 2);
+  await t.fireChipTick();
+  await t.fireChipTick();
+  eq("列表跟随: 页面隐藏时这一拍不读 counts", t.countsCalls().length, counts);
+  eq("列表跟随: 页面隐藏时不重取看板", t.deckListCalls().length, lists);
+  t.doc.visibilityState = "visible";
+  t.doc.__fireVisibility();
+  await flush();
+  await flush();
+  eq("列表跟随: 转回可见立即补一格(不用等下一拍)", issueStates(t.st, "dogfood-test"), ["01:closed", "02:open", "03:closed", "04:open"]);
+}
+{
+  // 块 E:切项目在途时这一拍不碰看板(两个重取会打架,后返回的可能把新项目的数据盖成旧项目的)
+  const t = await bootWithDeck(U04_ROWS_A, 1);
+  const lists = t.deckListCalls().length;
+  fireClick(t.chip());
+  await flush();
+  fireClick(t.itemOf("forge")); // 切项目,deck_project_use 挂起
+  await flush();
+  check("列表跟随: (前置)切项目在途", String(t.chip().attributes["class"]).includes("dsws-pchip-busy"));
+  t.state.deck = deckOf(U04_ROWS_B, 2);
+  await t.fireChipTick();
+  eq("列表跟随: 切项目在途时这一拍不重取看板", t.deckListCalls().length, lists);
+}
+{
+  // 块 F:这一拍 counts 读失败 → 不重取、保留已显示的内容、不进错误态(下一拍再试)
+  const t = await bootWithDeck(U04_ROWS_A, 1);
+  const lists = t.deckListCalls().length;
+  t.state.deck = deckOf(U04_ROWS_B, 2); // 磁盘已经变了,只是这一拍 counts 读失败
+  t.state.deck.countsError = true;
+  await t.fireChipTick();
+  eq("列表跟随: counts 读失败时不重取看板", t.deckListCalls().length, lists);
+  eq("列表跟随: counts 读失败时保留已显示的内容", issueStates(t.st, "dogfood-test"), ["01:open", "02:open", "03:closed"]);
+  check("列表跟随: counts 读失败时不进错误态", t.st.issueMode !== "error" && !String(textOf(t.surface)).includes("读工作区时出错"), String(textOf(t.surface)).slice(0, 80));
+  delete t.state.deck.countsError;
+  await t.fireChipTick();
+  eq("列表跟随: 下一拍读成功后照常跟上", issueStates(t.st, "dogfood-test"), ["01:closed", "02:open", "03:closed", "04:open"]);
+}
+{
+{
+  // 块 H(竞态):看板数据的重取在途时,用户切了项目。切项目会自己重取并换基准;重取在途的
+  // 那一份是给旧项目拉的,回来时不能写回 store —— 否则会把新项目的数据盖成旧项目的,
+  // 还把基准改成旧项目的修订号。切换结束时 busy 已经清掉,所以不能只靠 busy 挡。
+  const t = await bootWithDeck(U04_ROWS_A, 1);
+  t.state.deck = deckOf(U04_ROWS_B, 2); // home 的磁盘变了
+  t.holdNextDeckList();
+  await t.fireChipTick(); // 这一拍:发现修订号变了,开始重取,deck_issue_list 被挂住
+  await flush();
+  await flush();
+  check("列表跟随·竞态: (前置)重取在途(deck_issue_list 被挂住)", !!t.state && t.deckListCalls().length >= 2, String(t.deckListCalls().length));
+  // 用户此刻切到 forge:切换自己重取一次(正常返回),然后 busy 清掉
+  t.state.root = "X:/forge";
+  t.state.list = USE_OK_FORGE;
+  t.state.deck = deckOf(U04_ROWS_A, 50); // forge 的数据:01 是 open
+  fireClick(t.chip());
+  await flush();
+  fireClick(t.itemOf("forge"));
+  await flush();
+  t.releaseUse({ structuredContent: USE_OK_FORGE });
+  await flush();
+  await flush();
+  eq("列表跟随·竞态: (前置)已切到 forge", t.chipName(), "forge");
+  eq("列表跟随·竞态: (前置)看板是 forge 的数据", issueStates(t.st, "dogfood-test"), ["01:open", "02:open", "03:closed"]);
+  check("列表跟随·竞态: (前置)切换已结束(不在途)", !String(t.chip().attributes["class"]).includes("dsws-pchip-busy"), t.chip() && t.chip().attributes["class"]);
+  // 放开挂住的那一份:它是 home 的 B 版数据(01 是 closed),回来得比切换晚
+  t.releaseDeckList();
+  await flush();
+  await flush();
+  await flush();
+  eq("列表跟随·竞态: 迟到的旧项目重取没有盖掉新项目的数据", issueStates(t.st, "dogfood-test"), ["01:open", "02:open", "03:closed"]);
+  eq("列表跟随·竞态: 面板仍在 forge", t.st.workspaceRoot, "X:/forge");
+  check("列表跟随·竞态: 外部编辑新加的那张卡(home 的)没有串进 forge 的列表", !issueTitles(t.st).includes("外部编辑新加的一张卡"), issueTitles(t.st).join(" | "));
+  // 基准也必须是 forge 的(50):home 那边再怎么变,都不该触发 forge 的重取
+  const lists = t.deckListCalls().length;
+  await t.fireChipTick();
+  await t.fireChipTick();
+  eq("列表跟随·竞态: 基准仍是 forge 的修订号(没有迟到的那份改成 home 的)", t.deckListCalls().length, lists);
+  t.state.deck = deckOf(U04_ROWS_B, 51); // forge 那边变了
+  await t.fireChipTick();
+  eq("列表跟随·竞态: 新项目修订号变了照常跟上", t.deckListCalls().length, lists + 1);
+}
+  // 块 G:切到别的项目后,revision 的基准换成那个项目的 —— 新项目的 revision 比旧项目小
+  // 也不该被当成「变了」而立刻误重取一次
+  const t = await bootWithDeck(U04_ROWS_A, 40);
+  const listsAfterBoot = t.deckListCalls().length;
+  t.state.root = "X:/forge";
+  t.state.list = USE_OK_FORGE;
+  t.state.deck = deckOf(U04_ROWS_B, 7); // 另一个项目,revision 更小
+  fireClick(t.chip());
+  await flush();
+  fireClick(t.itemOf("forge"));
+  await flush();
+  t.releaseUse({ structuredContent: USE_OK_FORGE });
+  await flush();
+  await flush();
+  eq("列表跟随: (前置)已切到 forge", t.chipName(), "forge");
+  eq("列表跟随: (前置)看板是 forge 的数据", issueStates(t.st, "dogfood-test"), ["01:closed", "02:open", "03:closed", "04:open"]);
+  const lists = t.deckListCalls().length;
+  eq("列表跟随: 切换本身只重取一次", lists, listsAfterBoot + 1);
+  await t.fireChipTick();
+  await t.fireChipTick();
+  eq("列表跟随: 换项目后以新项目的 revision 为基准,不误重取", t.deckListCalls().length, lists);
+  t.state.deck = deckOf(U04_ROWS_A, 8); // forge 那边变了
+  await t.fireChipTick();
+  eq("列表跟随: 新项目 revision 变了照常跟上", t.deckListCalls().length, lists + 1);
 }
 
 console.log(failures === 0 ? "\n全部通过" : `\n${failures} 项失败`);
