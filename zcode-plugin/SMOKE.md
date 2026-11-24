@@ -21,14 +21,17 @@
 | 2k | 子模块/维护/迁移/配置钩子/诊断/平台各页 | 按上游能力账本渲染;只读页出数,写页预检签票;缺外部工具/能力时回诚实说明 | server-git-admin 覆盖(维护/迁移/配置钩子/诊断/平台);server-git-history 覆盖(子模块) |
 | 2l | 换到另一个工作区再切回 | VC 读数与写状态整体复位:分支/差异/任务面板不串仓 | **待人工(真机)**(跨工作区复位无自动化断言) |
 | 2m | 点列表里的地图/规格行 | 进上游 V2 地图详情页:顶栏(返回/面包屑/三态主按钮)、档案区(标题/目的地/进度/「本图 N 张子票（已关闭 C 张）」)、子票卡片流(在办/可接/被挡/已完成,含快照里没有的已关闭子票);点档案进这张图自己的详情页,返回逐级弹回,再返回回列表 | upstream-list(M4 切片:进页/档案/取数/卡片流/档案跳转/返回)、upstream-mapdetail(十三叶与接线)、server-map(电话契约与目的地解析) |
-| 2n | 准备两份工作区对照:先不开清单打开面板,再在 home-repo 根放 `.deck/projects.json`(至少一条同机绝对路径 + 一条相对路径,再故意放一条坏条目如指向不存在的目录) | 无清单时头部没有 chip,面板与 0.5.0 逐字一致;有清单时头部右侧出现项目 chip,显示活动项目(home-repo);坏条目被跳过,chip 转警告态,展开层末尾附跳过原因 | server-project(清单缺失/坏条目/坏 JSON/相对路径解析)、upstream-chip(隐藏/三态/warning 行)覆盖 |
-| 2o | 点 chip 展开,点选另一个项目 | 展开层 home-repo 第一、有效项可点;切换后 chip 换名并打勾,切换在途禁点;列表/计数/详情来自新项目,home-repo 的卡片文件一字不动;卡片 key 仍是项目内 `effort/NN` | server-project、server-project-writes、upstream-chip(点选切换/整体重取)覆盖 |
-| 2p | 切换后走三页:版本管理(改动/历史)、环境检查、再回列表 | 版本管理页回到初始视图并读新仓(分支/改动是新仓的,越界 cwd 被拒);环境检查链按新项目根组(git:repo 反映新根,技能步不变);看板继续跟随磁盘变化(切到新项目后改它的卡片,面板自动跟上) | server-git-project(桥根随活动项目/路径边界)、server-project-writes(监听重挂/切换恰好 +1)、upstream-versioncontrol(切换复位)覆盖 |
+| 2n | 先不开清单打开面板;再在 home-repo 根放 `.deck/projects.json`(至少一条同机绝对路径 + 一条相对路径,再故意放一条坏条目如指向不存在的目录) | 无清单时头部没有 chip,chip 的位置是「＋ 项目」入口(0.6.1 起;0.6.0 及之前这里什么都没有);有清单时入口消失,头部右侧出现项目 chip,显示活动项目(home-repo);坏条目被跳过,chip 转警告态,展开层附跳过原因,末行是「让 agent 修正清单」 | server-project(清单缺失/坏条目/坏 JSON/相对路径解析)、upstream-chip(入口/三态/warning 行/修正入口)覆盖 |
+| 2o | 点 chip 展开,点选另一个项目 | 展开层 home-repo 第一、有效项目可点;切换后 chip 换名并打勾,切换在途禁点;列表/计数/详情来自新项目,home-repo 的卡片文件一字不动;卡片 key 仍是项目内 `effort/NN` | server-project、server-project-writes、upstream-chip(点选切换/整体重取)覆盖 |
+| 2p | 切换后走三页:版本管理(改动/历史)、环境检查、再回列表 | 版本管理页回到初始视图并读新仓(分支/改动是新仓的,越界 cwd 被拒);环境检查链按新项目根组(git:repo 反映新根,技能步不变)。切到新项目后改它的卡片,面板**不会**自己跟上——面板目前没有看板的周期刷新(见「未自动化」里的既有缺陷),要切一次项目或重开会话 | server-git-project(桥根随活动项目/路径边界)、server-project-writes(监听重挂/切换恰好 +1)、upstream-versioncontrol(切换复位)覆盖 |
 | 2q | 从新项目卡片点动作按钮(领取/实施/诊断) | 发进对话的 prompt 恰好前置一行「项目:<name>(<项目根>);以下操作都在该项目内进行。」,其后动作模板与上游一致;切回 home-repo 后同一按钮不再带前言 | upstream-inject 覆盖(前置一行/不叠加/逐字放行) |
 | 2r | 版本管理页发起危险动作(如重置)只出预检签票、不确认,直接点 chip 切项目 | 切换被拒,人话说明要确认执行或等票据过期(最多 120 秒);确认执行(凭票)或等票据过期后可切;切到当前项目本身不受影响 | server-git-project(哨兵布防/结清/幂等 noop 不挡)覆盖 |
-| 2s | 切回 home-repo;再手改清单:删掉或改名当前活动项目条目后,任做一次操作(如刷新列表) | 切回 home-repo 正常,头部与看板回 home-repo;活动项目不在清单后,下一次操作自动回退 home-repo 并在回包/面板说明原因 | server-project(现读回退)、server-project-writes(同名改路径下一次用新路径)覆盖 |
+| 2s | 切回 home-repo;再手改清单:删掉或改名当前活动项目条目(先切到它再删),等几个刷新周期 | 切回 home-repo 正常,头部与看板回 home-repo;正在看的项目被移出清单后,面板最迟约 5 秒自动回退 home-repo、看板跟着重取,展开层自动打开并说明原因(不悄悄换项目) | server-project(现读回退)、server-project-writes(同名改路径下一次用新路径)、upstream-chip(回退跟随四种变体)覆盖 |
+| 2t | 没有清单的 home-repo(如 dtz-team-repo),点头部「＋ 项目」 | 对话里出现一条请求,首行是 `/setup-home-repo`,带工作区根与清单路径;点完到下一次刷新落定前入口变淡禁点,连点只发一条 | upstream-chip(入口发话全文/在途不叠发/修正入口免项目前言)覆盖 |
+| 2u | 接 2t:看 agent 执行 setup-home-repo | 先调 `deck_project_list`;从 `AGENTS.md` 的产品线地图抽出项目指针并逐个核实;给出候选表(建议短名/路径/出处/佐证),文档里没写的项目靠同级目录兜底列出;**停下等确认**;确认后才写 `.deck/projects.json`;最后用 `deck_project_list` 验证到警告为空。默认不改 `AGENTS.md` 与 `.gitignore` | **待人工(真机)**(技能驱动 agent 的行为无法自动化) |
+| 2v | 接 2u:清单落盘后不碰面板;之后把清单整份删掉 | 最迟约 5 秒头部冒出项目 chip、入口消失,不用重开会话;清单删掉后 chip 消失、入口回来;清单展开着等几个刷新周期不会自己收起 | upstream-chip(刷新拍/清单出现·被删·损坏三态/展开层不自收)覆盖 |
 | 3 | 对 agent 说"用 /to-tickets 在 m1-core-board 下建几张测试卡" | agent 调 `deck_issue_create`,卡片落盘 `.scratch/m1-core-board/issues/` | server-write 覆盖 |
-| 4 | 看板(不刷新面板) | 防抖后自动出现新卡;计数胶囊条变 | live-refresh 覆盖 |
+| 4 | 看板(不刷新面板) | **现状:面板不会自己跟上。** 服务端的监听与修订号在推进(`deck_issue_counts` 的 revision 会变),但现面板没有看板的周期刷新,新卡要切一次项目或重开会话才出现。这是 0.3.0 起的既有缺陷,单独立票待分诊,不在 0.6.1 范围内 | live-refresh 覆盖的是服务端监听与 revision,不是面板跟随 |
 | 5 | 点开一张卡 | 详情:元行/正文/评论时间线;长文折叠可展开 | upstream-detail 覆盖 |
 | 6 | 详情里写评论并提交 | "已写入"反馈;时间线追加 `### 谁 — ISO时间` 块;文件尾追加、正文未动 | upstream-detail 评论提交回环 + server-write 覆盖 |
 | 7 | 点动作按钮(如"诊断") | 对话框收到 prompt(首行命令+卡号/标题/路径,模板已展开) | upstream-detail 动作发话覆盖 |
@@ -47,11 +50,35 @@
 - 版本管理页的真机观感(窄侧栏/宽页签):四枚页签行是否折叠得当,改动/历史/工作树三视图与差异区在窄档是否可读、无横向溢出。截图备料在工作区本地(不入库),偏差由人工目检裁定。**待人工**
 - 地图详情页的真机观感:档案区标题/目的地/进度条在窄档是否折行得当;子票卡片流的四段顺序与卡片密度;点档案进 IssueDetail 的面包屑与逐级返回。**待人工**
 - 地图详情页在「一张子票都没有」与「取数失败」两态:档案区应显示占位短横与原因截断,不显示假的 0 张;真机断网可试。**待人工**
-- 跨项目切换真机复走(0.6.0):在 dtz-team-repo 装 0.6.0,配 `.deck/projects.json`(示例见 `.scratch/m5-project-switch/spec.md` Further Notes:dsh-forge 同机绝对路径、jxkh/ehm/fw-bench 相对路径),按 2n–2s 走一遍:chip 出现与三态 → chip 切到 dsh-forge → 列表/版本管理/环境检查三页跟随 → 从 dsh-forge 卡片点动作,prompt 首行带 dsh-forge 根与「以下操作都在该项目内进行」→ 写一张卡确认落盘在 dsh-forge、摘要带项目名 → 版本页危险预检未结时拒切 → 切回 home-repo。重点确认:相对路径在同构目录布局下解析正确、junction 指同一板只出现一次、清单手改后不重开即生效。**待人工**
+- 跨项目切换真机复走(0.6.0 的 2n–2s,装 0.6.1 一并走):在 dtz-team-repo 配 `.deck/projects.json`(手写或走 2t–2u 让 agent 建),按 2n–2s 走一遍:chip 出现与三态 → chip 切到 dsh-forge → 列表/版本管理/环境检查三页跟随 → 从 dsh-forge 卡片点动作,prompt 首行带 dsh-forge 根与「以下操作都在该项目内进行」→ 写一张卡确认落盘在 dsh-forge、摘要带项目名 → 版本页危险预检未结时拒切 → 切回 home-repo。重点确认:相对路径在同构目录布局下解析正确、junction 指同一板只出现一次、清单手改后不重开即生效。**待人工**
+- 插件自带的技能宿主认不认(0.6.1 的第一个确认点):装上后对 agent 说一句"列出你能用的技能里有 setup-home-repo 吗",或直接输 `/setup-home-repo`;认不到就说明宿主不把本地市场源插件的 `skills/` 当技能,2t 的请求首行会解析失败——届时把技能正文内联进请求作为回退。另调一次 `deck_skill_doc({name:"setup-home-repo"})`,`source` 是 `plugin` 说明 MCP 进程拿得到插件根。**待人工**
+- 清单入口的真机观感(0.6.1):无清单时头部「＋ 项目」入口是否足够低调、不抢标题;窄侧栏收成「＋」后仍可点;清单损坏时展开层末行的「让 agent 修正清单」与警告行是否分得清。**待人工**
+- **既有缺陷,已立票待分诊**:面板不跟随 `.scratch/` 的磁盘变化(0.3.0 删旧面板层时把 counts 轮询一起删了,上游复刻没补回)。表现是 agent 建卡、改状态后面板不刷新。0.6.1 只给清单状态加了刷新拍,没有顺手修它。见工作区 `.scratch/panel-live-refresh/issues/01`。
 - 真实远端(https/ssh)的凭据提示与失败话术:自动化只用本地 bare 仓与静默 TCP 冒充;真远端要确认凭据助手提示、超时与失败文案是否诚实。**待人工**
 - `git-filter-repo` 等外部工具缺席时的提示:历史改写/维护页应回上游的诚实错误(说明缺什么),不静默失败。**待人工**
 - 非 git 工作区的「不是仓库」引导态:真机要在协调根这类非 git 工作区确认 VC 页给引导而不是报错。**待人工**
 - (可选)双击工作区本地的 m1-ui-preview.html 原型副本对照快照原型(U06 已随新 UI 重生成;源在 ui-preview 分支 `zcode-plugin/prototype/`);差异以真机为准——原型是一次性快照,不随代码日常更新。**待人工**
+
+## 自动化实测记录(m6 收口,0.6.1,2026-11-24,离线)
+
+集成分支两票合并后的树(票 01 技能随插件分发 + 票 02 清单入口),真实退出码 0。
+
+| 面 | 跑法 | 结果 |
+|---|---|---|
+| 构建 | `node build.mjs` | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html;bundle-1.txt code.length=2369711(UTF-16 码元),2525838 字节;dist/git.mjs 与 0.6.0 逐字节相同(955015 码元,1021356 字节);src 与 dist 的 server/registry/watch/env-check 四件逐字节同步 |
+| 测试 | `npm test` | ✓ 二十五套 2392 断言全绿(scaffold 83 / server-read 132 / server-map 34 / server-project 51 / server-project-writes 49 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 191 / upstream-mapdetail 78 / upstream-detail 90 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 318 / upstream-chip 170 / upstream-inject 22 / server-git 35 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106 / server-git-project 26)。相对 0.6.0 的 2253:scaffold +30、server-read +8、upstream-chip +101,其余 22 套不变 |
+| 技能产物 | scaffold(真 YAML 解析器读 frontmatter) | ✓ manifest 带 `"skills": "skills"`、MCP env 透传 `ZCODE_PLUGIN_ROOT`;`skills/setup-home-repo/SKILL.md` 的 frontmatter 只有 name 与 description、name 与目录名一致、不设 disable-model-invocation;description 写清三个触发场景;正文按节钉住契约串(探索读序、指针形态、排除项、候选表、停下等确认、对账三类差异、条目规则、验证到警告为空、默认不改 AGENTS.md 与 .gitignore) |
+| 技能可读 | server-read(`ZCODE_PLUGIN_ROOT` 指向插件根,假 HOME 收窄另外三档) | ✓ `deck_skill_doc({name:"setup-home-repo"})` 读到原文、来源是 plugin、path 落在插件根;`deck_env_check` 技能根一步因此 done,且可读技能根只有插件内置一处 |
+| 清单入口 | upstream-chip(真 bundle + 假 DOM + 可控定时器桩) | ✓ 无清单时头部有「＋ 项目」入口、无 chip;有清单时入口不渲染;入口是 button、带 title/aria-label、落在 chip 的位置、不在页签行里。点入口发出的文本首行 `/setup-home-repo`,带工作区根、清单路径、现状三态之一;不带项目前言。清单损坏、有条目被跳过时展开层末行是修正入口,发同一段请求;清单完好时没有修正入口。活动项目是非 home 项目时修正入口仍免前言,同一状态下普通动作照旧带前言 |
+| 在途 | upstream-chip | ✓ 点击后入口挂 busy、禁点、aria-busy 置真;刷新落定前连点只发一条;点击后重新对齐拍的相位(在跑的 5000ms 拍只有一枚);落定后放行、能再点;发送失败立刻放行;修正入口与头部入口同一个在途口径 |
+| 清单状态拍 | upstream-chip | ✓ 面板挂载即注册 5000ms 拍;不挑页签(切到技能页仍在);每拍至多一次 `deck_project_list`;上一拍未回时后续拍不叠发、落定后下一拍照常;页面隐藏不取、回可见照常。清单落盘后下一拍 chip 冒出来、入口消失;清单被删后 chip 消失、入口回来;清单损坏后展开层出现修正入口。清单身份变了(出现/被删/损坏)展开态归位;清单没变时展开着连过两拍不会自己收起。bundle 没有 `.deck` 文件监听 |
+| 回退跟随 | upstream-chip | ✓ 活动项目根变了:chip 换回 home、面板工作区根跟回、`deck_issue_list` 再取一次、说明自动打开展开层。四种变体:回包带说明 / 说明已被别的调用带走(note 为空,上一个项目已不在清单里,面板用自己知道的事实说)/ 根没变时不重取、不说明 / 清单整份坏掉时说明点名清单读不出来 |
+| 认拍的口径 | upstream-chip、upstream-checks | ✓ 两套都改成只认「本面板 boot 之后 / 点开检查页之后新注册的」拍。原先全表按 5000ms 找:chip 套里「面板挂载即注册刷新拍」在实现之前就是假绿(认到了前面切片留下的检查页可见拍);加了清单拍之后 checks 套反过来认错拍,4 条红。改后两套断言数:chip 170、checks 63(不变) |
+| 期望随规格变更的断言 | upstream-chip | 两条只改期望、条目保留:无清单时头部子元素 1→2(标题 + 入口);warning 行从 pop 最后一个子节点变成倒数第二个(修正入口是最后一行)。依据是规格「面板入口」一节,ADR-0003 的 m6 修订记录登记为对两条原决定的修订 |
+| 面板常驻定时器 | upstream-inject | ✓ 清单状态拍是面板第一枚常驻定时器,Node 里靴面板的进程事件循环不再自己清空:该套原先靠自然退出,改动后打着「全部通过」挂死,把整条测试链卡在第 19 套。bundle 公开对象上加 `unmount()`,该套收尾调它再退出,进程退出码 0。其余十套靴面板的套件本就显式 `process.exit`,不受影响 |
+| 版本 | 双清单 + scaffold(先改断言验红,再升双清单转绿) | ✓ plugin.json / marketplace.json / scaffold 断言均 0.6.1;package.json 保持 0.1.0;重建后产物零变化 |
+
+**验红与验绿时踩的两个假信号,留作提醒**:后台任务通知里的「exit code 0」是 shell 包装的退出码,测试的真实结果要把 `exit=$?` 写进日志再看;`node test | grep ...; echo $?` 取到的是 `grep` 的退出码,要把输出重定向到文件、直接取 node 进程的 `$?`。本段的数字都是按这两条复核过的。
 
 ## 自动化实测记录(m5 收口,0.6.0,2026-11-21,离线)
 
