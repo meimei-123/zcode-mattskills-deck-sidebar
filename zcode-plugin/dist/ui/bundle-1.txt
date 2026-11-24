@@ -44416,6 +44416,7 @@ ${formatProgressEntry(entry)}
       rerenderPanels();
       const finish = function() {
         deckChip.busy = false;
+        if (entryRelease) entryRelease();
         rerenderPanels();
       };
       client.callTool("deck_project_use", { name: String(name) }).then(function(res) {

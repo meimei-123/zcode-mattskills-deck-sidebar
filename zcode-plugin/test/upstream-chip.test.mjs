@@ -929,6 +929,32 @@ const entryPrompt = (state) =>
   await flush();
   eq("票02在途: 修正入口在途不叠发", t.sent.length, 1);
 }
+{
+  // 在途的修正入口 × 切项目:点了修正入口之后、那一拍到来之前,用户又点了展开层里的项目。
+  // 切项目在途时刷新拍整拍跳过,在途入口等的那次「落定」就不会来;切完之后入口必须自己
+  // 放行,不能一直禁点到面板卸载。
+  const t = await bootChipPanel(LIST_TWO_BAD_FORGE_ACTIVE);
+  t.state.root = "X:/forge";
+  await t.openPop();
+  fireClick(t.fix());
+  await flush();
+  eq("票02在途×切换: (前置)修正入口点击发一条", t.sent.length, 1);
+  eq("票02在途×切换: (前置)修正入口在途", t.fix() ? t.fix().attributes.disabled : null, "true");
+  fireClick(t.itemOf("home")); // 切项目,deck_project_use 挂起(stub 默认 hold)
+  await flush();
+  check("票02在途×切换: (前置)切项目在途", !!t.chip() && String(t.chip().attributes["class"]).includes("dsws-pchip-busy"), t.chip() && t.chip().attributes["class"]);
+  await t.fireChipTick(); // 切换在途:这一拍整拍跳过
+  t.state.root = "X:/home";
+  t.state.list = { ...LIST_TWO_BAD_FORGE_ACTIVE, active: { ...HOME }, note: null };
+  t.releaseUse({ structuredContent: { ...LIST_TWO_BAD_FORGE_ACTIVE, active: { ...HOME }, note: null } });
+  await flush();
+  await flush();
+  eq("票02在途×切换: 切换完成后 chip 是 home", t.chipName(), "home");
+  eq("票02在途×切换: 切换完成后修正入口已放行(没有一直禁点)", t.fix() ? t.fix().attributes.disabled : null, undefined);
+  fireClick(t.fix());
+  await flush();
+  eq("票02在途×切换: 放行后修正入口能再点", t.sent.length, 2);
+}
 
 // ---------------------------------------------------------------------------
 // 切片 13(票 02):回退跟随 —— 刷新拍发现活动项目根变了(清单被手改,当前项目被移出),

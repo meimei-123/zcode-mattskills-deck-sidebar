@@ -1346,6 +1346,9 @@ function apply(ctx) {
     rerenderPanels();
     const finish = function () {
       deckChip.busy = false;
+      // 切项目在途时刷新拍整拍跳过,在途的清单入口等的那次「落定」不会来。切换落定时清单
+      // 状态已经由切换回包刷过一遍,入口等的其实就是这个,所以在这里放行它。
+      if (entryRelease) entryRelease();
       rerenderPanels();
     };
     client
