@@ -61,12 +61,12 @@
 
 ## 自动化实测记录(m6 收口,0.6.1,2026-11-24,离线)
 
-集成分支的终态(票 01 技能随插件分发 + 票 02 清单入口 + 票 03 收口 + 评审的两处修复),真实退出码 0。
+集成分支的终态(票 01 技能随插件分发 + 票 02 清单入口 + 票 03 收口 + 评审的两处修复 + 列表跟随的修复),真实退出码 0。
 
 | 面 | 跑法 | 结果 |
 |---|---|---|
 | 构建 | `node build.mjs` | ✓ dist/ui 只余 assets.json / bundle-1.txt / panel.html;bundle-1.txt code.length=2369711(UTF-16 码元),2525838 字节;dist/git.mjs 与 0.6.0 逐字节相同(955015 码元,1021356 字节);src 与 dist 的 server/registry/watch/env-check 四件逐字节同步 |
-| 测试 | `npm test` | ✓ 二十五套 2400 断言全绿(scaffold 83 / server-read 132 / server-map 34 / server-project 51 / server-project-writes 49 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 191 / upstream-mapdetail 78 / upstream-detail 90 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 318 / upstream-chip 178 / upstream-inject 22 / server-git 35 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106 / server-git-project 26)。相对 0.6.0 的 2253:scaffold +30、server-read +8、upstream-chip +109(其中 8 条是评审两处修复的切片),其余 22 套不变 |
+| 测试 | `npm test` | ✓ 二十五套 2438 断言全绿(scaffold 83 / server-read 132 / server-map 34 / server-project 51 / server-project-writes 49 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-list 191 / upstream-mapdetail 78 / upstream-detail 90 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 318 / upstream-chip 216 / upstream-inject 22 / server-git 35 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106 / server-git-project 26)。相对 0.6.0 的 2253:scaffold +30、server-read +8、upstream-chip +147(其中 8 条是评审两处修复的切片、38 条是列表跟随的切片),其余 22 套不变 |
 | 技能产物 | scaffold(真 YAML 解析器读 frontmatter) | ✓ manifest 带 `"skills": "skills"`、MCP env 透传 `ZCODE_PLUGIN_ROOT`;`skills/setup-home-repo/SKILL.md` 的 frontmatter 只有 name 与 description、name 与目录名一致、不设 disable-model-invocation;description 写清三个触发场景;正文按节钉住契约串(探索读序、指针形态、排除项、候选表、停下等确认、对账三类差异、条目规则、验证到警告为空、默认不改 AGENTS.md 与 .gitignore) |
 | 技能可读 | server-read(`ZCODE_PLUGIN_ROOT` 指向插件根,假 HOME 收窄另外三档) | ✓ `deck_skill_doc({name:"setup-home-repo"})` 读到原文、来源是 plugin、path 落在插件根;`deck_env_check` 技能根一步因此 done,且可读技能根只有插件内置一处 |
 | 清单入口 | upstream-chip(真 bundle + 假 DOM + 可控定时器桩) | ✓ 无清单时头部有「＋ 项目」入口、无 chip;有清单时入口不渲染;入口是 button、带 title/aria-label、落在 chip 的位置、不在页签行里。点入口发出的文本首行 `/setup-home-repo`,带工作区根、清单路径、现状三态之一;不带项目前言。清单损坏、有条目被跳过时展开层末行是修正入口,发同一段请求;清单完好时没有修正入口。活动项目是非 home 项目时修正入口仍免前言,同一状态下普通动作照旧带前言 |
@@ -76,6 +76,7 @@
 | 认拍的口径 | upstream-chip、upstream-checks | ✓ 两套都改成只认「本面板 boot 之后 / 点开检查页之后新注册的」拍。原先全表按 5000ms 找:chip 套里「面板挂载即注册刷新拍」在实现之前就是假绿(认到了前面切片留下的检查页可见拍);加了清单拍之后 checks 套反过来认错拍,4 条红。改后两套断言数:chip 170、checks 63(不变) |
 | 期望随规格变更的断言 | upstream-chip | 两条只改期望、条目保留:无清单时头部子元素 1→2(标题 + 入口);warning 行从 pop 最后一个子节点变成倒数第二个(修正入口是最后一行)。依据是规格「面板入口」一节,ADR-0003 的 m6 修订记录登记为对两条原决定的修订 |
 | 面板常驻定时器 | upstream-inject | ✓ 清单状态拍是面板第一枚常驻定时器,Node 里靴面板的进程事件循环不再自己清空:该套原先靠自然退出,改动后打着「全部通过」挂死,把整条测试链卡在第 19 套。bundle 公开对象上加 `unmount()`,该套收尾调它再退出,进程退出码 0。其余十套靴面板的套件本就显式 `process.exit`,不受影响 |
+| 列表跟随 | upstream-chip(行数据取自 test/fixtures/u04-list 经真解析器生成) | ✓ 面板没有看板的周期刷新是 0.3.0 起的既有缺陷(U06 删旧面板层时把 counts 轮询一起删了),并入 0.6.1 修掉:清单状态拍每拍多读一次 deck_issue_counts,修订号变了才重取看板。七块:卡片被外部改了下一拍列表跟着变 / 修订号没变连过三拍不重取(每拍只读一次 counts) / 重取只换数据,状态筛选、标签筛选、开着的卡、工作单元、导航栈原样保留 / 页面隐藏不取、转回可见立即补一格 / 切项目在途这一拍不碰看板 / counts 读失败不重取、保留已显示的内容、不进错误态、下一拍跟上 / 切项目后以新项目的修订号为基准不误重取。竞态一块:重取在途时切项目,迟到的旧项目重取既不盖掉新项目的数据、也不动基准 |
 | 版本 | 双清单 + scaffold(先改断言验红,再升双清单转绿) | ✓ plugin.json / marketplace.json / scaffold 断言均 0.6.1;package.json 保持 0.1.0;重建后产物零变化 |
 
 **评审修掉的两处(都在回退跟随与在途窗口的交互上,自动化原先照不到)**:

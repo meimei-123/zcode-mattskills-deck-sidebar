@@ -27,7 +27,7 @@ zcode-plugin/
 │   ├── skill-roots.mjs          # 技能根单一真源(工作区→用户→插件内置)
 │   └── git-entry.mjs            # Node 六服务垫片(subprocess/timer/fs/gate/logCtx/平台)
 ├── build.mjs / build-upstream.mjs / build-git.mjs   # 三段构建,见下
-└── test/                        # 25 套 2400 断言(0.6.1)
+└── test/                        # 25 套 2438 断言(0.6.1)
 ```
 
 运行时一条数据流:
