@@ -2,6 +2,20 @@
 
 MattSkills Deck(DSH)在 ZCode 桌面端的侧栏移植:官方 UI Plugin(`ui.surfaces` + 同进程 MCP stdio server),右侧边栏 "MattSkills" 页签读写工作区 `.scratch/` 工单,agent 与人共用同一块数据。只移植侧边栏形态,上游对话框上的功能栏未引入。
 
+## home-repo:多个项目共用一块看板
+
+按 [home-repo pattern](https://www.aihero.dev/the-home-repo-pattern) 工作时,你会话打开的是一个 home-repo:它自己不放产品代码,只放技能、规范和一份指向各个项目仓库的导航。各个项目的看板散在各自的目录里,侧栏原本只能看到当前这一个。
+
+![MattSkills 侧栏:头部右侧的项目 chip 展开,列出 home-repo 与各个项目](./zcode-plugin/docs/images/home-repo-project-switcher.png)
+
+这个插件让同一块看板在多个项目之间切换:
+
+- **头部多了一枚项目 chip**。点开是项目清单:第一项打 ✓ 的是 home-repo,永远在;下面是别的项目,各带路径。点选即切换,列表、版本管理、环境检查三页一起换到那个项目。
+- **清单不必手写**。还没有清单时,chip 的位置是一个「＋ 项目」入口。点它,插件自带的技能 `setup-home-repo` 会读 home-repo 里的 `AGENTS.md` 等文档,把里面指向别的项目的路径找出来,列一张候选表给你;你确认之后才写清单。
+- **从别的项目的卡片点动作**,发进对话的指令会带上项目名和项目根,agent 知道该去哪个仓库干活。
+
+清单是 home-repo 根下的 `.deck/projects.json`,一份普通的 JSON,可以手改。字段规则、清单损坏时的表现、技能的完整流程,见 [`zcode-plugin/README.md`](./zcode-plugin/README.md)。
+
 ## 插件是怎么搭起来的
 
 ZCode 的官方 UI Plugin 只要求两样东西:一枚页签声明,一个服务进程。本插件的全部本体在 [`zcode-plugin/`](./zcode-plugin/),安装与架构细节见 [`zcode-plugin/README.md`](./zcode-plugin/README.md)。
@@ -65,7 +79,7 @@ build-upstream.mjs(机制仿上游 scripts/build.mts)
 
 版本管理页(0.4.0)同理:`build-git.mjs` 把上游 vc 家族的核心与宿主文件读图打包成 `dist/git.mjs`,客户端 `host.call('wf.gitX')` 全部映射到一条 `deck_git` 工具(60 余条电话)。
 
-对上游的有意偏离只有两处半,均记录在 [ADR-0002](./zcode-plugin/docs/adr/0002-hybrid-port-boundary.md):`deck_git` 的路径边界(工作区根内)、`withGhLane` 直通垫片;0.6.0 的头部项目 chip 是唯一面板分叉(ADR-0003)。
+对上游的有意偏离只有两处半,均记录在 [ADR-0002](./zcode-plugin/docs/adr/0002-hybrid-port-boundary.md):`deck_git` 的路径边界(工作区根内)、`withGhLane` 直通垫片。面板本体只在一处分叉——头部的项目 chip、清单入口和它们背后的清单状态刷新,都集中在本仓补件区,上游的列表、详情、动作模板零改动([ADR-0003](./zcode-plugin/docs/adr/0003-cross-project-switching.md))。
 
 ## 一步步走过来
 
