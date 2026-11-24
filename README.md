@@ -10,8 +10,10 @@ ZCode 的官方 UI Plugin 只要求两样东西:一枚页签声明,一个服务�
 .zcode-plugin/plugin.json
   ui.surfaces  → "MattSkills" 页签(resourceUri ui://…/panel.html,挂 mattskills 服务)
   mcpServers   → node dist/server.mjs(stdio,cwd=工作区根)
+  skills       → 携带技能目录(0.6.1 起:随插件分发,装了插件就有)
 
 zcode-plugin/
+├── skills/setup-home-repo/       # 把 home-repo 文档里的项目指针落成项目清单(写盘前须经用户确认)
 ├── dist/                        # 构建产物入库,装包即用,运行时零依赖
 │   ├── server.mjs               # MCP 服务端:deck_* 工具族(读卡/写卡/技能/检查/地图/项目/git)
 │   ├── git.mjs                  # 上游 vc 核心+宿主文件打包(esbuild,~1MB)
@@ -21,10 +23,11 @@ zcode-plugin/
 │       └── assets.json
 ├── src/                         # 本仓真源:服务端、桥适配、构建胶水
 │   ├── server.mjs / cards.mjs / write.mjs / watch.mjs
+│   ├── registry.mjs             # 项目清单读取与校验(0.6.0 起)
 │   ├── skill-roots.mjs          # 技能根单一真源(工作区→用户→插件内置)
 │   └── git-entry.mjs            # Node 六服务垫片(subprocess/timer/fs/gate/logCtx/平台)
 ├── build.mjs / build-upstream.mjs / build-git.mjs   # 三段构建,见下
-└── test/                        # 25 套 2266 断言(0.6.0)
+└── test/                        # 25 套 2400 断言(0.6.1)
 ```
 
 运行时一条数据流:
@@ -77,13 +80,14 @@ build-upstream.mjs(机制仿上游 scripts/build.mts)
 | 0.4.0 | m3-version-control | 上游 vc 家族整体克隆:69 UI 叶 + 核心/宿主打包,`deck_git` 一条工具路由 |
 | 0.5.0 | m4-map-detail | 地图详情页:mapV2 十三叶 + `deck_map_tickets` |
 | 0.6.0 | m5-project-switch | `.deck/projects.json` 项目清单 + 活动项目切换,列表/版本/检查三页跟随 |
+| 0.6.1 | m6-home-repo-setup | 清单入口(没有清单时头部的「＋ 项目」)+ 随插件分发的技能 `setup-home-repo`:读 home-repo 文档里的项目指针,给候选表、经确认后落成清单;清单状态刷新拍 |
 
 共同纪律:每版测试先行(外部可观察行为,不测实现细节)、版本双清单同步递增(装机靠版本号,热改缓存会被 ZCode 重启回滚)、市场源零构建垃圾。
 
 ## 分支
 
 - `main`:上游快照入库(轻量,排除 assets/video 与 docs/prototype)——它是构建期真源,运行时不需要
-- `zcode-plugin`:插件开发与发布分支(当前 0.6.0,默认分支)
+- `zcode-plugin`:插件开发与发布分支(当前 0.6.1,默认分支)
 
 ## 归属与许可
 
