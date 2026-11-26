@@ -113,8 +113,7 @@ export async function buildGithubBundle() {
       'export * from "./github-room.mjs";\n',
     "utf8"
   );
-  // 源目录不散落 dist(build.mjs 会把 src/ 一并直拷进来;装机只认 bundle 与一行入口)。
-  rmSync(join(ROOT, "dist", "github"), { recursive: true, force: true });
+  // 票 02 起 src/github/ 是真实运行时目录(gh-path/repo/backend/state…),直拷进 dist 的副本要留着。
   // metafile.inputs 含入口自身与时间参数生成物;上游文件 = 其余以 "../src/" 开头的那些。
   const inputs = Object.keys(result.metafile.inputs).map((p) => p.replace(/\\/g, "/"));
   const upstream = inputs.filter((p) => p.startsWith("../src/")).length;

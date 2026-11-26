@@ -16,6 +16,10 @@ import { readSkillDoc } from "./skill-doc.mjs";
 import { mapTicketsFor } from "./map-tickets.mjs";
 import { readRegistry, resolveActive } from "./registry.mjs";
 import { createGitBridge } from "./git-entry.mjs";
+import { backendStateOf, backendSummary } from "./github/backend.mjs";
+import { resolveGhPath } from "./github/gh-path.mjs";
+import { resolveRepoLocal } from "./github/repo.mjs";
+import { setChoice } from "./github/state.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_NAME = "zcode-mattpocock-skills-deck";
@@ -300,6 +304,16 @@ const TOOLS = [
       required: ["name"],
     },
   },
+  {
+    name: "deck_backend_use",
+    description:
+      "切换活动项目的议题后端:只认 markdown(本地 Markdown 卡片)与 github(GitHub 议题)。只影响当前会话,按项目根的真实路径记,新会话复位(回到锚文件或默认)。切到 github 前做两项本地预检(gh 可解析、项目根能解析出 GitHub 仓库),不过就拒绝并说明,不切换。成功回包与 deck_project_list 同一份形状。",
+    inputSchema: {
+      type: "object",
+      properties: { backend: { type: "string", description: "markdown | github" } },
+      required: ["backend"],
+    },
+  },
 ];
 
 /** 卡的显示标签:#effort/编号(根级无目录前缀);退化身份的 key 已带目录前缀,不重复拼。 */
@@ -432,11 +446,12 @@ function handleDeckGit(a, root, active) {
 
 // ---- 票 01:项目清单与活动项目(deck_project_list / deck_project_use) ----
 
-/** 清单回包的活动/清单状态形状(list 与 use 同一份)。 */
+/** 清单回包的活动/清单状态形状(list 与 use 同一份)。
+ *  票 02:活动项目多一块 backend(后端 id、来源、仓库、可写、提示)。 */
 function registryState(reg, active) {
   return {
     ok: true,
-    active: { name: active.name, path: active.root, isHome: active.isHome },
+    active: { name: active.name, path: active.root, isHome: active.isHome, backend: active.backend },
     home: { name: reg.home.name, path: reg.home.path, isHome: true },
     projects: [{ ...reg.home }, ...reg.projects],
     warnings: reg.warnings,
@@ -473,10 +488,11 @@ function handleProjectUse(a, reg, active, activeGitRoot, homeRoot) {
   if (!wanted) {
     return { content: [{ type: "text", text: "缺少 name:请给项目清单里的名字(deck_project_list 可看全量)。" }], isError: true };
   }
-  const useReply = (active, head) => ({
-    content: [{ type: "text", text: registrySummary(reg, active, head) }],
-    structuredContent: { ...registryState(reg, active), note: null },
-  });
+  // 票 02:回包带目标项目根的后端结论(与 list 同一份形状)。
+  const useReply = (next, head) => {
+    const sc = { ...registryState(reg, { ...next, backend: backendStateOf(next.root) }), note: null };
+    return { content: [{ type: "text", text: registrySummary(reg, next, head) }], structuredContent: sc };
+  };
   const activeIsHome = active ? active.isHome : true;
   // noop = 目标就是当前活动项目(名字同,或都是 home-repo):根没动,危险哨兵不挡。
   const toHome = wanted.toLowerCase() === reg.home.name.toLowerCase();
@@ -508,9 +524,64 @@ function handleProjectUse(a, reg, active, activeGitRoot, homeRoot) {
   return useReply({ root: hit.path, name: hit.name, isHome: false, note: null }, `活动项目已切到 ${hit.name}(${hit.path})。`);
 }
 
+/** deck_backend_use(票 02):按名字切活动项目的后端。只认 markdown / github。
+ *  切 github 前两项本地预检(gh 可解析、项目根能解析出 GitHub 仓库),不过就拒绝:
+ *  不写 state、不改任何东西。登录态与网络留给环境检查(票 06)。
+ *  成功回包与 deck_project_list 同一份形状(registryState + note:null)。 */
+function handleBackendUse(a, reg, active) {
+  const wanted = String(a.backend === undefined || a.backend === null ? "" : a.backend).trim().toLowerCase();
+  if (wanted !== "markdown" && wanted !== "github") {
+    return {
+      content: [{ type: "text", text: `后端只支持 markdown、github;收到「${wanted || "(空)"}」。可用值:markdown、github。` }],
+      isError: true,
+    };
+  }
+  if (wanted === "github") {
+    if (!resolveGhPath(process.env)) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "切换被拒:找不到 gh 可执行文件(没装 GitHub CLI,或没在 PATH 里)。先装 GitHub CLI 并加进 PATH,或用环境变量 ZCODE_GH_PATH 指向 gh.exe 的绝对路径,然后重启 ZCode。",
+          },
+        ],
+        isError: true,
+      };
+    }
+    if (!resolveRepoLocal(active.root)) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `切换被拒:项目根 ${active.root} 的远端解析不出 GitHub 仓库(origin 没指向 github.com)。先把项目根接到一个 GitHub 仓库,再切到 GitHub 后端。`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+  setChoice(active.root, wanted);
+  const backend = backendStateOf(active.root);
+  return {
+    content: [
+      {
+        type: "text",
+        text: `已切换:${backendSummary(active.root, backend)}。只影响本会话,新会话按锚文件或默认重新判定。`,
+      },
+    ],
+    structuredContent: { ...registryState(reg, { ...active, backend }), note: null },
+  };
+}
+
 // 活动项目回退说明:只在真回退时附加;home-repo/无清单时读工具回包与原来逐字一致。
 function withActiveNote(sc, active) {
-  return active.note ? { ...sc, active: { name: active.name, path: active.root, isHome: active.isHome }, note: active.note } : sc;
+  return active.note
+    ? {
+        ...sc,
+        active: { name: active.name, path: active.root, isHome: active.isHome, backend: active.backend },
+        note: active.note,
+      }
+    : sc;
 }
 function activeNoteSuffix(active) {
   return active.note ? `\n${active.note}` : "";
@@ -531,6 +602,8 @@ function handleCall(name, args) {
   const reg = readRegistry(homeRoot);
   const active = resolveActive(reg, activeProjectName);
   if (active.note) activeProjectName = null; // 回退即落定:清单是唯一信任边界,失效选择就地清掉
+  // 票 02:后端结论每次调用现算(锚文件现读、手选读进程内状态);清单回包与回退说明共用同一份。
+  active.backend = backendStateOf(active.root);
 
   // 版本管理 git 数据面先于 .scratch 扫描分派:.scratch 坏掉不挡 git(工单 01)。
   // 票 03:桥根随活动项目(home 仍用宿主注入的原样路径)。
@@ -541,6 +614,8 @@ function handleCall(name, args) {
   if (name === "deck_project_list") return handleProjectList(reg, active);
   // 票 02 + 票 03:use 带活动项目与 git 根(危险哨兵键控)与 home 根(监听重挂)。
   if (name === "deck_project_use") return handleProjectUse(a, reg, active, gitRootOf(active, homeRoot), homeRoot);
+  // 票 02:后端手选(全局;只影响当前会话,按项目根真实路径记)。
+  if (name === "deck_backend_use") return handleBackendUse(a, reg, active);
 
   const scanRoot = active.isHome ? homeRoot : active.root;
   ensureWatch(scanRoot); // 活动根变了(含失效回退到 home-repo)→ 停旧挂新
