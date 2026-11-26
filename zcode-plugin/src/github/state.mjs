@@ -8,6 +8,9 @@ import { resolve } from "node:path";
 
 const choices = new Map(); // 真实路径 → "markdown" | "github"
 const revisions = new Map(); // 真实路径 → 数据修订号(初始 0)
+// 票 03:计数缓存(TTL 由调用方按 ZCODE_GITHUB_PROBE_MS 判) —— {atMs, counts, rowsOpen, partial}。
+// 面板 5 秒一拍读一次计数,不能每拍都问 GitHub;写成功(票 04)把 atMs 清零、探测(票 05)复用本表。
+const countsCaches = new Map(); // 真实路径 → 缓存值
 
 function keyOf(root) {
   const raw = resolve(String(root || ""));
@@ -40,4 +43,19 @@ export function bumpRevision(root) {
   const next = revisionOf(root) + 1;
   revisions.set(keyOf(root), next);
   return next;
+}
+
+/** 读计数缓存(没有就 null)。调用方负责按 TTL 判新鲜。 */
+export function countsCacheOf(root) {
+  return countsCaches.get(keyOf(root)) || null;
+}
+
+/** 写计数缓存(形状 {atMs, counts, rowsOpen, partial};字段含义见 tools-read.mjs)。 */
+export function setCountsCache(root, value) {
+  countsCaches.set(keyOf(root), value);
+}
+
+/** 失效计数缓存(票 04 写成功用;删除比清零更不容易把「旧数」当成新数)。 */
+export function invalidateCounts(root) {
+  countsCaches.delete(keyOf(root));
 }

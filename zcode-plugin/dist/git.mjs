@@ -21771,13 +21771,14 @@ function makeTimer() {
   };
 }
 function makeFs(baseCwd) {
-  const abs = (target) => {
+  const abs = (target, opts) => {
     const raw = target && typeof target === "object" && typeof target.path === "string" ? target.path : String(target ?? "");
-    return path2.isAbsolute(raw) ? path2.normalize(raw) : path2.resolve(baseCwd, raw);
+    const base = opts && typeof opts === "object" && typeof opts.cwd === "string" && opts.cwd ? opts.cwd : baseCwd;
+    return path2.isAbsolute(raw) ? path2.normalize(raw) : path2.resolve(base, raw);
   };
   return {
-    resolve(target) {
-      return abs(target);
+    resolve(target, opts) {
+      return abs(target, opts);
     },
     async stat(target) {
       return fsp.stat(abs(target));

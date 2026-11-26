@@ -183,14 +183,16 @@ export function makeTimer() {
   };
 }
 
-/** 文件服务:resolve 归一为绝对路径;其余方法吃 resolve 的产物或普通路径,错误保留 Node 的 code(ENOENT 等)。 */
+/** 文件服务:resolve 归一为绝对路径;其余方法吃 resolve 的产物或普通路径,错误保留 Node 的 code(ENOENT 等)。
+ *  票 03:resolve 认可选的第二个参数 { cwd }(GitHub 房间按每个工作区根解析相对路径);不传时行为与原来逐字相同。 */
 export function makeFs(baseCwd) {
-  const abs = (target) => {
+  const abs = (target, opts) => {
     const raw = target && typeof target === "object" && typeof target.path === "string" ? target.path : String(target ?? "");
-    return path.isAbsolute(raw) ? path.normalize(raw) : path.resolve(baseCwd, raw);
+    const base = opts && typeof opts === "object" && typeof opts.cwd === "string" && opts.cwd ? opts.cwd : baseCwd;
+    return path.isAbsolute(raw) ? path.normalize(raw) : path.resolve(base, raw);
   };
   return {
-    resolve(target) { return abs(target); },
+    resolve(target, opts) { return abs(target, opts); },
     async stat(target) { return fsp.stat(abs(target)); },
     async lstat(target) { return fsp.lstat(abs(target)); },
     async exists(target) {

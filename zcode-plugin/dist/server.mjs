@@ -17,6 +17,7 @@ import { mapTicketsFor } from "./map-tickets.mjs";
 import { readRegistry, resolveActive } from "./registry.mjs";
 import { createGitBridge } from "./git-entry.mjs";
 import { backendStateOf, backendSummary } from "./github/backend.mjs";
+import { dispatchGithub } from "./github/dispatch.mjs";
 import { resolveGhPath } from "./github/gh-path.mjs";
 import { resolveRepoLocal } from "./github/repo.mjs";
 import { setChoice } from "./github/state.mjs";
@@ -119,7 +120,7 @@ const TOOLS = [
   {
     name: "deck_issue_list",
     description:
-      "列出当前工作区 .scratch/ 下的全部卡片(规格/地图容器行 + 工单行),返回薄行(不含正文与评论全文)。可用 state/labels/type/keys 过滤;labels 为 AND 精确匹配。响应携带数据修订号 revision(与 deck_issue_counts 同值)。",
+      "列出当前工作区 .scratch/ 下的全部卡片(规格/地图容器行 + 工单行),返回薄行(不含正文与评论全文)。可用 state/labels/type/keys 过滤;labels 为 AND 精确匹配。响应携带数据修订号 revision(与 deck_issue_counts 同值)。后端是 GitHub 时列出该项目远端仓库的议题(拉取请求不出现):不带 cursor 是整表(开闭一起、最多 500 条,截断或降级时 partial 为真);带 cursor 是按页(每页 50 条,回 nextCursor 与 total,游标原样回传)。",
     inputSchema: {
       type: "object",
       properties: {
@@ -127,16 +128,21 @@ const TOOLS = [
         labels: { type: "array", items: { type: "string" }, description: "必须同时带上的标签(AND),缺省不过滤" },
         type: { type: "string", enum: ["issue", "map", "spec"], description: "只要哪一类,缺省全部" },
         keys: { type: "array", items: { type: "string" }, description: "批量按编号取" },
+        cursor: { type: "string", description: "GitHub 后端的分页游标:上一页回的 nextCursor 原样传入;缺省是整表读取" },
       },
     },
   },
   {
     name: "deck_issue_get",
     description:
-      "读一张卡的全文(含正文与评论时间线)。key 用两位编号(01/1 都认,补零),退化卡身份带目录前缀(目录/文件名);同号多卡时取目录序第一张。",
+      "读一张卡的全文(含正文与评论时间线)。key 用两位编号(01/1 都认,补零),退化卡身份带目录前缀(目录/文件名);同号多卡时取目录序第一张。后端是 GitHub 时 key 是议题号(补不补零都认),评论分页按十进制偏移:commentsFirst 缺省 50(上限 200)、commentsAfter 是上一页回的偏移,回包带评论总数与 commentsPage{hasNextPage,endCursor}(本版只翻到前 200 条)。",
     inputSchema: {
       type: "object",
-      properties: { key: { type: "string", description: "卡编号或退化身份,如 01 或 demo/03-撞号卡" } },
+      properties: {
+        key: { type: "string", description: "卡编号或退化身份,如 01 或 demo/03-撞号卡" },
+        commentsFirst: { type: "number", description: "GitHub 后端:这一页要几条评论,缺省 50,夹在 1..200" },
+        commentsAfter: { type: "string", description: "GitHub 后端:评论分页的十进制偏移串,取 commentsPage.endCursor 原样回传;缺省 0" },
+      },
       required: ["key"],
     },
   },
@@ -616,6 +622,18 @@ function handleCall(name, args) {
   if (name === "deck_project_use") return handleProjectUse(a, reg, active, gitRootOf(active, homeRoot), homeRoot);
   // 票 02:后端手选(全局;只影响当前会话,按项目根真实路径记)。
   if (name === "deck_backend_use") return handleBackendUse(a, reg, active);
+
+  // 票 03:GitHub 后端先把本插件负责的工具名交给 dispatch.mjs(五个读工具 + 尚未接的写工具)。
+  // GitHub 项目不扫 .scratch、不挂监听 —— 所以这一段必须在 ensureWatch/scanWorkspace 之前。
+  if (active.backend && active.backend.id === "github") {
+    return dispatchGithub(name, a, {
+      root: active.isHome ? homeRoot : active.root,
+      backend: active.backend,
+      active,
+      // 规范标签名单与内置色表只有一份(本文件顶部),经这里递给 GitHub 的标签工具。
+      palette: { canonical: CANONICAL_LABELS, colors: LABEL_COLORS },
+    });
+  }
 
   const scanRoot = active.isHome ? homeRoot : active.root;
   ensureWatch(scanRoot); // 活动根变了(含失效回退到 home-repo)→ 停旧挂新
