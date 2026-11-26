@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveRepoLocal } from "./repo.mjs";
-import { choiceOf } from "./state.mjs";
+import { choiceOf, permOf } from "./state.mjs";
 
 const ANCHOR_REL = ["docs", "agents", "issue-tracker.md"];
 const GITLAB_HINT = "锚文件声明的是 GitLab 后端,本版不支持,按本地 Markdown 显示";
@@ -36,11 +36,13 @@ export function readAnchor(root) {
 function blockFor(root, id, source) {
   if (id === "github") {
     const repo = resolveRepoLocal(root);
+    // 票 04:writable 读权限缓存。只读=false;未知(问不出来)与没问过=null,不冒充任何一种结论。
+    const perm = permOf(root);
     return {
       id,
       source,
       repo: repo ? { name: repo.refId, url: repo.url } : null,
-      writable: null, // 票 02 没有权限缓存;票 04/05 补
+      writable: perm && perm.known === true ? (perm.push === true || perm.triage === true) : null,
       hint: null,
     };
   }

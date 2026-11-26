@@ -474,13 +474,16 @@ async function sliceErrors() {
 }
 
 // ---------------------------------------------------------------------------
-// i. 写工具在 GitHub 下回明确错误,且一个字节都不落到本地卡片
+// i. 票 04 起七个写工具在 GitHub 下已生效;这一片只守读套件不被写工具改坏
+//    (不再回「尚未接」、不落 .scratch、写命令真发给假 gh)
 // ---------------------------------------------------------------------------
-async function sliceWritesBlocked() {
+async function sliceWritesWired() {
   const ws = makeWorkspace({ repo: "owner/name", anchor: ANCHOR_GITHUB });
   const gh = makeFakeGh({ state: baseState() });
   const s = await startServer(ws.root, { ...gh.env, ZCODE_GITHUB_PROBE_MS: "200" });
   try {
+    // 票 04:七个写工具已按 GitHub 后端生效(这里只验读套件不被写工具改坏:它们不再回「尚未接」,
+    // 也不往 .scratch 里落任何东西;回包的人话与写命令细节由 server-github-write 套件钉)。
     const tools = [
       ["deck_issue_comment", { key: "4", body: "x" }],
       ["deck_issue_close", { key: "4" }],
@@ -492,11 +495,15 @@ async function sliceWritesBlocked() {
     ];
     for (const [name, args] of tools) {
       const res = await s.call(name, args);
-      check(`写工具 ${name}: 明确错误`, isErr(res) && /写通路尚未接|票 04/.test(textOf(res)), textOf(res).slice(0, 200));
-      check(`写工具 ${name}: kind=unsupported`, (sc(res).error || {}).kind === "unsupported", JSON.stringify(sc(res).error));
+      check(`写工具 ${name}: 已按 GitHub 后端生效`, !isErr(res) && /owner\/name/.test(textOf(res)), textOf(res).slice(0, 200));
+      check(`写工具 ${name}: 回包带 key`, typeof sc(res).key === "string" && sc(res).key !== "", JSON.stringify({ key: sc(res).key, error: sc(res).error }));
     }
     check("写工具: 没有创建 .scratch", !existsSync(join(ws.root, ".scratch")), readdirSync(ws.root).join(","));
-    check("写工具: 假 gh 一条写命令都没收到", gh.calls().every((c) => !/^issue (create|close|reopen|comment|edit)/.test(callText(c))), JSON.stringify(gh.calls().map(callText)));
+    check(
+      "写工具: 假 gh 收到了写命令",
+      gh.calls().some((c) => /^issue (create|close|reopen|comment|edit)\b|--method (POST|DELETE)|addBlockedBy|removeBlockedBy/.test(callText(c))),
+      JSON.stringify(gh.calls().map(callText))
+    );
 
     const env = await s.call("deck_env_check", {});
     check("环境检查: 票 06 之前回尚未接", isErr(env) && /尚未接|票 06/.test(textOf(env)), textOf(env).slice(0, 200));
@@ -577,7 +584,7 @@ await sliceCounts();
 await sliceLabels();
 await sliceMap();
 await sliceErrors();
-await sliceWritesBlocked();
+await sliceWritesWired();
 await sliceMarkdownRegression();
 await sliceRepoViewTier3();
 

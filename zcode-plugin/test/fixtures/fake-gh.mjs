@@ -3,8 +3,10 @@
 //
 // 服务端经 ZCODE_GH_PATH 指到本脚本(垫片对 .mjs 用当前 node 起),真实子进程垫片一并走到。
 // 每次调用先把 {argv, cwd} append 进 ZCODE_FAKE_GH_LOG(NDJSON),再按命令族回放 ZCODE_FAKE_GH_STATE
-// 里的状态。读命令按命令族造回包(选择集照上游 channels/graphql/queries.ts);写命令本票不实现
-// (票 04 续),未脚本化的命令 stderr 点名 argv 并 exit 1,绝不静默成功。
+// 里的状态。读命令按命令族造回包(选择集照上游 channels/graphql/queries.ts);写命令(票 04)
+// 原地改状态文件供写后读回核对:建票/评论/关闭/重开/编辑(标签、认领、父子)/阻塞边(GraphQL
+// mutation 优先,REST 依赖接口兜底)/幂等回查(search issues)。未脚本化的命令 stderr 点名 argv
+// 并 exit 1,绝不静默成功。
 //
 // 状态形状(design.md F,票 03 落地):
 //   {
@@ -21,9 +23,10 @@
 //       counts: { open, closed } | undefined,     // 覆盖计数查询(构造「与行面不一致」)
 //       subIssuesTotal: { "1": 3 } | undefined    // 覆盖子票连接 totalCount(构造 missing)
 //     } },
-//     fail: null | "ratelimit" | "network" | "notfound" | "timeout" | "auth" | "graphql"
+//     fail: null | "ratelimit" | "network" | "notfound" | "timeout" | "auth" | "graphql",
+//     failWrite: null | "comment"                // 只让评论写命令失败(关闭前评论失败那一例)
 //   }
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const argv = process.argv.slice(2);
@@ -45,6 +48,14 @@ const repos = state && typeof state.repos === "object" && state.repos ? state.re
 
 const out = (text) => process.stdout.write(`${String(text)}\n`);
 const failExit = (text, code = 1) => ({ stderr: text, code });
+
+/** 写命令改完内存状态后原地写回状态文件(下一次调用读得到;票 04 的写后读回靠它)。 */
+function saveState() {
+  const path = String(process.env.ZCODE_FAKE_GH_STATE || "");
+  if (path) writeFileSync(path, JSON.stringify(state, null, 2), "utf8");
+}
+const nowIso = () => new Date().toISOString();
+const failComment = () => String((state && state.failWrite) || "") === "comment";
 
 // ---- argv 读数(-f/-F key=value;列表变量 states[]/labels[] 收全量) ----
 function varOf(name) {
@@ -72,8 +83,73 @@ function flagValue(name, fallback) {
   if (idx >= 0 && idx + 1 < argv.length) return argv[idx + 1];
   return fallback;
 }
+/** 同一面旗可重复出现(gh issue edit --add-label a --add-label b);收全量。 */
+function flagValues(name) {
+  const list = [];
+  for (let i = 0; i + 1 < argv.length; i++) if (argv[i] === name) list.push(argv[i + 1]);
+  return list;
+}
 function queryOf() {
   return varOf("query") || "";
+}
+
+// ---- 写命令共用的状态操作(票 04:建票/关闭/重开/评论/标签/认领/父子/阻塞边) ----
+function issueOf(repo, n) {
+  return (Array.isArray(repo.issues) ? repo.issues : []).find((i) => num(i.number) === num(n)) || null;
+}
+function nextIssueNumber(repo) {
+  let max = 0;
+  for (const i of Array.isArray(repo.issues) ? repo.issues : []) max = Math.max(max, num(i.number));
+  return max + 1;
+}
+/** 图边用的数字 id:与票号一一对应(假 gh 不需要真数据库编号,只要可逆)。 */
+function nodeIdOf(n) {
+  return 100000 + num(n);
+}
+function numberOfNodeId(raw) {
+  const s = String(raw == null ? "" : raw).trim();
+  if (/^I_\d+$/.test(s)) return String(Number(s.slice(2)));
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 100000 ? String(n - 100000) : (Number.isFinite(n) && n > 0 ? String(n) : null);
+}
+function addCommentTo(repo, n, body, authorLogin) {
+  if (!repo.comments || typeof repo.comments !== "object") repo.comments = {};
+  const key = String(num(n));
+  if (!Array.isArray(repo.comments[key])) repo.comments[key] = [];
+  const one = { id: `c${repo.comments[key].length + 1}`, author: { login: String(authorLogin || "octocat") }, body: String(body || ""), createdAt: nowIso(), updatedAt: nowIso() };
+  repo.comments[key].push(one);
+  return one;
+}
+function createIssueIn(repo, spec, title, body) {
+  const n = nextIssueNumber(repo);
+  const iso = nowIso();
+  const issue = {
+    number: n,
+    title: String(title || ""),
+    state: "OPEN",
+    body: String(body || ""),
+    url: `https://github.com/${spec}/issues/${n}`,
+    createdAt: iso,
+    updatedAt: iso,
+    closedAt: null,
+    labels: [],
+    assignees: [],
+    author: { login: String((state.user && state.user.login) || "octocat") },
+    parentKey: null,
+    blockedBy: [],
+  };
+  if (!Array.isArray(repo.issues)) repo.issues = [];
+  repo.issues.push(issue);
+  return issue;
+}
+/** `--add-label a,b` / `--remove-label a` 的面值拆成名字列表。 */
+function splitNames(values) {
+  const out = [];
+  for (const v of values) for (const one of String(v).split(",")) {
+    const name = one.trim();
+    if (name && !out.includes(name)) out.push(name);
+  }
+  return out;
 }
 
 // ---- 实体构造(GraphQL / REST 两套形状) ----
@@ -214,6 +290,17 @@ function restRow(repoSpec, issue, isPull) {
 function gqlRepoOrNull(spec) {
   return repos[spec] && typeof repos[spec] === "object" ? repos[spec] : null;
 }
+/** mutation 只带 node id(不带 owner/name):按 id 反查仓库(测试里只有一个仓库)。 */
+function repoForNodeIds(ids) {
+  const wanted = ids.map(String).filter(Boolean);
+  for (const key of Object.keys(repos)) {
+    const repo = repos[key];
+    for (const i of Array.isArray(repo.issues) ? repo.issues : []) {
+      if (wanted.includes(String(nodeIdOf(i.number)))) return repo;
+    }
+  }
+  return null;
+}
 function gqlList(repo, queryText) {
   const all = Array.isArray(repo.issues) ? repo.issues : [];
   const first = Math.max(1, num(varOf("first")) || 50);
@@ -298,6 +385,31 @@ function gqlDeps(repo) {
     },
   };
 }
+/** 票号 → 图边用的数字 id(blocked-by-write.ts 的 issueNodeIdsQuery)。 */
+function gqlIssueIds(repo) {
+  const queryText = queryOf();
+  const out = {};
+  const re = /(i\d+):\s*issue\(number:(\d+)\)/g;
+  let m;
+  while ((m = re.exec(queryText)) !== null) {
+    const issue = issueOf(repo, m[2]);
+    out[m[1]] = issue ? { id: String(nodeIdOf(issue.number)) } : null;
+  }
+  return { data: { repository: out } };
+}
+/** addBlockedBy / removeBlockedBy mutation:按 id 找回两张票,改状态文件,供写后读回。 */
+function gqlBlockedByMutation(repo, mode) {
+  const key = numberOfNodeId(varOf("issueId"));
+  const blocker = numberOfNodeId(varOf("blockingIssueId"));
+  const issue = key === null ? null : issueOf(repo, key);
+  if (!issue || blocker === null) return { errors: [{ message: "Could not resolve to an issue" }] };
+  const list = Array.isArray(issue.blockedBy) ? issue.blockedBy : [];
+  issue.blockedBy = mode === "add"
+    ? [...list.filter((b) => String((b && b.key) || b) !== blocker), { key: blocker }]
+    : list.filter((b) => String((b && b.key) || b) !== blocker);
+  saveState();
+  return { data: { [mode === "add" ? "addBlockedBy" : "removeBlockedBy"]: { clientMutationId: null } } };
+}
 
 // ---- REST 各端点 ----
 function restRepo(owner, name) {
@@ -340,11 +452,14 @@ async function run() {
   }
   if (cmd === "api" && sub === "graphql") {
     const spec = repoSpecOfGraphql();
-    const repo = gqlRepoOrNull(spec);
+    const repo = gqlRepoOrNull(spec) || repoForNodeIds([varOf("issueId"), varOf("blockingIssueId")]);
     if (!repo) return notFound();
     const queryText = queryOf();
     let body;
-    if (/subIssues\(first:/.test(queryText)) body = gqlSubIssues(repo);
+    if (/addBlockedBy\(input:/.test(queryText)) body = gqlBlockedByMutation(repo, "add");
+    else if (/removeBlockedBy\(input:/.test(queryText)) body = gqlBlockedByMutation(repo, "remove");
+    else if (/i0:\s*issue\(number:/.test(queryText)) body = gqlIssueIds(repo);
+    else if (/subIssues\(first:/.test(queryText)) body = gqlSubIssues(repo);
     else if (/pullRequest\(number:/.test(queryText)) body = gqlPullDetail(repo);
     else if (/pullRequests\(first:/.test(queryText)) body = gqlListPulls(repo);
     else if (/openIssues:/.test(queryText)) body = gqlCounts(repo);
@@ -373,11 +488,19 @@ async function run() {
     if (!repo) return notFound();
     const tail = parts.slice(3);
     const params = new URLSearchParams(queryPart);
+    const method = String(flagValue("--method", "GET") || "GET").toUpperCase();
     if (tail.length === 0) {
       out(JSON.stringify(repo.permissions ?? null));
       return 0;
     }
     if (tail[0] === "issues" && tail.length === 1) {
+      if (method === "POST") {
+        // 建票:房间用 -f title=… -f body=…(正文里可能带幂等锚),回 REST 形状。
+        const issue = createIssueIn(repo, spec, varOf("title") || "", varOf("body") || "");
+        saveState();
+        out(JSON.stringify(restRow(spec, issue, false)));
+        return 0;
+      }
       const want = params.get("state") || "all";
       const list = (Array.isArray(repo.issues) ? repo.issues : []).filter((i) => (want === "all" ? true : stateUpper(i.state).toLowerCase() === want));
       const perPage = Math.max(1, num(params.get("per_page")) || 30);
@@ -387,25 +510,58 @@ async function run() {
     }
     if (tail[0] === "issues" && tail.length >= 2) {
       const n = num(tail[1]);
-      const issue = (Array.isArray(repo.issues) ? repo.issues : []).find((i) => num(i.number) === n);
+      const issue = issueOf(repo, n);
       if (tail[2] === "comments") {
+        if (method === "POST") {
+          if (failComment()) return failExit("gh: Could not resolve host: api.github.com (getaddrinfo ENOTFOUND)", 1);
+          if (!issue) return notFound();
+          const one = addCommentTo(repo, n, varOf("body") || "", String((state.user && state.user.login) || "octocat"));
+          saveState();
+          out(JSON.stringify({ id: Number(String(one.id).replace(/\D/g, "")) || 1, user: { login: one.author.login }, body: one.body, created_at: one.createdAt, updated_at: one.updatedAt, author_association: "MEMBER" }));
+          return 0;
+        }
         const all = issue ? commentsOf(repo, issue) : [];
         out(JSON.stringify(all.map((c, idx) => ({ id: Number((c && c.id) || idx + 1) || idx + 1, user: { login: String((c && c.author && c.author.login) || "reviewer") }, body: String((c && c.body) || ""), created_at: String((c && c.createdAt) || ""), updated_at: String((c && c.updatedAt) || (c && c.createdAt) || ""), author_association: "MEMBER" }))));
         return 0;
       }
       if (tail[2] === "dependencies" && tail[3] === "blocked_by") {
+        if (method === "POST" || method === "DELETE") {
+          if (!issue) return notFound();
+          const blocker = numberOfNodeId(varOf("issue_id"));
+          if (blocker === null) return failExit("gh: Validation Failed (issue_id)", 1);
+          const list = Array.isArray(issue.blockedBy) ? issue.blockedBy : [];
+          issue.blockedBy = method === "POST"
+            ? [...list.filter((b) => String((b && b.key) || b) !== blocker), { key: blocker }]
+            : list.filter((b) => String((b && b.key) || b) !== blocker);
+          saveState();
+          out(JSON.stringify({}));
+          return 0;
+        }
         const refs = issue ? blockedRefs(issue) : [];
         const rows = refs.map((b) => restRow(spec, (Array.isArray(repo.issues) ? repo.issues : []).find((i) => num(i.number) === b.number) || { number: b.number, title: b.title, state: b.state }, false));
         out(JSON.stringify(rows));
         return 0;
       }
       if (tail[2] === "sub_issues") {
+        if (method === "POST" || method === "DELETE") {
+          const parent = issueOf(repo, n);
+          const child = issueOf(repo, numberOfNodeId(varOf("sub_issue_id")));
+          if (!parent || !child) return notFound();
+          child.parentKey = method === "POST" ? String(parent.number) : (String(child.parentKey) === String(parent.number) ? null : child.parentKey);
+          saveState();
+          out(JSON.stringify({}));
+          return 0;
+        }
         const kids = (Array.isArray(repo.issues) ? repo.issues : []).filter((i) => i.parentKey != null && num(i.parentKey) === n);
         out(JSON.stringify(restRows(kids, spec, false)));
         return 0;
       }
       if (tail.length === 2) {
         if (!issue) return notFound();
+        if (String(flagValue("--jq", "")) === ".id") {
+          out(String(nodeIdOf(issue.number)));
+          return 0;
+        }
         out(JSON.stringify(restRow(spec, issue, false)));
         return 0;
       }
@@ -444,12 +600,77 @@ async function run() {
     out(JSON.stringify(Array.isArray(repo.labels) ? repo.labels : []));
     return 0;
   }
+  if (cmd === "issue" && sub === "edit") {
+    const spec = flagValue("--repo", "");
+    const repo = gqlRepoOrNull(spec);
+    if (!repo) return notFound();
+    const issue = issueOf(repo, argv[2]);
+    if (!issue) return notFound();
+    const title = flagValue("--title", null);
+    if (title !== null) issue.title = String(title);
+    const body = flagValue("--body", null);
+    if (body !== null) issue.body = String(body);
+    const addLabels = splitNames(flagValues("--add-label"));
+    const removeLabels = splitNames(flagValues("--remove-label"));
+    if (addLabels.length || removeLabels.length) {
+      const names = (Array.isArray(issue.labels) ? issue.labels : []).map((l) => String((l && l.name) || l));
+      const next = names.filter((name) => !removeLabels.includes(name));
+      for (const name of addLabels) if (!next.includes(name)) next.push(name);
+      issue.labels = next.map((name) => {
+        const known = (Array.isArray(repo.labels) ? repo.labels : []).find((l) => String(l.name) === name);
+        return { name, color: String((known && known.color) || "ededed") };
+      });
+    }
+    const addAssignees = splitNames(flagValues("--add-assignee")).map((l) => (l === "@me" ? String((state.user && state.user.login) || "octocat") : l));
+    const removeAssignees = splitNames(flagValues("--remove-assignee")).map((l) => (l === "@me" ? String((state.user && state.user.login) || "octocat") : l));
+    if (addAssignees.length || removeAssignees.length) {
+      const logins = (Array.isArray(issue.assignees) ? issue.assignees : []).map((a) => String((a && a.login) || a));
+      const next = logins.filter((login) => !removeAssignees.includes(login));
+      for (const login of addAssignees) if (!next.includes(login)) next.push(login);
+      issue.assignees = next.map((login) => ({ login }));
+    }
+    if (argv.includes("--remove-parent")) issue.parentKey = null;
+    const parent = flagValue("--parent", null);
+    if (parent !== null) {
+      if (!issueOf(repo, parent)) return failExit("HTTP 404: Not Found", 1);
+      issue.parentKey = String(num(parent));
+    }
+    saveState();
+    return 0;
+  }
+  if (cmd === "issue" && (sub === "close" || sub === "reopen")) {
+    const spec = flagValue("--repo", "");
+    const repo = gqlRepoOrNull(spec);
+    if (!repo) return notFound();
+    const issue = issueOf(repo, argv[2]);
+    if (!issue) return notFound();
+    if (sub === "close") {
+      issue.state = "CLOSED";
+      issue.closedAt = nowIso();
+    } else {
+      issue.state = "OPEN";
+      issue.closedAt = null;
+    }
+    saveState();
+    return 0;
+  }
+  if (cmd === "issue" && sub === "comment") {
+    const spec = flagValue("--repo", "");
+    const repo = gqlRepoOrNull(spec);
+    if (!repo) return notFound();
+    const issue = issueOf(repo, argv[2]);
+    if (!issue) return notFound();
+    if (failComment()) return failExit("gh: Could not resolve host: api.github.com (getaddrinfo ENOTFOUND)", 1);
+    addCommentTo(repo, issue.number, flagValue("--body", ""), String((state.user && state.user.login) || "octocat"));
+    saveState();
+    return 0;
+  }
   if (cmd === "issue" && sub === "view") {
     const spec = flagValue("--repo", "");
     const repo = gqlRepoOrNull(spec);
     if (!repo) return notFound();
     const n = num(argv[2]);
-    const issue = (Array.isArray(repo.issues) ? repo.issues : []).find((i) => num(i.number) === n);
+    const issue = issueOf(repo, n);
     if (!issue) return notFound();
     out(JSON.stringify({
       number: num(issue.number),
@@ -472,11 +693,40 @@ async function run() {
     if (!repo) return notFound();
     const want = flagValue("--state", "open");
     const list = (Array.isArray(repo.issues) ? repo.issues : []).filter((i) => stateUpper(i.state).toLowerCase() === want);
-    out(JSON.stringify(list.map((i) => ({ number: num(i.number), title: String(i.title || ""), state: stateUpper(i.state), body: String(i.body || ""), url: String(i.url || "") }))));
+    out(JSON.stringify(list.map((i) => ({
+      number: num(i.number),
+      title: String(i.title || ""),
+      state: stateUpper(i.state),
+      body: String(i.body || ""),
+      url: String(i.url || ""),
+      createdAt: String(i.createdAt || ""),
+      updatedAt: String(i.updatedAt || ""),
+    }))));
     return 0;
   }
   if (cmd === "search" && sub === "issues") {
-    out(JSON.stringify([]));
+    // 幂等回查快路:按正文里的锚行找(candidate 字段与房间要的 CANDIDATE_FIELDS 一致)。
+    const spec = flagValue("--repo", "");
+    const repo = gqlRepoOrNull(spec);
+    if (!repo) return notFound();
+    const withValue = new Set(["--repo", "--match", "--json", "--limit", "--state", "--owner", "--label"]);
+    const positionals = [];
+    for (let i = 2; i < argv.length; i++) {
+      if (withValue.has(argv[i])) {
+        i++;
+        continue;
+      }
+      if (!String(argv[i]).startsWith("-")) positionals.push(argv[i]);
+    }
+    const term = positionals[0] || "";
+    const list = term ? (Array.isArray(repo.issues) ? repo.issues : []).filter((i) => String(i.body || "").includes(term)) : [];
+    out(JSON.stringify(list.map((i) => ({
+      number: num(i.number),
+      body: String(i.body || ""),
+      state: stateUpper(i.state),
+      createdAt: String(i.createdAt || ""),
+      updatedAt: String(i.updatedAt || ""),
+    }))));
     return 0;
   }
   return failExit(`fake-gh: 未脚本化的命令: ${argv.join(" ")}`, 1);

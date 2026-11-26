@@ -11,6 +11,10 @@ const revisions = new Map(); // 真实路径 → 数据修订号(初始 0)
 // 票 03:计数缓存(TTL 由调用方按 ZCODE_GITHUB_PROBE_MS 判) —— {atMs, counts, rowsOpen, partial}。
 // 面板 5 秒一拍读一次计数,不能每拍都问 GitHub;写成功(票 04)把 atMs 清零、探测(票 05)复用本表。
 const countsCaches = new Map(); // 真实路径 → 缓存值
+// 票 04:仓库写权限缓存(每个项目根问一次,成功/只读/未知都记)。
+// 形如 {known:true, push, triage, atMs};问不出来时 {known:false, push:null, triage:null, atMs}。
+// 票 06 的「重新检查」用 clearPerm 清掉重问;票 05 的探测可复用这份结论。
+const perms = new Map(); // 真实路径 → 权限缓存
 
 function keyOf(root) {
   const raw = resolve(String(root || ""));
@@ -58,4 +62,22 @@ export function setCountsCache(root, value) {
 /** 失效计数缓存(票 04 写成功用;删除比清零更不容易把「旧数」当成新数)。 */
 export function invalidateCounts(root) {
   countsCaches.delete(keyOf(root));
+}
+
+/**
+ * 读仓库写权限缓存(没问过回 null)。
+ * 值:`{known:true, push:boolean, triage:boolean, atMs}` 或 `{known:false, push:null, triage:null, atMs}`。
+ */
+export function permOf(root) {
+  return perms.get(keyOf(root)) || null;
+}
+
+/** 记一次权限结论(成功/只读/未知都记;调用方负责按 known 判语义)。 */
+export function setPerm(root, value) {
+  perms.set(keyOf(root), value);
+}
+
+/** 清掉权限缓存(票 06 的「重新检查」用:下一次写会重新问仓库)。 */
+export function clearPerm(root) {
+  perms.delete(keyOf(root));
 }

@@ -172,32 +172,49 @@ const TOOLS = [
     },
   },
   {
-    name: "deck_issue_create",
+    name: "deck_map_link",
     description:
-      "建一张工单票:在 .scratch/<effort>/issues/ 下取下一个空闲编号,写 NN-slug.md(标题转 slug,中文保留)。文件头带 DSH-CREATED 与 DSH-ISSUE-KIND: ticket,正文为 impl 票形状(# NN: 标题 + **Status:** open + 可选 **Labels:**)。写回纪律:只产生新文件,不动任何既有卡。",
+      "GitHub 后端:把议题挂到地图下或摘到根(parentKey),加/改阻塞边(blockedBy,阻塞它的那几张票号)。自环与成环会被拒、不落盘。至少给 parentKey 或 blockedBy 其中一个;local Markdown 后端不支持本工具(请直接改卡片正文的 Blocked by 行)。",
     inputSchema: {
       type: "object",
       properties: {
-        effort: { type: "string", description: "工作单元目录名(.scratch/ 下),如 m1-core-board;不存在会连目录一起建" },
-        title: { type: "string", description: "卡标题(必填,进 H1 与文件名 slug)" },
+        key: { type: "string", description: "被挂/被加边的议题号(如 12 或 04)" },
+        parentKey: { type: ["string", "null"], description: "挂到这张地图/规格的议题号下;null = 摘到根" },
+        blockedBy: { type: "array", items: { type: "string" }, description: "阻塞它的那几张票号;整份替换现有阻塞边" },
+      },
+      required: ["key"],
+    },
+  },
+  {
+    name: "deck_issue_create",
+    description:
+      "建一张工单票。本地 Markdown:在 .scratch/<effort>/issues/ 下取下一个空闲编号,写 NN-slug.md(标题转 slug,中文保留),effort 必填;文件头带 DSH-CREATED 与 DSH-ISSUE-KIND: ticket。GitHub 后端:在项目远端仓库建议题,effort 没有意义会被忽略(摘要里会说明),可以带 parentKey(建出来就挂在地图下)与 idempotencyKey(同一个键重试只建一张,两次拿到同一个号)。写回纪律:两个后端都只产生新票,不动既有票。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        effort: { type: "string", description: "工作单元目录名(.scratch/ 下),如 m1-core-board;不存在会连目录一起建。只对本地 Markdown 有意义,GitHub 后端忽略" },
+        title: { type: "string", description: "卡/议题标题(必填,进 H1 与文件名 slug)" },
         body: { type: "string", description: "正文(markdown,可空)" },
         labels: { type: "array", items: { type: "string" }, description: "初始标签名单(可空)" },
+        parentKey: { type: "string", description: "GitHub 后端:建出来就挂在这张地图/规格的议题号下(本地 Markdown 忽略)" },
+        idempotencyKey: { type: "string", description: "GitHub 后端:幂等键;同一个键重试只建一张、两次拿到同一个号(本地 Markdown 忽略)" },
       },
-      required: ["effort", "title"],
+      required: ["title"],
     },
   },
   {
     name: "deck_issue_update",
     description:
-      "改一张卡的状态行(只动那一行,正文永不重排)。值原样写进 Status 行(加粗/裸写法随原文件);resolved/completed/closed/done 读回计为 closed,其余为 open。已是同值时是幂等 noop,不写盘。",
+      "改一张卡的状态行(只动那一行,正文永不重排)。值原样写进 Status 行(加粗/裸写法随原文件);resolved/completed/closed/done 读回计为 closed,其余为 open。已是同值时是幂等 noop,不写盘。GitHub 后端:status=claimed 把当前登录人加进认领人(不顶掉已有的);关闭类的值会关议题;其它状态值明确拒绝并指路;可选 assignees(登录名数组,@me 是当前登录人)整份替换认领人。",
     inputSchema: {
       type: "object",
       properties: {
-        key: { type: "string", description: "卡编号或退化身份;同号多卡必须带目录前缀(如 m1-core-board/01)" },
-        status: { type: "string", description: "状态行的新值,如 ready-for-agent / claimed / in-progress" },
+        key: { type: "string", description: "卡编号或退化身份;同号多卡必须带目录前缀(如 m1-core-board/01);GitHub 后端是议题号" },
+        status: { type: "string", description: "状态行的新值,如 ready-for-agent / claimed / in-progress;GitHub 后端只认 claimed 与关闭类值(与 assignees 至少给一个)" },
+        assignees: { type: "array", items: { type: "string" }, description: "GitHub 后端:认领人登录名数组(整份替换;@me 是当前登录人);本地 Markdown 忽略" },
         expectedUpdatedAt: { type: "string", description: "乐观并发:上次看到的卡 updatedAt(ISO);对不上拒绝写" },
       },
-      required: ["key", "status"],
+      required: ["key"],
     },
   },
   {
@@ -750,6 +767,12 @@ function handleCall(name, args) {
   }
   if (name === "deck_issue_create") {
     return createIssue(scanRoot, { effort: a.effort, title: a.title, body: a.body, labels: a.labels }).then((res) => finishWrite(scanRoot, res, name, active));
+  }
+  if (name === "deck_map_link") {
+    return {
+      content: [{ type: "text", text: "本地 Markdown 看板不支持用工具挂图/加阻塞边；请直接改卡片正文的 `Blocked by` 行。" }],
+      isError: true,
+    };
   }
 
   return { content: [{ type: "text", text: `未知工具 ${name}` }], isError: true };
