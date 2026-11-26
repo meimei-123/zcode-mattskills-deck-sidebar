@@ -295,7 +295,7 @@ const TOOLS = [
   {
     name: "deck_env_check",
     description:
-      "环境检查:按本地真实事实组装检查链快照(工作区有无 .scratch/、卡片可读、监听在线、工具桥通、技能根可读、是否 git 仓),返回链步骤(状态/标题/原因/修复动作)与计数。只读,不写盘;每次调用都按当前状态重新扫描。force=true 表示用户亲手重检(语义标记,不回错)。",
+      "环境检查:按本地真实事实组装检查链快照(本地 Markdown 六步:工作区有无 .scratch/、卡片可读、监听在线、工具桥通、技能根可读、是否 git 仓;活动项目是 GitHub 时七步:本地 git、仓库关联、gh 安装、登录、仓库访问、工具桥、技能根),返回链步骤(状态/标题/原因/修复动作)与计数。只读,不写盘;本地链每次调用都按当前状态重新扫描。force=true 表示用户亲手点「重新检查」:GitHub 链跳过缓存、真重探一遍并强制探测一次;本地链只表达调用意图。",
     inputSchema: {
       type: "object",
       properties: {
@@ -663,6 +663,9 @@ function handleCall(name, args) {
       root: active.isHome ? homeRoot : active.root,
       backend: active.backend,
       active,
+      // 票 06:环境检查的技能步锚 home-repo(技能根不随项目);force 只对 deck_env_check 有意义。
+      homeRoot,
+      force: a.force === true,
       // 规范标签名单与内置色表只有一份(本文件顶部),经这里递给 GitHub 的标签工具。
       palette: { canonical: CANONICAL_LABELS, colors: LABEL_COLORS },
     });

@@ -3,7 +3,9 @@
 // 活动项目的后端是 GitHub 时,handleCall 在 deck_project_list/use/backend_use 之后、.scratch 扫描
 // 之前把本插件负责的工具名交到这里:GitHub 项目不扫 .scratch、不挂监听。
 // 票 04 起接上六个写工具与 deck_map_link(写前权限门、写后推进修订号都在 tools-write.mjs 里);
-// deck_env_check 在票 06 之前仍回尚未接 —— 不产生任何本地副作用。
+// 票 06 起 deck_env_check 走 env-check-github.mjs 的七步链(缓存与 force 的语义在那边,
+// 这里只把 ctx 里的 homeRoot/force 递进去)。
+import { githubEnvCheck } from "../env-check-github.mjs";
 import { issueCounts, issueGet, issueList, issueListLabels, mapTickets } from "./tools-read.mjs";
 import { issueClose, issueComment, issueCreate, issueReopen, issueSetLabels, issueUpdate, mapLink } from "./tools-write.mjs";
 
@@ -43,10 +45,7 @@ export async function dispatchGithub(name, args, ctx) {
   const write = WRITE_TOOLS[name];
   if (write) return write(args, ctx);
   if (name === "deck_env_check") {
-    return failWithText(
-      "环境检查的 GitHub 七步链尚未接(票 06)。当前可以先用 deck_issue_list 试读一次:能读到议题就说明 gh、登录与仓库访问都通。",
-      "unsupported"
-    );
+    return githubEnvCheck(ctx.root, { homeRoot: ctx.homeRoot, force: ctx.force === true });
   }
   return failWithText(`未知工具 ${name}`, "unsupported");
 }

@@ -512,7 +512,7 @@ async function sliceWritesWired() {
     );
 
     const env = await s.call("deck_env_check", {});
-    check("环境检查: 票 06 之前回尚未接", isErr(env) && /尚未接|票 06/.test(textOf(env)), textOf(env).slice(0, 200));
+    check("环境检查: 票 06 起七步链已接", !isErr(env) && sc(env).snapshot?.totalCount === 7, textOf(env).slice(0, 200));
   } finally {
     await s.stop();
     gh.cleanup();

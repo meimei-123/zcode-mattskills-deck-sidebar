@@ -20,6 +20,9 @@ const perms = new Map(); // 真实路径 → 权限缓存
 //   failures      连续失败次数(间隔按 2^failures 加倍,成功一次清零)
 //   lastSyncAtMs  上次探测成功的时刻(下一次探测的 since 窗口起点;0 = 还没有窗口)
 const probes = new Map(); // 真实路径 → 探测态
+// 票 06:环境检查快照缓存 —— {atMs, snapshot, checkedAt}。检查页 5 秒一拍读缓存不出站;
+// TTL 与计数缓存同一档(probeBaseMs);force(「重新检查」)清掉后真重建。
+const envCheckCaches = new Map(); // 真实路径 → 检查快照缓存
 
 function keyOf(root) {
   const raw = resolve(String(root || ""));
@@ -85,6 +88,21 @@ export function setPerm(root, value) {
 /** 清掉权限缓存(票 06 的「重新检查」用:下一次写会重新问仓库)。 */
 export function clearPerm(root) {
   perms.delete(keyOf(root));
+}
+
+/** 读环境检查缓存(没有就 null)。调用方负责按 TTL(probeBaseMs)判新鲜。 */
+export function envCheckCacheOf(root) {
+  return envCheckCaches.get(keyOf(root)) || null;
+}
+
+/** 写环境检查缓存(形状 {atMs, snapshot, checkedAt})。 */
+export function setEnvCheckCache(root, value) {
+  envCheckCaches.set(keyOf(root), value);
+}
+
+/** 清环境检查缓存(「重新检查」用:下一次调用重建链)。 */
+export function clearEnvCheckCache(root) {
+  envCheckCaches.delete(keyOf(root));
 }
 
 /** 读探测态(没探过回全零;调用方拿副本,改完经 setProbeState 写回)。 */
