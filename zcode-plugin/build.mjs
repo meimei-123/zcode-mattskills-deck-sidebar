@@ -34,3 +34,11 @@ try {
   console.error("[build] git bundle 构建失败:" + ((e && e.message) || e));
   throw e;
 }
+// m7 票 01:GitHub 后端房间 bundle(上游 src/tracker/rooms/github 的 TS 图;机制见 build-github.mjs)。
+// 串在 git bundle 之后:两段共用时间参数生成器镜像,前一段先铺好。
+try {
+  await import("./build-github.mjs").then((m) => m.buildGithubBundle());
+} catch (e) {
+  console.error("[build] github bundle 构建失败:" + ((e && e.message) || e));
+  throw e;
+}

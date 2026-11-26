@@ -207,11 +207,11 @@ function rmCachedArgs(paths) {
 function mvArgs(from, to) {
   return ["mv", "--", String(from), String(to)];
 }
-function checkIgnoreArgs(path3) {
-  return ["check-ignore", "-v", "--", String(path3)];
+function checkIgnoreArgs(path4) {
+  return ["check-ignore", "-v", "--", String(path4)];
 }
-function diffHunksArgs(path3) {
-  return ["diff", "--no-color", "--no-ext-diff", "--find-renames", "--unified=3", "--", String(path3)];
+function diffHunksArgs(path4) {
+  return ["diff", "--no-color", "--no-ext-diff", "--find-renames", "--unified=3", "--", String(path4)];
 }
 function cleanPreviewArgs(paths) {
   return paths.length ? ["clean", "-nd", "--"].concat(paths) : ["clean", "-nd"];
@@ -228,8 +228,8 @@ function configUnsetArgs(key, scope) {
 function hookRunArgs(name) {
   return ["hook", "run", String(name)];
 }
-function checkAttrArgs(path3) {
-  return ["check-attr", "-a", "-z", "--", String(path3)];
+function checkAttrArgs(path4) {
+  return ["check-attr", "-a", "-z", "--", String(path4)];
 }
 function checkMailmapArgs(address) {
   return ["check-mailmap", "--", String(address)];
@@ -592,10 +592,10 @@ function parseDiffFiles(stdout) {
       i += 1;
       if (orig === "") return fail5("原路径为空");
       if (i >= fields.length) return fail5("重命名缺新路径字段");
-      const path3 = fields[i];
+      const path4 = fields[i];
       i += 1;
-      if (path3 === "") return fail5("新路径为空");
-      out.push({ path: path3, origPath: orig, added: added2, deleted: deleted2 });
+      if (path4 === "") return fail5("新路径为空");
+      out.push({ path: path4, origPath: orig, added: added2, deleted: deleted2 });
       continue;
     }
     const inline = INLINE_RE.exec(head);
@@ -643,8 +643,8 @@ function sameWorktreePath(a, b) {
   };
   return norm(a) === norm(b);
 }
-function displayFor(path3, keep) {
-  const segs = String(path3).replace(/\\/g, "/").split("/").filter((s) => s !== "");
+function displayFor(path4, keep) {
+  const segs = String(path4).replace(/\\/g, "/").split("/").filter((s) => s !== "");
   return segs.slice(-Math.max(1, keep)).join("/");
 }
 function toChange(e) {
@@ -1142,25 +1142,25 @@ function filterRepoArgs(input) {
   }
   return { ok: true, args: out };
 }
-function relativeRepoPathProblem(path3) {
-  if (typeof path3 !== "string" || path3.length === 0) return "路径是空的";
-  if (path3.length > 1024) return "路径太长";
-  if (/^[A-Za-z]:/.test(path3) || path3.charAt(0) === "/" || path3.charAt(0) === "\\") return "路径必须是相对路径，不能是绝对路径";
-  if (path3.indexOf("\\") >= 0) return "路径要用正斜杠";
-  if (/[\u0000-\u001f]/.test(path3)) return "路径里有控制字符";
-  const parts = path3.split("/");
+function relativeRepoPathProblem(path4) {
+  if (typeof path4 !== "string" || path4.length === 0) return "路径是空的";
+  if (path4.length > 1024) return "路径太长";
+  if (/^[A-Za-z]:/.test(path4) || path4.charAt(0) === "/" || path4.charAt(0) === "\\") return "路径必须是相对路径，不能是绝对路径";
+  if (path4.indexOf("\\") >= 0) return "路径要用正斜杠";
+  if (/[\u0000-\u001f]/.test(path4)) return "路径里有控制字符";
+  const parts = path4.split("/");
   for (const part of parts) {
     if (part === ".." || part === ".") return "路径里不能有 . 或 .. 段";
   }
   return null;
 }
-function materialFileProblem(path3) {
-  if (typeof path3 !== "string" || path3.length === 0) return "文件路径是空的";
-  if (path3.length > 4096) return "文件路径太长";
-  if (/[\u0000\u001f]/.test(path3)) return "文件路径里有控制字符";
-  const absolute = /^[A-Za-z]:[\\/]/.test(path3) || path3.charAt(0) === "/";
+function materialFileProblem(path4) {
+  if (typeof path4 !== "string" || path4.length === 0) return "文件路径是空的";
+  if (path4.length > 4096) return "文件路径太长";
+  if (/[\u0000\u001f]/.test(path4)) return "文件路径里有控制字符";
+  const absolute = /^[A-Za-z]:[\\/]/.test(path4) || path4.charAt(0) === "/";
   if (!absolute) return "文件路径必须是绝对路径";
-  if (path3.indexOf("..") >= 0) return "文件路径里不能有 .. 段";
+  if (path4.indexOf("..") >= 0) return "文件路径里不能有 .. 段";
   return null;
 }
 var init_filter_repo_args = __esm({
@@ -2133,9 +2133,9 @@ function makeChangesPlan(partial) {
   }) : [];
   return plan;
 }
-function pathArgProblem(path3) {
-  if (typeof path3 !== "string") return "not-string";
-  const s = path3;
+function pathArgProblem(path4) {
+  if (typeof path4 !== "string") return "not-string";
+  const s = path4;
   if (s === "") return "empty";
   if (/[\u0000-\u001f\u007f]/.test(s)) return "control-char";
   if (s.indexOf("\\") >= 0) return "backslash";
@@ -2159,8 +2159,8 @@ function twoPathProblem(from, to) {
   if (b) return b;
   return String(from) === String(to) ? "same-path" : null;
 }
-function ignoreLineOf(path3) {
-  return "/" + String(path3 === void 0 || path3 === null ? "" : path3);
+function ignoreLineOf(path4) {
+  return "/" + String(path4 === void 0 || path4 === null ? "" : path4);
 }
 function ignoreLineProblem(line) {
   if (typeof line !== "string") return "not-string";
@@ -2332,18 +2332,18 @@ function createChangesCheck(deps) {
     if (r && r.kind === "non-zero") return fail9("other", "unknown-write-failure", firstLine3(r.stderr) || "git 以非零退出码结束了这条只读命令");
     return fail9(r && r.kind || "other", "unknown-write-failure", firstLine3(r && r.message) || "这条只读命令没有正常结束");
   }
-  async function lsFilesOne(cwd, path3) {
-    const r = await readOut(cwd, ["ls-files", "--stage", "-z", "--", path3], SMALL_LIMIT);
+  async function lsFilesOne(cwd, path4) {
+    const r = await readOut(cwd, ["ls-files", "--stage", "-z", "--", path4], SMALL_LIMIT);
     if (r.ok !== true) return r;
     return { ok: true, tracked: String(r.stdout || "") !== "", text: String(r.stdout || "") };
   }
-  function entryOf(screen, path3, which) {
+  function entryOf(screen, path4, which) {
     const list = screen && Array.isArray(screen[which]) ? screen[which] : [];
-    for (const f of list) if (f && String(f.path) === path3) return f;
+    for (const f of list) if (f && String(f.path) === path4) return f;
     return null;
   }
-  function isUntracked(screen, path3) {
-    const e = entryOf(screen, path3, "unstaged");
+  function isUntracked(screen, path4) {
+    const e = entryOf(screen, path4, "unstaged");
     return !!(e && e.change === "untracked");
   }
   function busyOf(screen) {
@@ -2413,12 +2413,12 @@ function createChangesCheck(deps) {
     } else if (op === "stage-hunks") {
       const badPath = pathArgProblem(a.path);
       if (badPath) return fail9("args", "bad-path", writeHintFor("bad-path"), { pathProblem: badPath });
-      const path3 = String(a.path);
-      const entry = entryOf(screen, path3, "unstaged");
+      const path4 = String(a.path);
+      const entry = entryOf(screen, path4, "unstaged");
       if (!entry) return fail9("args", "nothing-to-do", "这个文件现在没有未暂存的改动");
       if (entry.change === "untracked") return fail9("args", "hunks-unavailable", "未跟踪文件没有可拆的块，请按整份文件暂存");
       if (entry.change === "binary" || entry.change === "renamed") return fail9("args", "hunks-unavailable", writeHintFor("hunks-unavailable"));
-      const raw = await readOut(cwd, diffHunksArgs(path3), PATCH_LIMIT);
+      const raw = await readOut(cwd, diffHunksArgs(path4), PATCH_LIMIT);
       if (raw.ok !== true) return raw;
       if (raw.truncated === true) return fail9("other", "hunks-unavailable", "这个文件的差异太大，读不全就拆不出块；请按整份文件处理");
       const parsed = splitUnifiedDiff(raw.stdout);
@@ -2432,15 +2432,15 @@ function createChangesCheck(deps) {
         if (one.reason === "hunk-out-of-range") return fail9("args", "hunk-out-of-range", writeHintFor("hunk-out-of-range"), { hunkCount: parsed.hunks.length });
         return fail9("args", "hunks-unavailable", writeHintFor("hunks-unavailable"));
       }
-      plan = makeChangesPlan({ op: "stage-hunks", paths: [path3], hunkIndex: idx, patchDigest: digest162(one.text) });
+      plan = makeChangesPlan({ op: "stage-hunks", paths: [path4], hunkIndex: idx, patchDigest: digest162(one.text) });
     } else if (op === "discard-file") {
       const badPath = pathArgProblem(a.path);
       if (badPath) return fail9("args", "bad-path", writeHintFor("bad-path"), { pathProblem: badPath });
-      const path3 = String(a.path);
-      const entry = entryOf(screen, path3, "unstaged");
-      if (isUntracked(screen, path3)) return fail9("args", "nothing-to-do", "未跟踪文件没有可丢弃的改动；要删掉它请走「删除未跟踪文件」");
+      const path4 = String(a.path);
+      const entry = entryOf(screen, path4, "unstaged");
+      if (isUntracked(screen, path4)) return fail9("args", "nothing-to-do", "未跟踪文件没有可丢弃的改动；要删掉它请走「删除未跟踪文件」");
       if (!entry) return fail9("args", "nothing-to-do", "这个文件现在没有未暂存的改动");
-      plan = makeChangesPlan({ op: "discard-file", paths: [path3], mode: versionUsesRestore(gitVersion) ? "restore" : "checkout" });
+      plan = makeChangesPlan({ op: "discard-file", paths: [path4], mode: versionUsesRestore(gitVersion) ? "restore" : "checkout" });
     } else if (op === "discard-all") {
       const tracked = Array.isArray(screen.unstaged) ? screen.unstaged.filter(function(f) {
         return f && f.change !== "untracked";
@@ -2450,9 +2450,9 @@ function createChangesCheck(deps) {
     } else if (op === "clean-untracked") {
       const badPath = pathArgProblem(a.path);
       if (badPath) return fail9("args", "bad-path", writeHintFor("bad-path"), { pathProblem: badPath });
-      const path3 = String(a.path);
-      if (!isUntracked(screen, path3)) return fail9("args", "nothing-to-do", "这个路径不是未跟踪文件；删除未跟踪文件只处理未跟踪的路径");
-      const pv = await readOut(cwd, cleanPreviewArgs([path3]), SMALL_LIMIT);
+      const path4 = String(a.path);
+      if (!isUntracked(screen, path4)) return fail9("args", "nothing-to-do", "这个路径不是未跟踪文件；删除未跟踪文件只处理未跟踪的路径");
+      const pv = await readOut(cwd, cleanPreviewArgs([path4]), SMALL_LIMIT);
       if (pv.ok !== true) return pv;
       const removeList = String(pv.stdout || "").split(/\r?\n/).map(function(line) {
         const m = /^Would remove (.+)$/.exec(String(line).trim());
@@ -2461,27 +2461,27 @@ function createChangesCheck(deps) {
         return x !== "";
       }).sort();
       if (removeList.length === 0) return fail9("args", "nothing-to-do", "这条路径下没有可删除的未跟踪文件");
-      plan = makeChangesPlan({ op: "clean-untracked", paths: [path3], removeList });
+      plan = makeChangesPlan({ op: "clean-untracked", paths: [path4], removeList });
     } else if (op === "rm-tracked") {
       const badPath = pathArgProblem(a.path);
       if (badPath) return fail9("args", "bad-path", writeHintFor("bad-path"), { pathProblem: badPath });
-      const path3 = String(a.path);
-      const one = await lsFilesOne(cwd, path3);
+      const path4 = String(a.path);
+      const one = await lsFilesOne(cwd, path4);
       if (one.ok !== true) return one;
       if (!one.tracked) return fail9("args", "nothing-to-do", "这个路径不在索引里；删除已跟踪文件只处理已跟踪的路径");
-      const e = entryOf(screen, path3, "unstaged");
-      const staged = entryOf(screen, path3, "staged");
+      const e = entryOf(screen, path4, "unstaged");
+      const staged = entryOf(screen, path4, "staged");
       if (staged || e) return fail9("args", "path-modified", writeHintFor("path-modified"));
-      plan = makeChangesPlan({ op: "rm-tracked", paths: [path3] });
+      plan = makeChangesPlan({ op: "rm-tracked", paths: [path4] });
     } else if (op === "rm-cached") {
       const badPath = pathArgProblem(a.path);
       if (badPath) return fail9("args", "bad-path", writeHintFor("bad-path"), { pathProblem: badPath });
-      const path3 = String(a.path);
-      const one = await lsFilesOne(cwd, path3);
+      const path4 = String(a.path);
+      const one = await lsFilesOne(cwd, path4);
       if (one.ok !== true) return one;
       if (!one.tracked) return fail9("args", "nothing-to-do", "这个路径不在索引里；停止跟踪只处理已跟踪的路径");
-      if (entryOf(screen, path3, "staged")) return fail9("args", "path-modified", "这个文件还有已暂存的改动，停止跟踪前请先撤回暂存");
-      plan = makeChangesPlan({ op: "rm-cached", paths: [path3] });
+      if (entryOf(screen, path4, "staged")) return fail9("args", "path-modified", "这个文件还有已暂存的改动，停止跟踪前请先撤回暂存");
+      plan = makeChangesPlan({ op: "rm-cached", paths: [path4] });
     } else if (op === "mv") {
       const from = String(a.path || "");
       const to = String(a.to || "");
@@ -2503,8 +2503,8 @@ function createChangesCheck(deps) {
     } else if (op === "ignore") {
       const badPath = pathArgProblem(a.path);
       if (badPath) return fail9("args", "bad-path", writeHintFor("bad-path"), { pathProblem: badPath });
-      const path3 = String(a.path);
-      const line = ignoreLineOf(path3);
+      const path4 = String(a.path);
+      const line = ignoreLineOf(path4);
       const badLine = ignoreLineProblem(line);
       if (badLine) return fail9("args", "ignore-invalid", writeHintFor("ignore-invalid"));
       const old = await d.readTextFile(cwd, pathOfGitignore());
@@ -2512,7 +2512,7 @@ function createChangesCheck(deps) {
       if (old && old.ok !== true && old.reason !== "missing") return fail9("env", "unknown-write-failure", "读不到仓库根 .gitignore，无法安全追加");
       const append = gitignoreAppendOf(oldText, [line]);
       if (append.added.length === 0) return fail9("args", "nothing-to-do", "这一行已经在 .gitignore 里了，不需要重复追加");
-      plan = makeChangesPlan({ op: "ignore", paths: [path3], ignoreLines: append.added, ignoreOldDigest: digest162(oldText) });
+      plan = makeChangesPlan({ op: "ignore", paths: [path4], ignoreLines: append.added, ignoreOldDigest: digest162(oldText) });
     }
     if (!plan) return fail9("args", "bad-target", "不认识的改动页动作：" + String(op));
     const lf = await readOut(cwd, lsFilesStageArgs(), LSFILES_LIMIT);
@@ -6693,17 +6693,17 @@ var init_worktree_ops = __esm({
     worktreeArgsOf = function(op, input) {
       const o = String(op || "");
       const p = input || {};
-      const path3 = String(p.path === void 0 || p.path === null ? "" : p.path);
+      const path4 = String(p.path === void 0 || p.path === null ? "" : p.path);
       if (o === "list") return ["worktree", "list", "--porcelain", "-z"];
       if (o === "list-plain") return ["worktree", "list", "--porcelain"];
-      if (o === "add") return ["worktree", "add", path3];
-      if (o === "add-branch") return ["worktree", "add", path3, String(p.branch === void 0 || p.branch === null ? "" : p.branch)];
-      if (o === "remove") return ["worktree", "remove", path3];
+      if (o === "add") return ["worktree", "add", path4];
+      if (o === "add-branch") return ["worktree", "add", path4, String(p.branch === void 0 || p.branch === null ? "" : p.branch)];
+      if (o === "remove") return ["worktree", "remove", path4];
       if (o === "prune-preview") return ["worktree", "prune", "--dry-run", "--verbose"];
       if (o === "prune") return ["worktree", "prune", "--verbose"];
-      if (o === "lock") return ["worktree", "lock", "--reason", String(p.reason === void 0 || p.reason === null ? "" : p.reason), path3];
-      if (o === "unlock") return ["worktree", "unlock", path3];
-      if (o === "move") return ["worktree", "move", path3, String(p.dest === void 0 || p.dest === null ? "" : p.dest)];
+      if (o === "lock") return ["worktree", "lock", "--reason", String(p.reason === void 0 || p.reason === null ? "" : p.reason), path4];
+      if (o === "unlock") return ["worktree", "unlock", path4];
+      if (o === "move") return ["worktree", "move", path4, String(p.dest === void 0 || p.dest === null ? "" : p.dest)];
       if (o === "sparse-list") return ["sparse-checkout", "list"];
       if (o === "sparse-candidates") return ["ls-tree", "-d", "--name-only", "HEAD"];
       if (o === "sparse-rule-dir") return ["rev-parse", "--git-dir"];
@@ -7365,18 +7365,18 @@ function submoduleParseStatus(text2) {
     const spaceAt = rest.indexOf(" ");
     if (spaceAt < 0) continue;
     const oid = rest.slice(0, spaceAt);
-    let path3 = rest.slice(spaceAt + 1);
+    let path4 = rest.slice(spaceAt + 1);
     let describe = "";
-    const close = path3.lastIndexOf(")");
-    const open = path3.lastIndexOf(" (", close);
-    if (close === path3.length - 1 && open >= 0) {
-      describe = path3.slice(open + 2, close);
-      path3 = path3.slice(0, open);
+    const close = path4.lastIndexOf(")");
+    const open = path4.lastIndexOf(" (", close);
+    if (close === path4.length - 1 && open >= 0) {
+      describe = path4.slice(open + 2, close);
+      path4 = path4.slice(0, open);
     }
-    path3 = path3.trim();
-    if (path3.length === 0) continue;
+    path4 = path4.trim();
+    if (path4.length === 0) continue;
     const states = { " ": "clean", "-": "uninitialized", "+": "different", "U": "conflict" };
-    rows.push({ path: path3, oid, state: states[mark], describe });
+    rows.push({ path: path4, oid, state: states[mark], describe });
   }
   return { ok: true, rows };
 }
@@ -7463,9 +7463,9 @@ function submoduleJudge(op, ctx) {
   const action = submoduleActionOf(op);
   const c = ctx && typeof ctx === "object" ? ctx : {};
   const rows = Array.isArray(c.rows) ? c.rows : [];
-  function rowOf(path3) {
-    if (typeof path3 !== "string") return null;
-    for (const r of rows) if (r && r.path === path3) return r;
+  function rowOf(path4) {
+    if (typeof path4 !== "string") return null;
+    for (const r of rows) if (r && r.path === path4) return r;
     return null;
   }
   function allow() {
@@ -7540,22 +7540,22 @@ function submoduleWriteArgsOf(op, plan) {
   const action = submoduleActionOf(op);
   const p = plan && typeof plan === "object" ? plan : {};
   if (!action || SUBMODULE_WRITE_OPS.indexOf(String(op)) < 0) return { ok: false, reason: "unknown-action", message: "凭票执行只接受五个子模块写动作" };
-  const path3 = String(p.path || "");
-  const pathProblem = submodulePathProblem(path3);
+  const path4 = String(p.path || "");
+  const pathProblem = submodulePathProblem(path4);
   if (pathProblem) return { ok: false, reason: pathProblem, message: "路径不合格，不能拼进命令" };
   if (op === "set-url") {
     const urlProblem = submoduleUrlProblem(p.url);
     if (urlProblem) return { ok: false, reason: urlProblem, message: "新地址不合格，不能拼进命令" };
-    return { ok: true, args: ["submodule", "set-url", "--", path3, String(p.url)] };
+    return { ok: true, args: ["submodule", "set-url", "--", path4, String(p.url)] };
   }
-  if (op === "sync") return { ok: true, args: ["submodule", "sync", "--recursive", "--", path3] };
+  if (op === "sync") return { ok: true, args: ["submodule", "sync", "--recursive", "--", path4] };
   if (op === "set-branch") {
     const branchProblem = submoduleBranchProblem(p.branch);
     if (branchProblem) return { ok: false, reason: branchProblem, message: "跟踪分支不合格，不能拼进命令" };
-    return { ok: true, args: ["submodule", "set-branch", "--branch", String(p.branch), "--", path3] };
+    return { ok: true, args: ["submodule", "set-branch", "--branch", String(p.branch), "--", path4] };
   }
-  if (op === "deinit") return { ok: true, args: ["submodule", "deinit", "--", path3] };
-  return { ok: true, args: ["submodule", "absorbgitdirs", "--", path3] };
+  if (op === "deinit") return { ok: true, args: ["submodule", "deinit", "--", path4] };
+  return { ok: true, args: ["submodule", "absorbgitdirs", "--", path4] };
 }
 function submoduleTaskOf(op, plan) {
   const p = plan && typeof plan === "object" ? plan : {};
@@ -7841,9 +7841,9 @@ function createSubmoduleCheck(deps) {
       return [];
     }
   }
-  function rowOf(rows, path3) {
+  function rowOf(rows, path4) {
     const list = Array.isArray(rows) ? rows : [];
-    for (const r of list) if (r && r.path === path3) return r;
+    for (const r of list) if (r && r.path === path4) return r;
     return null;
   }
   function bindingsFor(rows, plan, markers, targetExists) {
@@ -8137,7 +8137,7 @@ function conflictStepsOf(plan) {
   const p = plan || {};
   const op = String(p.op === void 0 || p.op === null ? "" : p.op);
   const target = String(p.target === void 0 || p.target === null ? "" : p.target);
-  const path3 = String(p.path === void 0 || p.path === null ? "" : p.path);
+  const path4 = String(p.path === void 0 || p.path === null ? "" : p.path);
   const state = String(p.state === void 0 || p.state === null ? "" : p.state);
   const side = String(p.side === void 0 || p.side === null ? "" : p.side);
   if (op === "merge") return [["merge", target]];
@@ -8145,11 +8145,11 @@ function conflictStepsOf(plan) {
   if (op === "merge-no-ff") return [["merge", "--no-ff", target]];
   if (op === "merge-squash") return [["merge", "--squash", target]];
   if (op === "take-side") {
-    if (side === "delete") return [["rm", "--", path3]];
-    return [["checkout", side === "theirs" ? "--theirs" : "--ours", "--", path3], ["add", "--", path3]];
+    if (side === "delete") return [["rm", "--", path4]];
+    return [["checkout", side === "theirs" ? "--theirs" : "--ours", "--", path4], ["add", "--", path4]];
   }
   if (op === "save-file") return [];
-  if (op === "mark-resolved") return [["add", "--", path3]];
+  if (op === "mark-resolved") return [["add", "--", path4]];
   if (op === "op-continue") return [[state, "--continue"]];
   if (op === "op-skip") return [[state, "--skip"]];
   if (op === "op-abort") return [[state, "--abort"]];
@@ -8171,19 +8171,19 @@ function conflictTargetProblem(target) {
   if (target.indexOf("//") >= 0 || target.indexOf("/.") >= 0) return "bad-target";
   return null;
 }
-function conflictPathProblem(path3) {
-  if (typeof path3 !== "string" || path3 === "") return "bad-path";
-  if (/[\u0000-\u001f\u007f]/.test(path3)) return "bad-path";
-  if (path3.indexOf("\\") >= 0) return "bad-path";
-  if (path3.charAt(0) === "/" || /^[A-Za-z]:/.test(path3)) return "bad-path";
-  if (path3.charAt(0) === "-" || path3.charAt(0) === ":") return "bad-path";
-  if (path3.charAt(path3.length - 1) === "/") return "bad-path";
-  const segments = path3.split("/");
+function conflictPathProblem(path4) {
+  if (typeof path4 !== "string" || path4 === "") return "bad-path";
+  if (/[\u0000-\u001f\u007f]/.test(path4)) return "bad-path";
+  if (path4.indexOf("\\") >= 0) return "bad-path";
+  if (path4.charAt(0) === "/" || /^[A-Za-z]:/.test(path4)) return "bad-path";
+  if (path4.charAt(0) === "-" || path4.charAt(0) === ":") return "bad-path";
+  if (path4.charAt(path4.length - 1) === "/") return "bad-path";
+  const segments = path4.split("/");
   for (let i = 0; i < segments.length; i += 1) {
     const seg = segments[i];
     if (seg === "" || seg === "." || seg === "..") return "bad-path";
   }
-  if (path3 === ".git" || path3.indexOf(".git/") === 0) return "bad-path";
+  if (path4 === ".git" || path4.indexOf(".git/") === 0) return "bad-path";
   return null;
 }
 function conflictSideProblem(side) {
@@ -10846,11 +10846,11 @@ function createConflictScene(deps) {
       const meta3 = rec.slice(0, tab).split(" ");
       const stage = parseInt(meta3[2], 10);
       if (!(stage === 1 || stage === 2 || stage === 3)) continue;
-      const path3 = rec.slice(tab + 1);
-      if (!byPath[path3]) byPath[path3] = { path: path3, stages: [], modes: [], oids: {} };
-      byPath[path3].stages.push(stage);
-      byPath[path3].modes.push(String(meta3[0] || ""));
-      byPath[path3].oids[stage] = String(meta3[1] || "");
+      const path4 = rec.slice(tab + 1);
+      if (!byPath[path4]) byPath[path4] = { path: path4, stages: [], modes: [], oids: {} };
+      byPath[path4].stages.push(stage);
+      byPath[path4].modes.push(String(meta3[0] || ""));
+      byPath[path4].oids[stage] = String(meta3[1] || "");
     }
     const paths = Object.keys(byPath).sort();
     const list = [];
@@ -11082,7 +11082,7 @@ function createConflictCheck(deps) {
   function confirmOf(plan) {
     const op = String(plan.op || "");
     const target = String(plan.target || "");
-    const path3 = String(plan.path || "");
+    const path4 = String(plan.path || "");
     const side = String(plan.side || "");
     const state = String(plan.state || "");
     const sideText = side === "ours" ? "当前边" : side === "theirs" ? "对方边" : "保留删除";
@@ -11090,9 +11090,9 @@ function createConflictCheck(deps) {
     if (op === "merge-ff-only") return { kind: op, target, verb: "只允许快进地把 " + target + " 合并进来（不能快进就失败）" };
     if (op === "merge-no-ff") return { kind: op, target, verb: "禁止快进，为这次合并单独生成一个合并提交（" + target + "）" };
     if (op === "merge-squash") return { kind: op, target, verb: "把 " + target + " 的改动挤压成工作区改动，不生成合并提交" };
-    if (op === "take-side") return { kind: op, target: path3, verb: "对 " + path3 + " 选" + sideText + "并登记进暂存区" };
-    if (op === "save-file") return { kind: op, target: path3, verb: "把面板里编辑好的整份内容写回 " + path3 + "（保存前会查残留冲突标记）" };
-    if (op === "mark-resolved") return { kind: op, target: path3, verb: "把 " + path3 + " 标记为已解决（git add）" };
+    if (op === "take-side") return { kind: op, target: path4, verb: "对 " + path4 + " 选" + sideText + "并登记进暂存区" };
+    if (op === "save-file") return { kind: op, target: path4, verb: "把面板里编辑好的整份内容写回 " + path4 + "（保存前会查残留冲突标记）" };
+    if (op === "mark-resolved") return { kind: op, target: path4, verb: "把 " + path4 + " 标记为已解决（git add）" };
     if (op === "op-continue") return { kind: op, target: state, verb: "继续这次 " + state + "（用默认提交说明，不弹编辑器）" };
     if (op === "op-skip") return { kind: op, target: state, verb: "跳过这次 " + state + " 的这一步（这一步的改动会丢掉，不能撤销）" };
     if (op === "op-abort") return { kind: op, target: state, verb: "中止这次 " + state + "（回到操作前，途中做过的事会丢）" };
@@ -11124,8 +11124,8 @@ function createConflictCheck(deps) {
     }
     return ticket;
   }
-  function entryOf(s, path3) {
-    for (let i = 0; i < s.conflicts.length; i += 1) if (String(s.conflicts[i].path) === path3) return s.conflicts[i];
+  function entryOf(s, path4) {
+    for (let i = 0; i < s.conflicts.length; i += 1) if (String(s.conflicts[i].path) === path4) return s.conflicts[i];
     return null;
   }
   async function handleConflictRead(args) {
@@ -11141,17 +11141,17 @@ function createConflictCheck(deps) {
       return { ok: true, contract: CONFLICT_CHECK_CONTRACT, version: CONFLICT_CHECK_VERSION, op, state: s.state, headOid: s.headOid, gitVersion: s.gitVersion, conflicts: s.conflicts, conflictCount: s.conflictCount, clean: s.conflictCount === 0, readAtMs: nowFn() };
     }
     if (op === "conflict-view") {
-      const path3 = String(a.path || "");
-      const pProblem = conflictPathProblem(path3);
+      const path4 = String(a.path || "");
+      const pProblem = conflictPathProblem(path4);
       if (pProblem) return argsFail2(pProblem, { op });
       const s = await scene.sceneOf(cwd);
       if (s.ok !== true) return s.envelope;
-      const entry = entryOf(s, path3);
+      const entry = entryOf(s, path4);
       if (entry === null) return blocked(op, "path-not-conflicted", { scene: sceneSummaryOf(s) });
-      const view = await scene.fileViewOf(s.repoRoot, path3);
+      const view = await scene.fileViewOf(s.repoRoot, path4);
       if (view.ok !== true) return view.envelope;
-      if (entry.textKind === "binary") return { ok: true, contract: CONFLICT_CHECK_CONTRACT, version: CONFLICT_CHECK_VERSION, op, path: path3, kind: "binary", entry, text: null, hunks: null, hunkCount: 0, readAtMs: nowFn() };
-      return { ok: true, contract: CONFLICT_CHECK_CONTRACT, version: CONFLICT_CHECK_VERSION, op, path: path3, kind: view.kind, entry, text: view.text, hunks: view.hunks, hunkCount: view.hunkCount, readAtMs: nowFn() };
+      if (entry.textKind === "binary") return { ok: true, contract: CONFLICT_CHECK_CONTRACT, version: CONFLICT_CHECK_VERSION, op, path: path4, kind: "binary", entry, text: null, hunks: null, hunkCount: 0, readAtMs: nowFn() };
+      return { ok: true, contract: CONFLICT_CHECK_CONTRACT, version: CONFLICT_CHECK_VERSION, op, path: path4, kind: view.kind, entry, text: view.text, hunks: view.hunks, hunkCount: view.hunkCount, readAtMs: nowFn() };
     }
     if (op === "merge-preview") {
       const target = String(a.target || "");
@@ -11317,11 +11317,11 @@ function createConflictWrite(deps) {
   }
   function expectedOf(op, plan) {
     const target = String(plan.target || "");
-    const path3 = String(plan.path || "");
+    const path4 = String(plan.path || "");
     if (op === "merge" || op === "merge-ff-only" || op === "merge-no-ff" || op === "merge-squash") return "把 " + target + " 合并进来";
-    if (op === "take-side") return "把 " + path3 + " 处理成选中的那一边并登记进暂存区";
-    if (op === "save-file") return "把 " + path3 + " 的整份编辑写回工作区且不留冲突标记";
-    if (op === "mark-resolved") return "把 " + path3 + " 标记为已解决";
+    if (op === "take-side") return "把 " + path4 + " 处理成选中的那一边并登记进暂存区";
+    if (op === "save-file") return "把 " + path4 + " 的整份编辑写回工作区且不留冲突标记";
+    if (op === "mark-resolved") return "把 " + path4 + " 标记为已解决";
     if (op === "op-continue") return "把进行中的操作继续下去";
     if (op === "op-skip") return "跳过进行中操作的这一步";
     return "中止进行中的操作并回到操作前";
@@ -11374,26 +11374,26 @@ function createConflictWrite(deps) {
   async function saveFile(cur, ticket, a) {
     const plan = ticket.plan || {};
     const cwd = String(a.cwd);
-    const path3 = String(plan.path || "");
+    const path4 = String(plan.path || "");
     const text2 = a.text;
     if (typeof text2 !== "string") return wfail3("args", "bad-text", "缺少要写回的整份内容：text 必须是字符串");
     if (scene.digest16(String(text2)) !== String(plan.textDigest || "")) {
       return wfail3("blocked", "target-changed", "要写回的内容和确认时不是同一份（可能在预检之后又改过）：请重新看一眼再点", { decision: ticket.decision || null });
     }
-    const old = await scene.readTextFile(cur.repoRoot, path3);
+    const old = await scene.readTextFile(cur.repoRoot, path4);
     if (!old || old.ok !== true) return wfail3("blocked", "path-not-conflicted", writeHintFor("path-not-conflicted"), { decision: ticket.decision || null });
     if (scene.digest16(old.text) !== String(plan.oldDigest || "")) {
       return wfail3("blocked", "target-changed", "这个文件在预检之后又变过：这次不写，重新看一眼再点", { decision: ticket.decision || null });
     }
-    const w = await scene.writeTextFile(cur.repoRoot, path3, String(text2));
+    const w = await scene.writeTextFile(cur.repoRoot, path4, String(text2));
     if (!w || w.ok !== true) return wfail3("env", "unknown-write-failure", "写文件失败：" + String(w && w.message || "不知道原因"), { decision: ticket.decision || null });
-    const mc = await scene.markerCheckPathOf(cwd, path3);
+    const mc = await scene.markerCheckPathOf(cwd, path4);
     if (!mc || mc.ok !== true || mc.clean !== true) {
-      await scene.writeTextFile(cur.repoRoot, path3, old.text);
+      await scene.writeTextFile(cur.repoRoot, path4, old.text);
       const line = mc && mc.markers && mc.markers[0] ? mc.markers[0].line : null;
-      return wfail3("blocked", "conflict-markers", writeHintFor("conflict-markers"), { path: path3, line, decision: ticket.decision || null });
+      return wfail3("blocked", "conflict-markers", writeHintFor("conflict-markers"), { path: path4, line, decision: ticket.decision || null });
     }
-    return { ok: true, op: "save-file", kind: "save-file", saved: true, path: path3, markerClean: true, ticketId: String(a.ticketId || ""), atMs: nowFn(), decision: ticket.decision || null };
+    return { ok: true, op: "save-file", kind: "save-file", saved: true, path: path4, markerClean: true, ticketId: String(a.ticketId || ""), atMs: nowFn(), decision: ticket.decision || null };
   }
   async function handleConflictWrite(args) {
     const a = args || {};
@@ -13212,8 +13212,8 @@ function rewriteBackupPlanOf(scene) {
   const stamp = new Date(nowMs).toISOString().replace(/[-:]/g, "").replace(/\..+$/, "").replace("T", "-");
   const enough = free >= size * 2 + 64 * 1024 * 1024;
   const kind = enough ? "mirror" : "bundle";
-  const path3 = parent + "/" + name + "-backup-" + stamp + (kind === "bundle" ? ".bundle" : "");
-  return { kind, required: true, path: path3, estimateBytes: size, freeBytes: free, repoSizeBytes: size, reason: enough ? "mirror-fits" : "bundle-fallback" };
+  const path4 = parent + "/" + name + "-backup-" + stamp + (kind === "bundle" ? ".bundle" : "");
+  return { kind, required: true, path: path4, estimateBytes: size, freeBytes: free, repoSizeBytes: size, reason: enough ? "mirror-fits" : "bundle-fallback" };
 }
 function rewriteGuardProblem(scene, plan) {
   const s = scene || {};
@@ -13752,10 +13752,10 @@ function createBackupRunner(deps) {
     }
     return total;
   }
-  async function mirrorBytesOf(exe, path3) {
+  async function mirrorBytesOf(exe, path4) {
     let res;
     try {
-      res = await deps.runPinned(exe, path3, ["count-objects", "-v"], { timeoutMs: writeTimeoutMs, stdoutLimit: 256 * 1024 });
+      res = await deps.runPinned(exe, path4, ["count-objects", "-v"], { timeoutMs: writeTimeoutMs, stdoutLimit: 256 * 1024 });
     } catch (e) {
       return { ok: false };
     }
@@ -13773,13 +13773,13 @@ function createBackupRunner(deps) {
   }
   async function runBackup(exe, root, backupPlan) {
     const kind = backupPlan && backupPlan.kind === "bundle" ? "bundle" : "mirror";
-    const path3 = String(backupPlan && backupPlan.path || "");
-    if (path3 === "") return { ok: false, reason: "backup-failed", message: "备份路径是空的，不知道该往哪里备份，已中止。" };
-    const parent = path3.replace(/[\\/][^\\/]+$/, "");
+    const path4 = String(backupPlan && backupPlan.path || "");
+    if (path4 === "") return { ok: false, reason: "backup-failed", message: "备份路径是空的，不知道该往哪里备份，已中止。" };
+    const parent = path4.replace(/[\\/][^\\/]+$/, "");
     const started = Date.now();
     let res;
     try {
-      res = kind === "bundle" ? await deps.runPinned(exe, root, ["bundle", "create", path3, "--all"], { timeoutMs: writeTimeoutMs, stdoutLimit: WRITE_LIMIT2 }) : await deps.runPinned(exe, parent, ["clone", "--mirror", root, path3], { timeoutMs: writeTimeoutMs, stdoutLimit: WRITE_LIMIT2 });
+      res = kind === "bundle" ? await deps.runPinned(exe, root, ["bundle", "create", path4, "--all"], { timeoutMs: writeTimeoutMs, stdoutLimit: WRITE_LIMIT2 }) : await deps.runPinned(exe, parent, ["clone", "--mirror", root, path4], { timeoutMs: writeTimeoutMs, stdoutLimit: WRITE_LIMIT2 });
     } catch (e) {
       return { ok: false, reason: "backup-failed", message: failurePrefix + "备份命令没有起进程：" + firstLine(String(e && e.message || e)) };
     }
@@ -13791,17 +13791,17 @@ function createBackupRunner(deps) {
     let bytes = 0;
     if (kind === "bundle") {
       try {
-        const st = await stat2(path3);
+        const st = await stat2(path4);
         bytes = Number(st.size) || 0;
       } catch (e) {
         bytes = 0;
       }
     } else {
-      const mb = await mirrorBytesOf(exe, path3);
-      const walked = await dirBytesOf(path3);
+      const mb = await mirrorBytesOf(exe, path4);
+      const walked = await dirBytesOf(path4);
       bytes = Math.max(mb.ok ? Number(mb.bytes) || 0 : 0, walked);
     }
-    const point = backupPointOf({ kind, path: path3, bytes, elapsedMs, atMs: now() });
+    const point = backupPointOf({ kind, path: path4, bytes, elapsedMs, atMs: now() });
     if (point.ok !== true) return { ok: false, reason: "backup-unreadable", message: "备份做完了但读不出它的大小，按约定不能拿半份信息继续：" + String(point.message || "") };
     return { ok: true, point: point.point };
   }
@@ -13852,18 +13852,18 @@ function createRewriteWrite(deps) {
   }
   async function writeTemp(tag, text2) {
     const name = tag + "-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + ".txt";
-    const path3 = String(tmpdir()).replace(/\\/g, "/") + "/" + name;
+    const path4 = String(tmpdir()).replace(/\\/g, "/") + "/" + name;
     try {
-      await writeFile(path3, text2, { mode: 384, encoding: "utf8" });
+      await writeFile(path4, text2, { mode: 384, encoding: "utf8" });
     } catch (e) {
       return wfail5("env", "temp-unavailable", "写不了临时说明文件：" + firstLine(String(e && e.message || e)));
     }
-    return { ok: true, path: path3 };
+    return { ok: true, path: path4 };
   }
-  async function dropTemp(path3) {
-    if (!path3) return;
+  async function dropTemp(path4) {
+    if (!path4) return;
     try {
-      await unlink(String(path3));
+      await unlink(String(path4));
     } catch (e) {
     }
   }
@@ -15187,9 +15187,9 @@ function createMaintenanceRead(deps) {
     if (!/^[A-Za-z]:\//.test(dir) && dir.charAt(0) !== "/") dir = String(root).replace(/\\/g, "/") + "/" + dir.replace(/^\.\//, "");
     return { ok: true, dir: dir.replace(/\/+$/, "") };
   }
-  async function fileInfoOf(path3) {
+  async function fileInfoOf(path4) {
     try {
-      const st = await stat3(path3);
+      const st = await stat3(path4);
       return { exists: true, bytes: Number(st.size) || 0, mtimeMs: Number(st.mtimeMs) || 0 };
     } catch (e) {
       return { exists: false, bytes: 0, mtimeMs: 0 };
@@ -16129,25 +16129,25 @@ function createGitDiffPhone(deps) {
     if (!/^[0-9a-fA-F]{40,64}$/.test(oid)) return { ok: false, envelope: failPhone4("parse", "读出来的提交号不像一个提交号：" + oid.slice(0, 80)) };
     return { ok: true, oid, parents: fields.slice(1) };
   }
-  function patchEnvelope(res, path3, rev, what) {
+  function patchEnvelope(res, path4, rev, what) {
     const bad4 = failureFromExec4(res, what);
     if (bad4) return bad4;
-    if (res.truncated) return withRev({ ok: true, path: path3, lines: [], truncated: true, reason: "truncated", limitBytes: patchLimit }, rev);
-    if (res.stdout === "") return withRev({ ok: true, path: path3, lines: [], truncated: false, reason: "no-diff" }, rev);
-    if (/^Binary files /m.test(res.stdout) || /^GIT binary patch$/m.test(res.stdout)) return withRev({ ok: true, path: path3, lines: [], truncated: false, reason: "binary-diff" }, rev);
+    if (res.truncated) return withRev({ ok: true, path: path4, lines: [], truncated: true, reason: "truncated", limitBytes: patchLimit }, rev);
+    if (res.stdout === "") return withRev({ ok: true, path: path4, lines: [], truncated: false, reason: "no-diff" }, rev);
+    if (/^Binary files /m.test(res.stdout) || /^GIT binary patch$/m.test(res.stdout)) return withRev({ ok: true, path: path4, lines: [], truncated: false, reason: "binary-diff" }, rev);
     const parsed = parsePatch(res.stdout);
     if (parsed.ok !== true) return failPhone4("parse", "这个文件的差异解析失败：" + parsed.detail);
-    return withRev({ ok: true, path: path3, lines: parsed.lines, truncated: false, reason: "ok" }, rev);
+    return withRev({ ok: true, path: path4, lines: parsed.lines, truncated: false, reason: "ok" }, rev);
   }
-  async function commitDiff(exe, base, rev, path3) {
+  async function commitDiff(exe, base, rev, path4) {
     const shape = await readCommitShape(exe, base.root, rev);
     if (shape.ok !== true) return shape.envelope;
-    if (path3 !== "") {
-      const res2 = await runPinned(exe, base.root, commandFor("patch", { patchPath: path3, rev }).args, { stdoutLimit: patchLimit });
+    if (path4 !== "") {
+      const res2 = await runPinned(exe, base.root, commandFor("patch", { patchPath: path4, rev }).args, { stdoutLimit: patchLimit });
       const bad5 = failureFromExec4(res2, "取这一次提交里这个文件的差异这一步");
       if (bad5) return bad5;
-      if (!res2.truncated && res2.stdout === "" && shape.parents.length > 1) return withRev({ ok: true, path: path3, lines: [], truncated: false, reason: "merge-commit" }, rev);
-      return patchEnvelope(res2, path3, rev, "取这一次提交里这个文件的差异这一步");
+      if (!res2.truncated && res2.stdout === "" && shape.parents.length > 1) return withRev({ ok: true, path: path4, lines: [], truncated: false, reason: "merge-commit" }, rev);
+      return patchEnvelope(res2, path4, rev, "取这一次提交里这个文件的差异这一步");
     }
     const res = await runPinned(exe, base.root, commandFor("diffFiles", { rev }).args);
     const bad4 = failureFromExec4(res, "读这一次提交改了哪些文件这一步");
@@ -16160,23 +16160,23 @@ function createGitDiffPhone(deps) {
   }
   async function handleGitDiff(args) {
     const rev = args && typeof args.rev === "string" ? args.rev : "";
-    const path3 = args && typeof args.path === "string" ? args.path : "";
+    const path4 = args && typeof args.path === "string" ? args.path : "";
     if (rev !== "" && !REV_PATTERN.test(rev)) return failPhone4("args", "提交号只能是 4 到 64 位十六进制字符，这一条给的不是：" + rev.slice(0, 64));
     if (rev === "") {
-      if (!path3 || path3.indexOf("\0") >= 0) return failPhone4("args", "取差异要知道是哪个文件（path），这一条没给");
-    } else if (path3.indexOf("\0") >= 0) return failPhone4("args", "文件路径里不许有 NUL 字符，这一条给的不是一个正常的路径");
+      if (!path4 || path4.indexOf("\0") >= 0) return failPhone4("args", "取差异要知道是哪个文件（path），这一条没给");
+    } else if (path4.indexOf("\0") >= 0) return failPhone4("args", "文件路径里不许有 NUL 字符，这一条给的不是一个正常的路径");
     const exe = await resolveGitExecutable();
     if (!exe) return failPhone4("env", '找不到 git 命令（platform.resolveExecutable("git") 没有给出路径）');
-    if (rev === "" && args && args.untracked === true) return { ok: true, path: path3, lines: [], truncated: false, reason: "untracked-no-diff" };
+    if (rev === "" && args && args.untracked === true) return { ok: true, path: path4, lines: [], truncated: false, reason: "untracked-no-diff" };
     const base = await resolveRepoRoot(exe, cwdOf(args));
     if (base.ok !== true) return base;
-    if (rev !== "") return await commitDiff(exe, base, rev, path3);
+    if (rev !== "") return await commitDiff(exe, base, rev, path4);
     if (base.kind === "bare") return failPhone4("args", "裸仓库没有工作树，取不了文件差异");
     const hasHead = await readHasHead(exe, base.root);
     if (hasHead === null) return failPhone4("env", "问不出这个仓库有没有第一次提交，取差异这一步做不了");
-    if (hasHead === false) return { ok: true, path: path3, lines: [], truncated: false, reason: "no-commit-baseline" };
-    const res = await runPinned(exe, base.root, commandFor("patch", { patchPath: path3 }).args, { stdoutLimit: patchLimit });
-    return patchEnvelope(res, path3, "", "取这个文件的差异这一步");
+    if (hasHead === false) return { ok: true, path: path4, lines: [], truncated: false, reason: "no-commit-baseline" };
+    const res = await runPinned(exe, base.root, commandFor("patch", { patchPath: path4 }).args, { stdoutLimit: patchLimit });
+    return patchEnvelope(res, path4, "", "取这个文件的差异这一步");
   }
   return handleGitDiff;
 }
@@ -17640,10 +17640,10 @@ function historyQueryCommandFor(kind, params) {
   const count = countOf(p.count, HISTORY_QUERY_COUNT_DEFAULT);
   switch (k) {
     case "file-history": {
-      const path3 = pathOk(p.path);
-      if (!path3.ok) return bad3(path3.detail);
+      const path4 = pathOk(p.path);
+      if (!path4.ok) return bad3(path4.detail);
       const args = logArgsOf(count);
-      args.push("--follow", "--", path3.path);
+      args.push("--follow", "--", path4.path);
       return { ok: true, kind: "file-history", subcommand: "log", args };
     }
     case "grep": {
@@ -17705,15 +17705,15 @@ function historyQueryCommandFor(kind, params) {
     case "show-file": {
       const rev = revOk(p.rev, "版本");
       if (!rev.ok) return bad3(rev.detail);
-      const path3 = pathOk(p.path);
-      if (!path3.ok) return bad3(path3.detail);
-      if (path3.path.indexOf(":") >= 0) return bad3("路径里不许有冒号（版本与路径用冒号拼接，会有歧义）");
-      if (path3.path.charAt(0) === ":") return bad3("路径不能以冒号开头");
-      return { ok: true, kind: "show-file", subcommand: "show", args: ["show", rev.rev + ":" + path3.path] };
+      const path4 = pathOk(p.path);
+      if (!path4.ok) return bad3(path4.detail);
+      if (path4.path.indexOf(":") >= 0) return bad3("路径里不许有冒号（版本与路径用冒号拼接，会有歧义）");
+      if (path4.path.charAt(0) === ":") return bad3("路径不能以冒号开头");
+      return { ok: true, kind: "show-file", subcommand: "show", args: ["show", rev.rev + ":" + path4.path] };
     }
     case "blame": {
-      const path3 = pathOk(p.path);
-      if (!path3.ok) return bad3(path3.detail);
+      const path4 = pathOk(p.path);
+      if (!path4.ok) return bad3(path4.detail);
       const range = lineRangeOf(p.lineStart, p.lineEnd);
       if (!range.ok) return bad3(range.detail);
       const args = ["blame", "--line-porcelain", "-L", String(range.start) + "," + String(range.end)];
@@ -17722,7 +17722,7 @@ function historyQueryCommandFor(kind, params) {
         if (!r.ok) return bad3(r.detail);
         args.push(r.rev);
       }
-      args.push("--", path3.path);
+      args.push("--", path4.path);
       return { ok: true, kind: "blame", subcommand: "blame", args };
     }
   }
@@ -19172,12 +19172,10 @@ var init_versionControlClone = __esm({
 });
 
 // src/git-entry.mjs
-import { spawn } from "node:child_process";
 import { createHash as createHash6 } from "node:crypto";
-import { StringDecoder } from "node:string_decoder";
-import { realpathSync, promises as fsp } from "node:fs";
+import { realpathSync } from "node:fs";
 import os from "node:os";
-import path2 from "node:path";
+import path3 from "node:path";
 
 // ../src/host/versionControl.ts
 init_commands();
@@ -20330,9 +20328,9 @@ import { stat, readdir, mkdir, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 function makeProbe() {
   return {
-    async stat(path3) {
+    async stat(path4) {
       try {
-        const st = await stat(path3);
+        const st = await stat(path4);
         return { exists: true, isDirectory: st.isDirectory() === true, isFile: st.isFile() === true, sizeBytes: Number(st.size) };
       } catch (e) {
         const code = String(e && e.code || "");
@@ -20340,9 +20338,9 @@ function makeProbe() {
         return null;
       }
     },
-    async list(path3) {
+    async list(path4) {
       try {
-        const rows = await readdir(path3);
+        const rows = await readdir(path4);
         return rows.map(function(x) {
           return String(x);
         });
@@ -20350,9 +20348,9 @@ function makeProbe() {
         return null;
       }
     },
-    async digest(path3) {
+    async digest(path4) {
       try {
-        const bytes = await readFile(path3);
+        const bytes = await readFile(path4);
         const hash = createHash("sha256");
         hash.update(bytes);
         return { sizeBytes: Number(bytes.length), sha256: String(hash.digest("hex")) };
@@ -20360,9 +20358,9 @@ function makeProbe() {
         return null;
       }
     },
-    async makeDir(path3) {
+    async makeDir(path4) {
       try {
-        await mkdir(path3);
+        await mkdir(path4);
         return { ok: true };
       } catch (e) {
         return { ok: false, message: String(e && (e.code || e.message) || e) };
@@ -21613,6 +21611,12 @@ function createVersionControl(deps) {
 
 // src/git-entry.mjs
 init_values();
+
+// src/node-shims.mjs
+import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
+import { promises as fsp } from "node:fs";
+import path2 from "node:path";
 var DEFAULT_STDOUT_MAX_BYTES = 8 * 1024 * 1024;
 var DEFAULT_STDERR_MAX_BYTES = 256 * 1024;
 function mergeChildEnv(overrides, baseEnv) {
@@ -21808,6 +21812,8 @@ function makeFs(baseCwd) {
     }
   };
 }
+
+// src/git-entry.mjs
 function makeLogCtx(debugOn) {
   return {
     fire(level, event, fields) {
@@ -21816,22 +21822,22 @@ function makeLogCtx(debugOn) {
   };
 }
 function insideRoot(rootReal, targetReal) {
-  const rel = path2.relative(rootReal, targetReal);
-  return rel === "" || !(rel === ".." || rel.startsWith(".." + path2.sep) || path2.isAbsolute(rel));
+  const rel = path3.relative(rootReal, targetReal);
+  return rel === "" || !(rel === ".." || rel.startsWith(".." + path3.sep) || path3.isAbsolute(rel));
 }
 function realPathOf(target) {
-  const abs = path2.resolve(target);
+  const abs = path3.resolve(target);
   const rest = [];
   let base = abs;
   for (; ; ) {
     try {
       const real = realpathSync.native(base);
-      return rest.length ? path2.join(real, ...rest.reverse()) : real;
+      return rest.length ? path3.join(real, ...rest.reverse()) : real;
     } catch (e) {
       if (e && (e.code === "ENOENT" || e.code === "ENOTDIR")) {
-        const parent = path2.dirname(base);
+        const parent = path3.dirname(base);
         if (parent === base) return abs;
-        rest.push(path2.basename(base));
+        rest.push(path3.basename(base));
         base = parent;
         continue;
       }
@@ -21862,7 +21868,7 @@ var BOUNDARY_FIELDS = {
 };
 function createGitBridge(opts) {
   const options = opts || {};
-  const root = path2.resolve(String(options.workspaceRoot || process.cwd()));
+  const root = path3.resolve(String(options.workspaceRoot || process.cwd()));
   let rootReal = root;
   try {
     rootReal = realpathSync.native(root);
@@ -21871,7 +21877,7 @@ function createGitBridge(opts) {
   const baseEnv = options.env || process.env;
   const debugOn = String(baseEnv.ZCODE_GIT_DEBUG || process.env.ZCODE_GIT_DEBUG || "") === "1";
   const cacheIn = String(baseEnv.ZCODE_VC_TASK_CACHE || process.env.ZCODE_VC_TASK_CACHE || "");
-  const cacheDir = options.cacheDir ? path2.resolve(String(options.cacheDir)) : cacheIn ? path2.resolve(root, cacheIn) : path2.join(os.tmpdir(), "zcode-deck-git-cache", createHash6("sha256").update(root, "utf8").digest("hex").slice(0, 12));
+  const cacheDir = options.cacheDir ? path3.resolve(String(options.cacheDir)) : cacheIn ? path3.resolve(root, cacheIn) : path3.join(os.tmpdir(), "zcode-deck-git-cache", createHash6("sha256").update(root, "utf8").digest("hex").slice(0, 12));
   const now = typeof options.now === "function" ? options.now : Date.now;
   const deps = {
     subprocess: makeSubprocess(baseEnv),
@@ -21896,7 +21902,7 @@ function createGitBridge(opts) {
   }
   function resolveTarget(field, value, baseCwd) {
     if (typeof value !== "string" || value.trim() === "") return null;
-    const resolved = path2.isAbsolute(value) ? path2.normalize(value) : path2.resolve(baseCwd, value);
+    const resolved = path3.isAbsolute(value) ? path3.normalize(value) : path3.resolve(baseCwd, value);
     return insideRoot(rootReal, realPathOf(resolved)) ? null : boundaryReply(field, value, root);
   }
   function checkTarget(fields, args, baseCwd) {
@@ -21925,7 +21931,7 @@ function createGitBridge(opts) {
     }
     let baseCwd = root;
     if (typeof input.cwd === "string" && input.cwd.trim() !== "") {
-      const resolvedCwd = path2.resolve(root, input.cwd);
+      const resolvedCwd = path3.resolve(root, input.cwd);
       if (!insideRoot(rootReal, realPathOf(resolvedCwd))) return boundaryReply("cwd", input.cwd, root);
       input.cwd = resolvedCwd;
       baseCwd = resolvedCwd;
