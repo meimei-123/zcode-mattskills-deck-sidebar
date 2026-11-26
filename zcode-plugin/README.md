@@ -1,10 +1,10 @@
 # zcode-mattpocock-skills-deck
 
-MattSkills 任务看板的 ZCode 插件:侧边栏 "MattSkills" 页签(官方 `ui.surfaces`)+ 自带 MCP 服务读写工作区 `.scratch/` 工单,agent 与人共用同一块数据。
+MattSkills 任务看板的 ZCode 插件:侧边栏 "MattSkills" 页签(官方 `ui.surfaces`)+ 自带 MCP 服务读写工作区 `.scratch/` 工单(0.7.0 起也可以是项目远端仓库的 GitHub 议题),agent 与人共用同一块数据。
 
 ## 架构一句话
 
-官方 UI Plugin 形态——manifest 声明 Surface 页签,面板经 `ui://` 资源加载并由内置桥(工具调用/消息发话/资源读取)连接同进程 MCP 服务;数据契约是上游 DSH deck 1.9.0-beta.33 本地 Markdown 后端子集(见 `GLOSSARY.md` 与 `docs/adr/`);版本管理=上游 vc 家族整体克隆 + Node 垫片 + 一条 `deck_git`;0.6.0 起支持跨项目切换(项目清单 + 活动项目,见下)。
+官方 UI Plugin 形态——manifest 声明 Surface 页签,面板经 `ui://` 资源加载并由内置桥(工具调用/消息发话/资源读取)连接同进程 MCP 服务;数据契约是上游 DSH deck 1.9.0-beta.33 的后端子集,数据源可以是本地 Markdown 卡片,也可以是 GitHub 议题(0.7.0 起,见下;术语见 `GLOSSARY.md` 与 `docs/adr/`);版本管理=上游 vc 家族整体克隆 + Node 垫片 + 一条 `deck_git`;0.6.0 起支持跨项目切换(项目清单 + 活动项目,见下)。
 
 ## 安装
 
@@ -41,17 +41,42 @@ home-repo 根放一份手工维护的项目清单 `.deck/projects.json`(`{versio
 
 清单含本机绝对路径时不适合提交进版本库,全是 `../` 相对路径的才可以;入不入库由你决定。
 
+## GitHub 后端(0.7.0 起:议题从仓库来)
+
+看板的数据源可以换成 GitHub Issues。启用有两种办法:在项目根的锚文件里声明,或者在面板头部的后端 chip(紧挨项目 chip)里手选 **GitHub**。
+
+锚文件是项目根的 `docs/agents/issue-tracker.md`,只认一级标题(`##` 及以下不算,正文里出现同名单词也不算),不分大小写:
+
+```markdown
+# Issue tracker: GitHub
+```
+
+`# Issue tracker: Local Markdown`(或 `Local`)显式声明本地卡片;写 `# Issue tracker: GitLab` 的按本地 Markdown 显示,chip 里会说明本版不支持。惯例是把这一行放在文件最上面,文件其余内容随便写。锚文件每次调用现读,改完不用重开会话。
+
+手选只存在当前会话的 MCP 服务进程里,新会话复位。三层顺序是:**本会话手选 > 锚文件 > 默认本地 Markdown**。手选 GitHub 后,chip 展开层多一行「让 agent 写进锚文件」;点了就把这次选择发给 agent,由它写进项目根的锚文件——选择留下来,下一个会话不用再点。
+
+插件不按远端地址自动识别后端。项目远端在 GitHub 上、但没人声明过时,chip 只给一句「可以切到 GitHub 议题」的提示,不会自己出站。要让一个项目读议题,得有锚文件或手选。
+
+只读的含义:第一次对某个仓库写入之前,插件问一次仓库权限;既不能推也不能整理就按只读处理。只读仓库看板照常能看,所有写操作(建票、评论、开关、改标签、挂图)都被拒并说明原因,一条写命令都不发。权限问不出来按未知处理,交给远端裁决——失败的原话带回。
+
+gh 要装好并登录。gh 可执行文件的解析顺序:`ZCODE_GH_PATH`(绝对路径)→ 进程 PATH 里的 `gh`;不探测常见安装目录,`.cmd` / `.bat` 不接受(不走 shell)。没装 gh、没登录、项目根没有关联仓库、仓库访问不到,chip 转警告态,环境检查页给出对应的确认步骤和修复指引(没装 gh 的指引里也包括设 `ZCODE_GH_PATH` 后重启 ZCode)。仓库只从活动项目根的远端解析,工具不接受仓库参数。
+
+面板开着时不会每拍都问 GitHub:服务端按探测间隔限速,距上次探测不到 60 秒直接回缓存,到点才查一次远端有没有更新,有就推进修订号、面板在下一拍重取。间隔用 `ZCODE_GITHUB_PROBE_MS` 改(毫秒),连续失败会放慢,上限 5 分钟;面板回到前台与环境检查的「重新检查」会强制探一次。
+
+本版的边界:评论 50 条一页,只翻到前 200 条;列表整表最多 500 张,到上限或走了降级通道时回包标 `partial`,面板标成「这份不全」;拉取请求不进看板;GitLab 与建仓向导不在本版。
+
 ## 目录
 
 ```
 .zcode-plugin/plugin.json   清单(Surface + MCP + 携带技能目录)
 skills/setup-home-repo/     随插件分发的技能:把 home-repo 的项目指针落成项目清单(0.6.1 起)
-src/                        server/write/watch/cards/env-check/skill-doc/skill-roots/map-tickets/registry(数据面)+ ui/(panel.html 面板壳;upstream/ 为上游骨架+垫片,bundle-1 源)+ git-entry.mjs(Node 服务垫片与 bridge)
+src/                        server/write/watch/cards/env-check/skill-doc/skill-roots/map-tickets/registry(数据面)+ github/(后端判定/gh 解析/仓库解析/房间装配/读写工具/探测)+ ui/(panel.html 面板壳;upstream/ 为上游骨架+垫片,bundle-1 源)+ node-shims.mjs(Node 服务垫片)+ git-entry.mjs / github-entry.mjs(两条 bundle 的入口)
 src/git/                    withGhLane 直通垫片(admission-stub)与上游子集拷贝(credential-safe)
 build-upstream.mjs          上游 client 叶子 splice 拼接构建(bundle-1.txt)
 build-git.mjs               上游 vc 家族 + Node 垫片 → dist/git.mjs
-dist/                       构建产物(server.mjs + git.mjs + ui/),安装即用
-test/                       二十五套直跑测试(缝 1:工具边界;缝 2:面板 DOM/桥包络;U01:上游骨架;0.3.1:技能/检查/响应式;0.4.0:版本管理六套:versioncontrol + server-git/server-git-history/server-git-refs/server-git-admin/server-git-writes;0.5.0:地图详情两套:server-map + upstream-mapdetail;0.6.0:跨项目切换五套:server-project/server-project-writes/upstream-chip/upstream-inject + server-git-project)
+build-github.mjs            上游 GitHub 房间 TS 图 → dist/github-room.mjs(构建期克隆,装机不依赖上游树)
+dist/                       构建产物(server.mjs + git.mjs + github-room.mjs + ui/),安装即用
+test/                       三十三套直跑测试(全在 npm test 脚本里;缝 1:工具边界;缝 2:面板 DOM/桥包络;U01:上游骨架;0.3.1:技能/检查/响应式;0.4.0:版本管理六套:versioncontrol + server-git/server-git-history/server-git-refs/server-git-admin/server-git-writes;0.5.0:地图详情两套:server-map + upstream-mapdetail;0.6.0:跨项目切换五套:server-project/server-project-writes/upstream-chip/upstream-inject + server-git-project;0.7.0:GitHub 后端七套:github-room/server-backend/server-github-read/server-github-write/server-github-probe/server-github-envcheck + upstream-backend;收口的黄金对照 markdown-frozen)
 prototype/                  UI 快照原型(ui-preview 分支,一次性,见 SMOKE.md 提示)
 ```
 

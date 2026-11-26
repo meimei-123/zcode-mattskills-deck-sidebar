@@ -13,11 +13,11 @@ Surface 加载的 `ui://` Web UI 文档(panel.html 与 bundle),看板界面的�
 _Avoid_: 用面板指页签/Surface
 
 **卡片(Card)**:
-`.scratch/` 下一条工单/地图/规格所对应的 markdown 文件,看板的最小展示单元。
-_Avoid_: 工单文件、ticket file、条目
+后端里一条工单/地图/规格在看板上的最小展示单元。本地 Markdown 下是 `.scratch/` 里的一个 markdown 文件;GitHub 下是远端仓库的一条议题。指本地的文件时说「卡片文件」。
+_Avoid_: 工单文件(泛指时)、ticket file、条目
 
 **票(工单)**:
-`.scratch/` 里的工作单元(ticket/map/spec 三型之一;口语泛指全部卡片),卡片(Card)是它的看板/文件呈现。指文件时说「卡片文件」,不写「票文件」。
+一个工作单元(票/地图/规格三型之一;口语泛指全部卡片)。存放处由后端决定:本地 Markdown 是 `.scratch/` 里的卡片文件,GitHub 是远端仓库的议题。指文件时说「卡片文件」,不写「票文件」。
 _Avoid_: 票文件(指文件时用卡片文件)、票据
 
 **工作区根(Workspace root)**:
@@ -47,6 +47,26 @@ _Avoid_: 初始化按钮(泛指时)、加号按钮、设置按钮
 **setup-home-repo(技能)**:
 随插件分发的技能。把 home-repo 文档里给人读的项目指针落成项目清单,清单已有时做对账;写盘前必须经用户确认。
 _Avoid_: 初始化向导、清单生成器(它不是无人值守的脚本)
+
+**后端(Backend)**:
+看板数据的来源,只有两种:`markdown`(项目根 `.scratch/` 下的卡片)与 `github`(活动项目远端仓库的议题)。按项目根判定,顺序是本会话手选 > 锚文件声明 > 默认本地 Markdown;不按远端地址自动识别。
+_Avoid_: 数据源(泛指时)、模式
+
+**GitHub 房间(GitHub Room)**:
+上游 `src/tracker/rooms/github` 的整体克隆(构建期打成 `dist/github-room.mjs`,源码一字不改)。议题的读、写、计数、子议题、阻塞边、仓库权限都由它做;本仓只负责装配上下文与按后端分发。
+_Avoid_: GitHub 适配层、议题接口
+
+**锚文件(Anchor file)**:
+项目根的 `docs/agents/issue-tracker.md`,用一级标题声明后端:`# Issue tracker: GitHub`、`# Issue tracker: Local Markdown`(或 `Local`)、`# Issue tracker: GitLab`(本版不支持)。只认一级标题,正文关键词不算;每次调用现读,改了即生效。
+_Avoid_: 配置文件、声明文档(口语可用,文档用规范词)
+
+**后端 chip(Backend chip)**:
+面板头部紧挨项目 chip 的按钮,显示当前后端(本地 Markdown / GitHub)。四态:普通、警告、在途、提示;展开层列出两个后端,手选 GitHub 后多一行「让 agent 写进锚文件」。
+_Avoid_: 后端开关、切换按钮(泛指时)
+
+**出站控制面(Outbound control plane)**:
+上游房间要求的一组前置能力:拿名额、认取消、记写、报通路失败、报成功;五样本事缺一件就一条命令都不发。本仓接直通实现:拿名额立即放行,不排队、没有冷却窗口,记写是空操作。
+_Avoid_: 限流器(它不限制速率)、并发闸(本仓没有闸)
 
 **DeckState**:
 MCP 服务从 `.scratch/` 解析出的看板状态投影,面板与 agent 工具消费同一形状。

@@ -1,0 +1,1313 @@
+{
+  "base": "0.6.1",
+  "commit": "908343b",
+  "recordedAt": "2026-11-26",
+  "calls": [
+    {
+      "name": "deck_issue_list",
+      "args": {}
+    },
+    {
+      "name": "deck_issue_list",
+      "args": {
+        "state": "open"
+      }
+    },
+    {
+      "name": "deck_issue_list",
+      "args": {
+        "keys": [
+          "m1-core-board/01",
+          "explore-login/map"
+        ]
+      }
+    },
+    {
+      "name": "deck_issue_get",
+      "args": {
+        "key": "01"
+      }
+    },
+    {
+      "name": "deck_issue_get",
+      "args": {
+        "key": "1"
+      }
+    },
+    {
+      "name": "deck_issue_counts",
+      "args": {}
+    },
+    {
+      "name": "deck_issue_list_labels",
+      "args": {}
+    },
+    {
+      "name": "deck_map_tickets",
+      "args": {
+        "key": "00",
+        "effortId": "m1-core-board"
+      }
+    },
+    {
+      "name": "deck_project_list",
+      "args": {}
+    },
+    {
+      "name": "deck_issue_create",
+      "args": {
+        "effort": "frozen-check",
+        "title": "冻结对照:新建一张",
+        "body": "黄金对照用。\n",
+        "labels": [
+          "needs-triage"
+        ]
+      }
+    },
+    {
+      "name": "deck_issue_comment",
+      "args": {
+        "key": "frozen-check/01",
+        "body": "冻结对照:一条评论。"
+      }
+    },
+    {
+      "name": "deck_issue_update",
+      "args": {
+        "key": "frozen-check/01",
+        "status": "in-progress"
+      }
+    },
+    {
+      "name": "deck_issue_set_labels",
+      "args": {
+        "key": "frozen-check/01",
+        "labels": [
+          "bug",
+          "ready-for-agent"
+        ]
+      }
+    },
+    {
+      "name": "deck_issue_close",
+      "args": {
+        "key": "frozen-check/01",
+        "reason": "冻结对照:走完即关。"
+      }
+    },
+    {
+      "name": "deck_issue_reopen",
+      "args": {
+        "key": "frozen-check/01"
+      }
+    },
+    {
+      "name": "deck_issue_get",
+      "args": {
+        "key": "frozen-check/01"
+      }
+    },
+    {
+      "name": "deck_env_check",
+      "args": {}
+    }
+  ],
+  "results": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "共 8 张卡(容器 2 / 票 6,open 4 · closed 2)。\n#explore-login/00 登录方式探索、#explore-login/01 OAuth 可行吗、#explore-login/03 Passkey 试点、#m1-core-board/00 M1 核心看板、#m1-core-board/01 插件骨架 tracer …(另有 1 张 open)"
+        }
+      ],
+      "structuredContent": {
+        "workspaceRoot": "<WS>",
+        "revision": "<REV>",
+        "empty": false,
+        "units": [
+          {
+            "effortId": "explore-login",
+            "kind": "map",
+            "legacy": false
+          },
+          {
+            "effortId": "m1-core-board",
+            "kind": "spec",
+            "legacy": false
+          }
+        ],
+        "counts": {
+          "total": 6,
+          "open": 4,
+          "closed": 2,
+          "frontier": 1,
+          "occupied": 3,
+          "claimed": 1,
+          "blocked": 2,
+          "bug": 1,
+          "triage": 3,
+          "maps": 1,
+          "specs": 1
+        },
+        "total": 8,
+        "rows": [
+          {
+            "key": "00",
+            "effortId": "explore-login",
+            "type": "map",
+            "title": "登录方式探索",
+            "state": "open",
+            "labels": [],
+            "url": "<WS>\\.scratch\\explore-login\\map.md",
+            "parentKey": null,
+            "blockedBy": [],
+            "commentCount": 0,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>"
+          },
+          {
+            "key": "01",
+            "effortId": "explore-login",
+            "type": "issue",
+            "title": "OAuth 可行吗",
+            "state": "open",
+            "labels": [],
+            "url": "<WS>\\.scratch\\explore-login\\issues\\01-oauth.md",
+            "parentKey": "00",
+            "blockedBy": [],
+            "commentCount": 1,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "assignees": [
+              {
+                "login": "dev",
+                "kind": "user"
+              }
+            ],
+            "customFields": [
+              {
+                "name": "Type",
+                "value": "research",
+                "type": "single",
+                "options": [
+                  "research",
+                  "prototype",
+                  "grilling",
+                  "task"
+                ]
+              }
+            ]
+          },
+          {
+            "key": "02",
+            "effortId": "explore-login",
+            "type": "issue",
+            "title": "会话保活策略",
+            "state": "closed",
+            "labels": [],
+            "url": "<WS>\\.scratch\\explore-login\\issues\\02-session.md",
+            "parentKey": "00",
+            "blockedBy": [],
+            "commentCount": 1,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "assignees": []
+          },
+          {
+            "key": "03",
+            "effortId": "explore-login",
+            "type": "issue",
+            "title": "Passkey 试点",
+            "state": "open",
+            "labels": [],
+            "url": "<WS>\\.scratch\\explore-login\\issues\\03-passkey.md",
+            "parentKey": "00",
+            "blockedBy": [
+              {
+                "key": "01",
+                "title": "OAuth 可行吗",
+                "state": "open"
+              }
+            ],
+            "commentCount": 1,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "assignees": []
+          },
+          {
+            "key": "00",
+            "effortId": "m1-core-board",
+            "type": "spec",
+            "title": "M1 核心看板",
+            "state": "open",
+            "labels": [],
+            "url": "<WS>\\.scratch\\m1-core-board\\spec.md",
+            "parentKey": null,
+            "blockedBy": [],
+            "commentCount": 0,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>"
+          },
+          {
+            "key": "01",
+            "effortId": "m1-core-board",
+            "type": "issue",
+            "title": "插件骨架 tracer",
+            "state": "open",
+            "labels": [
+              {
+                "name": "bug",
+                "color": "",
+                "description": ""
+              }
+            ],
+            "url": "<WS>\\.scratch\\m1-core-board\\issues\\01-skeleton.md",
+            "parentKey": "00",
+            "blockedBy": [],
+            "commentCount": 1,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "assignees": []
+          },
+          {
+            "key": "02",
+            "effortId": "m1-core-board",
+            "type": "issue",
+            "title": "服务端只读路径",
+            "state": "open",
+            "labels": [
+              {
+                "name": "needs-triage",
+                "color": "",
+                "description": ""
+              }
+            ],
+            "url": "<WS>\\.scratch\\m1-core-board\\issues\\02-server-read.md",
+            "parentKey": "00",
+            "blockedBy": [
+              {
+                "key": "01",
+                "title": "插件骨架 tracer",
+                "state": "open"
+              }
+            ],
+            "commentCount": 1,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "assignees": []
+          },
+          {
+            "key": "03",
+            "effortId": "m1-core-board",
+            "type": "issue",
+            "title": "面板列表 tracer",
+            "state": "closed",
+            "labels": [
+              {
+                "name": "bug",
+                "color": "",
+                "description": ""
+              }
+            ],
+            "url": "<WS>\\.scratch\\m1-core-board\\issues\\03-panel-list.md",
+            "parentKey": "00",
+            "blockedBy": [],
+            "commentCount": 1,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "assignees": []
+          }
+        ]
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "共 6 张卡(容器 2 / 票 6,open 4 · closed 2)。\n#explore-login/00 登录方式探索、#explore-login/01 OAuth 可行吗、#explore-login/03 Passkey 试点、#m1-core-board/00 M1 核心看板、#m1-core-board/01 插件骨架 tracer …(另有 1 张 open)"
+        }
+      ],
+      "structuredContent": {
+        "workspaceRoot": "<WS>",
+        "revision": "<REV>",
+        "empty": false,
+        "units": [
+          {
+            "effortId": "explore-login",
+            "kind": "map",
+            "legacy": false
+          },
+          {
+            "effortId": "m1-core-board",
+            "kind": "spec",
+            "legacy": false
+          }
+        ],
+        "counts": {
+          "total": 6,
+          "open": 4,
+          "closed": 2,
+          "frontier": 1,
+          "occupied": 3,
+          "claimed": 1,
+          "blocked": 2,
+          "bug": 1,
+          "triage": 3,
+          "maps": 1,
+          "specs": 1
+        },
+        "total": 6,
+        "rows": [
+          {
+            "key": "00",
+            "effortId": "explore-login",
+            "type": "map",
+            "title": "登录方式探索",
+            "state": "open",
+            "labels": [],
+            "url": "<WS>\\.scratch\\explore-login\\map.md",
+            "parentKey": null,
+            "blockedBy": [],
+            "commentCount": 0,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>"
+          },
+          {
+            "key": "01",
+            "effortId": "explore-login",
+            "type": "issue",
+            "title": "OAuth 可行吗",
+            "state": "open",
+            "labels": [],
+            "url": "<WS>\\.scratch\\explore-login\\issues\\01-oauth.md",
+            "parentKey": "00",
+            "blockedBy": [],
+            "commentCount": 1,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "assignees": [
+              {
+                "login": "dev",
+                "kind": "user"
+              }
+            ],
+            "customFields": [
+              {
+                "name": "Type",
+                "value": "research",
+                "type": "single",
+                "options": [
+                  "research",
+                  "prototype",
+                  "grilling",
+                  "task"
+                ]
+              }
+            ]
+          },
+          {
+            "key": "03",
+            "effortId": "explore-login",
+            "type": "issue",
+            "title": "Passkey 试点",
+            "state": "open",
+            "labels": [],
+            "url": "<WS>\\.scratch\\explore-login\\issues\\03-passkey.md",
+            "parentKey": "00",
+            "blockedBy": [
+              {
+                "key": "01",
+                "title": "OAuth 可行吗",
+                "state": "open"
+              }
+            ],
+            "commentCount": 1,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "assignees": []
+          },
+          {
+            "key": "00",
+            "effortId": "m1-core-board",
+            "type": "spec",
+            "title": "M1 核心看板",
+            "state": "open",
+            "labels": [],
+            "url": "<WS>\\.scratch\\m1-core-board\\spec.md",
+            "parentKey": null,
+            "blockedBy": [],
+            "commentCount": 0,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>"
+          },
+          {
+            "key": "01",
+            "effortId": "m1-core-board",
+            "type": "issue",
+            "title": "插件骨架 tracer",
+            "state": "open",
+            "labels": [
+              {
+                "name": "bug",
+                "color": "",
+                "description": ""
+              }
+            ],
+            "url": "<WS>\\.scratch\\m1-core-board\\issues\\01-skeleton.md",
+            "parentKey": "00",
+            "blockedBy": [],
+            "commentCount": 1,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "assignees": []
+          },
+          {
+            "key": "02",
+            "effortId": "m1-core-board",
+            "type": "issue",
+            "title": "服务端只读路径",
+            "state": "open",
+            "labels": [
+              {
+                "name": "needs-triage",
+                "color": "",
+                "description": ""
+              }
+            ],
+            "url": "<WS>\\.scratch\\m1-core-board\\issues\\02-server-read.md",
+            "parentKey": "00",
+            "blockedBy": [
+              {
+                "key": "01",
+                "title": "插件骨架 tracer",
+                "state": "open"
+              }
+            ],
+            "commentCount": 1,
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "assignees": []
+          }
+        ]
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "共 0 张卡(容器 2 / 票 6,open 4 · closed 2)。"
+        }
+      ],
+      "structuredContent": {
+        "workspaceRoot": "<WS>",
+        "revision": "<REV>",
+        "empty": false,
+        "units": [
+          {
+            "effortId": "explore-login",
+            "kind": "map",
+            "legacy": false
+          },
+          {
+            "effortId": "m1-core-board",
+            "kind": "spec",
+            "legacy": false
+          }
+        ],
+        "counts": {
+          "total": 6,
+          "open": 4,
+          "closed": 2,
+          "frontier": 1,
+          "occupied": 3,
+          "claimed": 1,
+          "blocked": 2,
+          "bug": 1,
+          "triage": 3,
+          "maps": 1,
+          "specs": 1
+        },
+        "total": 0,
+        "rows": []
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "#explore-login/01 OAuth 可行吗 (open,1 条评论)"
+        }
+      ],
+      "structuredContent": {
+        "workspaceRoot": "<WS>",
+        "card": {
+          "key": "01",
+          "effortId": "explore-login",
+          "type": "issue",
+          "title": "OAuth 可行吗",
+          "state": "open",
+          "body": "# 01: OAuth 可行吗\n\n**Status:** in-progress\n**Type:** research\n**Assignees:** dev\n\n## Question\n\nOAuth 在这个项目里可行吗?\n\n## Notes\n\n- 已开始调研 OAuth 提供商的可行性。\n\n## Comments\n\n### dev — <ISO>\n\n开始调研 OAuth 提供商的可行性,先看三家。\n",
+          "url": "<WS>\\.scratch\\explore-login\\issues\\01-oauth.md",
+          "createdAt": "<ISO>",
+          "updatedAt": "<ISO>",
+          "closedAt": null,
+          "parentKey": "00",
+          "blockedBy": [],
+          "comments": [
+            {
+              "author": {
+                "login": "dev"
+              },
+              "authorAssociation": "",
+              "body": "开始调研 OAuth 提供商的可行性,先看三家。",
+              "createdAt": "<ISO>",
+              "updatedAt": "<ISO>"
+            }
+          ],
+          "labels": [],
+          "reason": "",
+          "customFields": [
+            {
+              "name": "Type",
+              "value": "research",
+              "type": "single",
+              "options": [
+                "research",
+                "prototype",
+                "grilling",
+                "task"
+              ]
+            }
+          ],
+          "assignees": [
+            {
+              "login": "dev",
+              "kind": "user"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "#explore-login/01 OAuth 可行吗 (open,1 条评论)"
+        }
+      ],
+      "structuredContent": {
+        "workspaceRoot": "<WS>",
+        "card": {
+          "key": "01",
+          "effortId": "explore-login",
+          "type": "issue",
+          "title": "OAuth 可行吗",
+          "state": "open",
+          "body": "# 01: OAuth 可行吗\n\n**Status:** in-progress\n**Type:** research\n**Assignees:** dev\n\n## Question\n\nOAuth 在这个项目里可行吗?\n\n## Notes\n\n- 已开始调研 OAuth 提供商的可行性。\n\n## Comments\n\n### dev — <ISO>\n\n开始调研 OAuth 提供商的可行性,先看三家。\n",
+          "url": "<WS>\\.scratch\\explore-login\\issues\\01-oauth.md",
+          "createdAt": "<ISO>",
+          "updatedAt": "<ISO>",
+          "closedAt": null,
+          "parentKey": "00",
+          "blockedBy": [],
+          "comments": [
+            {
+              "author": {
+                "login": "dev"
+              },
+              "authorAssociation": "",
+              "body": "开始调研 OAuth 提供商的可行性,先看三家。",
+              "createdAt": "<ISO>",
+              "updatedAt": "<ISO>"
+            }
+          ],
+          "labels": [],
+          "reason": "",
+          "customFields": [
+            {
+              "name": "Type",
+              "value": "research",
+              "type": "single",
+              "options": [
+                "research",
+                "prototype",
+                "grilling",
+                "task"
+              ]
+            }
+          ],
+          "assignees": [
+            {
+              "login": "dev",
+              "kind": "user"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "共 6 张票:可接 1 · 占用 3 · 阻塞 2 · 故障 1 · 诊断 3 · 已关闭 2(另有地图 1、规格 1 个容器)"
+        }
+      ],
+      "structuredContent": {
+        "workspaceRoot": "<WS>",
+        "revision": "<REV>",
+        "empty": false,
+        "counts": {
+          "total": 6,
+          "open": 4,
+          "closed": 2,
+          "frontier": 1,
+          "occupied": 3,
+          "claimed": 1,
+          "blocked": 2,
+          "bug": 1,
+          "triage": 3,
+          "maps": 1,
+          "specs": 1
+        }
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "规范标签 5 枚:needs-triage、needs-info、ready-for-agent、ready-for-human、wontfix;内置标签色 11 枚(与面板色表同源,hex 无 # 前缀)。"
+        }
+      ],
+      "structuredContent": {
+        "labels": [
+          "needs-triage",
+          "needs-info",
+          "ready-for-agent",
+          "ready-for-human",
+          "wontfix"
+        ],
+        "colors": {
+          "bug": "d73a4a",
+          "needs-triage": "fbca04",
+          "needs-info": "5319e7",
+          "ready-for-agent": "0e8a16",
+          "ready-for-human": "b60205",
+          "wontfix": "ffffff",
+          "wayfinder:map": "8b5cf6",
+          "wayfinder:research": "0ea5e9",
+          "wayfinder:prototype": "f59e0b",
+          "wayfinder:grilling": "9d7cd8",
+          "wayfinder:task": "10b981"
+        }
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "地图 00:3 张子票(已关闭 1 张)。"
+        }
+      ],
+      "structuredContent": {
+        "ok": true,
+        "key": "00",
+        "items": [
+          {
+            "key": "01",
+            "effortId": "m1-core-board",
+            "type": "issue",
+            "title": "插件骨架 tracer",
+            "state": "OPEN",
+            "labels": [
+              {
+                "name": "bug",
+                "color": "",
+                "description": ""
+              }
+            ],
+            "url": "<WS>\\.scratch\\m1-core-board\\issues\\01-skeleton.md",
+            "parentKey": "00",
+            "blockedBy": [],
+            "blockedByRefs": [],
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "closedAt": null,
+            "progress": null,
+            "number": 1,
+            "claimedBy": ""
+          },
+          {
+            "key": "02",
+            "effortId": "m1-core-board",
+            "type": "issue",
+            "title": "服务端只读路径",
+            "state": "OPEN",
+            "labels": [
+              {
+                "name": "needs-triage",
+                "color": "",
+                "description": ""
+              }
+            ],
+            "url": "<WS>\\.scratch\\m1-core-board\\issues\\02-server-read.md",
+            "parentKey": "00",
+            "blockedBy": [
+              "01"
+            ],
+            "blockedByRefs": [
+              {
+                "key": "01",
+                "title": "插件骨架 tracer",
+                "state": "open"
+              }
+            ],
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "closedAt": null,
+            "progress": null,
+            "number": 2,
+            "claimedBy": ""
+          },
+          {
+            "key": "03",
+            "effortId": "m1-core-board",
+            "type": "issue",
+            "title": "面板列表 tracer",
+            "state": "CLOSED",
+            "labels": [
+              {
+                "name": "bug",
+                "color": "",
+                "description": ""
+              }
+            ],
+            "url": "<WS>\\.scratch\\m1-core-board\\issues\\03-panel-list.md",
+            "parentKey": "00",
+            "blockedBy": [],
+            "blockedByRefs": [],
+            "createdAt": "<ISO>",
+            "updatedAt": "<ISO>",
+            "closedAt": "<ISO>",
+            "progress": null,
+            "number": 3,
+            "claimedBy": ""
+          }
+        ],
+        "stats": {
+          "total": 3,
+          "open": 2,
+          "closed": 1
+        },
+        "total": 3,
+        "fetched": 3,
+        "capped": false,
+        "missing": 0
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "活动项目:ws(<WS>)。\n没有 .deck/projects.json,项目只有 home-repo。"
+        }
+      ],
+      "structuredContent": {
+        "ok": true,
+        "active": {
+          "name": "ws",
+          "path": "<WS>",
+          "isHome": true
+        },
+        "home": {
+          "name": "ws",
+          "path": "<WS>",
+          "isHome": true
+        },
+        "projects": [
+          {
+            "name": "ws",
+            "path": "<WS>",
+            "isHome": true,
+            "valid": true
+          }
+        ],
+        "warnings": [],
+        "registry": {
+          "status": "missing",
+          "path": "<WS>\\.deck\\projects.json",
+          "error": null
+        },
+        "note": null
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "已建卡 #frozen-check/01「冻结对照:新建一张」,写入 .scratch/frozen-check/issues/01-冻结对照-新建一张.md。"
+        }
+      ],
+      "structuredContent": {
+        "ok": true,
+        "changed": true,
+        "revision": "<REV>",
+        "key": "frozen-check/01",
+        "card": {
+          "key": "01",
+          "effortId": "frozen-check",
+          "type": "issue",
+          "title": "冻结对照:新建一张",
+          "state": "open",
+          "body": "<!-- DSH-CREATED: <ISO> -->\n<!-- DSH-ISSUE-KIND: ticket -->\n\n# 01: 冻结对照:新建一张\n\n**Status:** open\n**Labels:** needs-triage\n\n黄金对照用。\n",
+          "url": "<WS>\\.scratch\\frozen-check\\issues\\01-冻结对照-新建一张.md",
+          "createdAt": "<ISO>",
+          "updatedAt": "<ISO>",
+          "closedAt": null,
+          "parentKey": null,
+          "blockedBy": [],
+          "comments": [],
+          "labels": [
+            {
+              "name": "needs-triage",
+              "color": "",
+              "description": ""
+            }
+          ],
+          "reason": "",
+          "assignees": []
+        }
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "已在 #frozen-check/01「冻结对照:新建一张」追加评论(local · <ISO>),落盘到 .scratch/frozen-check/issues/01-冻结对照-新建一张.md。"
+        }
+      ],
+      "structuredContent": {
+        "ok": true,
+        "changed": true,
+        "revision": "<REV>",
+        "key": "frozen-check/01",
+        "card": {
+          "key": "01",
+          "effortId": "frozen-check",
+          "type": "issue",
+          "title": "冻结对照:新建一张",
+          "state": "open",
+          "body": "<!-- DSH-CREATED: <ISO> -->\n<!-- DSH-ISSUE-KIND: ticket -->\n\n# 01: 冻结对照:新建一张\n\n**Status:** open\n**Labels:** needs-triage\n\n黄金对照用。\n\n## Comments\n\n### local — <ISO>\n冻结对照:一条评论。\n",
+          "url": "<WS>\\.scratch\\frozen-check\\issues\\01-冻结对照-新建一张.md",
+          "createdAt": "<ISO>",
+          "updatedAt": "<ISO>",
+          "closedAt": null,
+          "parentKey": null,
+          "blockedBy": [],
+          "comments": [
+            {
+              "author": {
+                "login": "local"
+              },
+              "authorAssociation": "",
+              "body": "冻结对照:一条评论。",
+              "createdAt": "<ISO>",
+              "updatedAt": "<ISO>"
+            }
+          ],
+          "labels": [
+            {
+              "name": "needs-triage",
+              "color": "",
+              "description": ""
+            }
+          ],
+          "reason": "",
+          "assignees": []
+        }
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "已把 #frozen-check/01「冻结对照:新建一张」状态行改为「in-progress」。"
+        }
+      ],
+      "structuredContent": {
+        "ok": true,
+        "changed": true,
+        "revision": "<REV>",
+        "key": "frozen-check/01",
+        "card": {
+          "key": "01",
+          "effortId": "frozen-check",
+          "type": "issue",
+          "title": "冻结对照:新建一张",
+          "state": "open",
+          "body": "<!-- DSH-CREATED: <ISO> -->\n<!-- DSH-ISSUE-KIND: ticket -->\n\n# 01: 冻结对照:新建一张\n\n**Status:** in-progress\n**Labels:** needs-triage\n\n黄金对照用。\n\n## Comments\n\n### local — <ISO>\n冻结对照:一条评论。\n",
+          "url": "<WS>\\.scratch\\frozen-check\\issues\\01-冻结对照-新建一张.md",
+          "createdAt": "<ISO>",
+          "updatedAt": "<ISO>",
+          "closedAt": null,
+          "parentKey": null,
+          "blockedBy": [],
+          "comments": [
+            {
+              "author": {
+                "login": "local"
+              },
+              "authorAssociation": "",
+              "body": "冻结对照:一条评论。",
+              "createdAt": "<ISO>",
+              "updatedAt": "<ISO>"
+            }
+          ],
+          "labels": [
+            {
+              "name": "needs-triage",
+              "color": "",
+              "description": ""
+            }
+          ],
+          "reason": "",
+          "assignees": []
+        }
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "已把 #frozen-check/01「冻结对照:新建一张」标签改为 [bug, ready-for-agent]。"
+        }
+      ],
+      "structuredContent": {
+        "ok": true,
+        "changed": true,
+        "revision": "<REV>",
+        "key": "frozen-check/01",
+        "card": {
+          "key": "01",
+          "effortId": "frozen-check",
+          "type": "issue",
+          "title": "冻结对照:新建一张",
+          "state": "open",
+          "body": "<!-- DSH-CREATED: <ISO> -->\n<!-- DSH-ISSUE-KIND: ticket -->\n\n# 01: 冻结对照:新建一张\n\n**Status:** in-progress\n**Labels:** bug, ready-for-agent\n\n黄金对照用。\n\n## Comments\n\n### local — <ISO>\n冻结对照:一条评论。\n",
+          "url": "<WS>\\.scratch\\frozen-check\\issues\\01-冻结对照-新建一张.md",
+          "createdAt": "<ISO>",
+          "updatedAt": "<ISO>",
+          "closedAt": null,
+          "parentKey": null,
+          "blockedBy": [],
+          "comments": [
+            {
+              "author": {
+                "login": "local"
+              },
+              "authorAssociation": "",
+              "body": "冻结对照:一条评论。",
+              "createdAt": "<ISO>",
+              "updatedAt": "<ISO>"
+            }
+          ],
+          "labels": [
+            {
+              "name": "bug",
+              "color": "",
+              "description": ""
+            },
+            {
+              "name": "ready-for-agent",
+              "color": "",
+              "description": ""
+            }
+          ],
+          "reason": "",
+          "assignees": []
+        }
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "已关闭 #frozen-check/01「冻结对照:新建一张」(状态行 → closed,原因已记为一条评论(local))。"
+        }
+      ],
+      "structuredContent": {
+        "ok": true,
+        "changed": true,
+        "revision": "<REV>",
+        "key": "frozen-check/01",
+        "card": {
+          "key": "01",
+          "effortId": "frozen-check",
+          "type": "issue",
+          "title": "冻结对照:新建一张",
+          "state": "closed",
+          "body": "<!-- DSH-CREATED: <ISO> -->\n<!-- DSH-ISSUE-KIND: ticket -->\n\n# 01: 冻结对照:新建一张\n\n**Status:** closed\n**Labels:** bug, ready-for-agent\n\n黄金对照用。\n\n## Comments\n\n### local — <ISO>\n冻结对照:一条评论。\n\n### local — <ISO>\n冻结对照:走完即关。\n",
+          "url": "<WS>\\.scratch\\frozen-check\\issues\\01-冻结对照-新建一张.md",
+          "createdAt": "<ISO>",
+          "updatedAt": "<ISO>",
+          "closedAt": "<ISO>",
+          "parentKey": null,
+          "blockedBy": [],
+          "comments": [
+            {
+              "author": {
+                "login": "local"
+              },
+              "authorAssociation": "",
+              "body": "冻结对照:一条评论。",
+              "createdAt": "<ISO>",
+              "updatedAt": "<ISO>"
+            },
+            {
+              "author": {
+                "login": "local"
+              },
+              "authorAssociation": "",
+              "body": "冻结对照:走完即关。",
+              "createdAt": "<ISO>",
+              "updatedAt": "<ISO>"
+            }
+          ],
+          "labels": [
+            {
+              "name": "bug",
+              "color": "",
+              "description": ""
+            },
+            {
+              "name": "ready-for-agent",
+              "color": "",
+              "description": ""
+            }
+          ],
+          "reason": "completed",
+          "assignees": []
+        }
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "已重开 #frozen-check/01「冻结对照:新建一张」(状态行 → ready-for-agent)。"
+        }
+      ],
+      "structuredContent": {
+        "ok": true,
+        "changed": true,
+        "revision": "<REV>",
+        "key": "frozen-check/01",
+        "card": {
+          "key": "01",
+          "effortId": "frozen-check",
+          "type": "issue",
+          "title": "冻结对照:新建一张",
+          "state": "open",
+          "body": "<!-- DSH-CREATED: <ISO> -->\n<!-- DSH-ISSUE-KIND: ticket -->\n\n# 01: 冻结对照:新建一张\n\n**Status:** ready-for-agent\n**Labels:** bug, ready-for-agent\n\n黄金对照用。\n\n## Comments\n\n### local — <ISO>\n冻结对照:一条评论。\n\n### local — <ISO>\n冻结对照:走完即关。\n",
+          "url": "<WS>\\.scratch\\frozen-check\\issues\\01-冻结对照-新建一张.md",
+          "createdAt": "<ISO>",
+          "updatedAt": "<ISO>",
+          "closedAt": null,
+          "parentKey": null,
+          "blockedBy": [],
+          "comments": [
+            {
+              "author": {
+                "login": "local"
+              },
+              "authorAssociation": "",
+              "body": "冻结对照:一条评论。",
+              "createdAt": "<ISO>",
+              "updatedAt": "<ISO>"
+            },
+            {
+              "author": {
+                "login": "local"
+              },
+              "authorAssociation": "",
+              "body": "冻结对照:走完即关。",
+              "createdAt": "<ISO>",
+              "updatedAt": "<ISO>"
+            }
+          ],
+          "labels": [
+            {
+              "name": "bug",
+              "color": "",
+              "description": ""
+            },
+            {
+              "name": "ready-for-agent",
+              "color": "",
+              "description": ""
+            }
+          ],
+          "reason": "",
+          "assignees": []
+        }
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "#frozen-check/01 冻结对照:新建一张 (open,标签:bug/ready-for-agent,2 条评论)"
+        }
+      ],
+      "structuredContent": {
+        "workspaceRoot": "<WS>",
+        "card": {
+          "key": "01",
+          "effortId": "frozen-check",
+          "type": "issue",
+          "title": "冻结对照:新建一张",
+          "state": "open",
+          "body": "<!-- DSH-CREATED: <ISO> -->\n<!-- DSH-ISSUE-KIND: ticket -->\n\n# 01: 冻结对照:新建一张\n\n**Status:** ready-for-agent\n**Labels:** bug, ready-for-agent\n\n黄金对照用。\n\n## Comments\n\n### local — <ISO>\n冻结对照:一条评论。\n\n### local — <ISO>\n冻结对照:走完即关。\n",
+          "url": "<WS>\\.scratch\\frozen-check\\issues\\01-冻结对照-新建一张.md",
+          "createdAt": "<ISO>",
+          "updatedAt": "<ISO>",
+          "closedAt": null,
+          "parentKey": null,
+          "blockedBy": [],
+          "comments": [
+            {
+              "author": {
+                "login": "local"
+              },
+              "authorAssociation": "",
+              "body": "冻结对照:一条评论。",
+              "createdAt": "<ISO>",
+              "updatedAt": "<ISO>"
+            },
+            {
+              "author": {
+                "login": "local"
+              },
+              "authorAssociation": "",
+              "body": "冻结对照:走完即关。",
+              "createdAt": "<ISO>",
+              "updatedAt": "<ISO>"
+            }
+          ],
+          "labels": [
+            {
+              "name": "bug",
+              "color": "",
+              "description": ""
+            },
+            {
+              "name": "ready-for-agent",
+              "color": "",
+              "description": ""
+            }
+          ],
+          "reason": "",
+          "assignees": []
+        }
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "环境检查 4/6:通过 工作区已初始化、卡片可读、监听在线、工具桥在线;待处理 技能根可读(未通过)、工作区是 git 仓库(未通过)。"
+        }
+      ],
+      "structuredContent": {
+        "ok": true,
+        "snapshot": {
+          "steps": [
+            {
+              "id": "scratch:workspace",
+              "status": "done",
+              "show": {
+                "fallback": "工作区已初始化",
+                "desc": "已找到 .scratch/ 工单目录(3 个工作单元)"
+              },
+              "actions": [],
+              "blockedBy": null
+            },
+            {
+              "id": "scratch:cards",
+              "status": "done",
+              "show": {
+                "fallback": "卡片可读",
+                "desc": "共 9 张卡全部可读"
+              },
+              "actions": [],
+              "blockedBy": null
+            },
+            {
+              "id": "env:watch",
+              "status": "done",
+              "show": {
+                "fallback": "监听在线",
+                "desc": "fs.watch 已挂上 .scratch/,卡片文件变化会即时推进数据修订号"
+              },
+              "actions": [],
+              "blockedBy": null
+            },
+            {
+              "id": "env:bridge",
+              "status": "done",
+              "show": {
+                "fallback": "工具桥在线",
+                "desc": "ZCode 工具桥在线(本检查由插件 MCP 服务返回)"
+              },
+              "actions": [],
+              "blockedBy": null
+            },
+            {
+              "id": "env:skills",
+              "status": "current",
+              "show": {
+                "fallback": "技能根可读",
+                "desc": "工作区 .zcode/skills、~/.zcode/skills、~/.agents/skills、插件内置 skills 都读不到"
+              },
+              "actions": [
+                {
+                  "type": "inject-prompt",
+                  "label": "安装技能",
+                  "prompt": "本机没找到可读的技能根(工作区 .zcode/skills、~/.zcode/skills、~/.agents/skills、插件内置 skills)。请用 /setup-matt-pocock-skills 或 ZCode 技能市场安装 MattSkills 技能。"
+                }
+              ],
+              "blockedBy": null
+            },
+            {
+              "id": "git:repo",
+              "status": "current",
+              "show": {
+                "fallback": "工作区是 git 仓库",
+                "desc": "工作区根没有 .git,不是 git 仓库",
+                "hint": "看板不依赖 git;需要版本追踪时再初始化"
+              },
+              "actions": [
+                {
+                  "type": "inject-prompt",
+                  "label": "初始化 git",
+                  "prompt": "这个工作区还不是 git 仓库。请在工作区根运行 git init(并按需补 .gitignore),完成后重新检查。"
+                }
+              ],
+              "blockedBy": null
+            }
+          ],
+          "currentIndex": 4,
+          "failedIndex": 4,
+          "doneCount": 4,
+          "applicableCount": 6,
+          "totalCount": 6,
+          "chainState": "hasCurrent",
+          "version": "1",
+          "isComplete": false,
+          "hasBlockingFailure": true,
+          "blockingCheck": "env:skills"
+        },
+        "checkedAt": "<AT>"
+      }
+    }
+  ]
+}

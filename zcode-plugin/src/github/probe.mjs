@@ -62,9 +62,11 @@ export async function probeGithub(root, opts = {}) {
   if (!force && now - st.lastProbeAtMs < intervalOf(st.failures)) {
     return { checked: false, changed: false };
   }
-  // 探测时刻按开始算(探测本身可能耗时;面板下一拍按这个时刻判间隔)。
-  const next = { ...st, lastProbeAtMs: now };
-  setProbeState(root, next);
+  // 探测时刻记在**探测结束时**(不是开始时):间隔是「两次出站之间至少隔多久」,
+  // 一次探测在慢机器上可能比间隔还长(测试把间隔收短时尤其明显),按开始记会让紧接的
+  // 下一拍立刻又到点 —— 那是白撞一次限速。窗口起点(lastSyncAtMs)仍按开始算,
+  // 探测期间发生的更新下一轮会被再数一遍,不多花请求。
+  const next = { ...st };
 
   let failures = st.failures;
   try {
@@ -72,6 +74,7 @@ export async function probeGithub(root, opts = {}) {
     if (room.error) {
       failures += 1;
       next.failures = failures;
+      next.lastProbeAtMs = Date.now();
       setProbeState(root, next);
       logProbe(true, false, failures, force);
       return { checked: true, changed: false, error: errorOf(room.error) };
@@ -82,12 +85,14 @@ export async function probeGithub(root, opts = {}) {
     if (!res || res.ok !== true) {
       failures += 1;
       next.failures = failures;
+      next.lastProbeAtMs = Date.now();
       setProbeState(root, next);
       logProbe(true, false, failures, force);
       return { checked: true, changed: false, error: errorOf(res && res.error) };
     }
     next.failures = 0;
     next.lastSyncAtMs = now;
+    next.lastProbeAtMs = Date.now();
     setProbeState(root, next);
     const total = res.data && typeof res.data.total === "number" ? res.data.total : 0;
     const changed = total > 0;
@@ -101,6 +106,7 @@ export async function probeGithub(root, opts = {}) {
     // 房间的失败通常是返回值;异常也不许绕过失败计数(否则退避会失效)。
     failures += 1;
     next.failures = failures;
+    next.lastProbeAtMs = Date.now();
     setProbeState(root, next);
     logProbe(true, false, failures, force);
     return { checked: true, changed: false, error: errorOf(e) };

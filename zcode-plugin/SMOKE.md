@@ -39,8 +39,26 @@
 | 9 | 筛选 chips(状态/排序/标签) | 列表按选择过滤;记忆点击;无匹配出空态 | upstream-list 覆盖(筛选交互改变行集) |
 | 10 | 删除 `.scratch/` 整个目录 | 面板回引导态不崩;重建后自动跟上 | live-refresh reconnect 覆盖 |
 
+## GitHub 后端走查(0.7.0,需真 gh 与公开仓库)
+
+仓库用 `meimei-123/zcode-mattskills-deck-sidebar`(公开)。写作用带明显标记的临时议题,走完即关,不留测试垃圾。
+
+第一个确认点:ZCode 的 MCP 服务进程能不能解析到 gh。最省事的验证是在面板头部展开后端 chip 手选 **GitHub**——切得过去就说明两项本地预检都过了(gh 可解析、项目根解析出仓库)。要单独证一次,就让 agent 调 `deck_project_list`,看活动项目的 `backend.repo.name` 与 `backend.writable` 有值。解析不到就把 gh 可执行文件的绝对路径设进 `ZCODE_GH_PATH` 再重启 ZCode。
+
+| # | 操作 | 预期 | 自动化 |
+|---|---|---|---|
+| G1 | 在 `meimei-123/zcode-mattskills-deck-sidebar` 的 `docs/agents/issue-tracker.md` 首行写 `# Issue tracker: GitHub`,打开看板 | 列表出现仓库的议题(拉取请求不出现);chip 显示 GitHub;卡片上有标签、认领人、创建/更新时间;状态筛选与计数按房间口径 | **待人工(真机)**;读通路由 server-github-read、upstream-backend 覆盖 |
+| G2 | 点后端 chip 展开,在 GitHub 与本地 Markdown 之间来回切 | 每次切换都整体重取(列表、计数、导航与详情缓存全换);chip 跟着变;切回本地后卡片来自 `.scratch/`;手选只在本会话有效,新会话按锚文件走 | **待人工(真机)**;判定、切换与重取由 server-backend、upstream-backend 覆盖 |
+| G3 | 手选 GitHub 后点展开层里的「让 agent 写进锚文件」 | 对话里出现一段话,第一行是「<项目根>/docs/agents/issue-tracker.md 的首行写入 "# Issue tracker: GitHub"」,不带项目前言;agent 写完后 `deck_project_list` 的 `backend.source` 变 `anchor` | **待人工(真机)**;发话全文由 upstream-inject、upstream-backend 覆盖 |
+| G4 | 让 agent 建一条议题,标题带 `[smoke-0.7.0]` 标记;再依次评论、改标签、关闭(带原因)、重开 | 议题出现在列表;评论进详情时间线;关闭时先发原因评论再关;重开回到开放;写成功后面板在一个刷新周期内跟上;摘要带仓库短名与议题号 | **待人工(真机)**;写通路与写后读回由 server-github-write 覆盖 |
+| G5 | 点卡片上的议题链接 | 能在浏览器或 ZCode webview 的新窗口里打开原议题;开不了的话至少能复制地址 | **待人工(真机)** |
+| G6 | 三态:退出登录(`gh auth logout`)、临时让 gh 解析不到(摘掉 PATH 里的 gh,或在没装 gh 的机器上试)、制造限流(读额度耗尽或用低额度令牌) | chip 转警告态并说明是哪一种;环境检查页对应步骤给出修复指引;列表区说明原因、不留空壳;恢复后「重新检查」回到正常 | **待人工(真机)**;三档人话与七步链由 server-github-envcheck、server-github-read 覆盖 |
+| G7 | 只读仓库(用一个只有读权限的仓库或协作者账号) | 看板照常能看;建票/评论/关开/改标签都被拒并说明只读;没有写出任何写命令 | **待人工(真机)**;只读门由 server-github-write 覆盖 |
+| G8 | 收尾:G4 的临时议题关掉 | 议题在 GitHub 上是 closed(或删掉);仓库里不留测试垃圾 | **待人工(真机)** |
+
 ## 未自动化、需真机确认
 
+- GitHub 后端真机走查(0.7.0):见上面「GitHub 后端走查」一节,G1–G8 全部待人工。其中第一个确认点是 ZCode 的 MCP 服务进程里 PATH 有没有 gh;第二个未验证点是议题链接能不能在 ZCode 的 webview 里开新窗口。
 - 页签真实形态(图标/标题/开合)与主题融合:看板深色与 ZCode 深色是否协调。**待人工**
 - `ui/message` 在真机宿主的能力声明(`hostCapabilities.message`):若不支持,动作按钮应显示发送失败并可重试(失败路径有测试)。**待人工**
 - 真机切工作区后看板数据源跟随。**待人工**
@@ -58,6 +76,19 @@
 - `git-filter-repo` 等外部工具缺席时的提示:历史改写/维护页应回上游的诚实错误(说明缺什么),不静默失败。**待人工**
 - 非 git 工作区的「不是仓库」引导态:真机要在协调根这类非 git 工作区确认 VC 页给引导而不是报错。**待人工**
 - (可选)双击工作区本地的 m1-ui-preview.html 原型副本对照快照原型(U06 已随新 UI 重生成;源在 ui-preview 分支 `zcode-plugin/prototype/`);差异以真机为准——原型是一次性快照,不随代码日常更新。**待人工**
+
+## 自动化实测记录(m7 收口,0.7.0,2026-11-26,离线)
+
+集成分支 `m7-github-backend` 的终态(七票:垫片与房间 bundle、后端判定、读通路、写通路与 `deck_map_link`、修订号与探测、环境检查七步、面板后端 chip,加本票收口),`node build.mjs` 重建 dist 后跑全量;真实退出码 0,零失败。
+
+| 面 | 跑法 | 结果 |
+|---|---|---|
+| 构建 | `node build.mjs` | ✓ 四段构建(src→dist + build-upstream 拼包 + build-git + build-github):dist/ui 只余 assets.json / bundle-1.txt / panel.html;bundle-1.txt code.length=2393650(UTF-16 码元),2550414 字节;dist/git.mjs code.length=955248,1021589 字节;dist/github-room.mjs code.length=317718,342567 字节(上游依赖闭包 68 个文件 + 1 个时间参数生成物,`node --check` 通过) |
+| 测试 | `npm test` | ✓ 三十三套 3022 断言全绿(scaffold 83 / markdown-frozen 19 / github-room 28 / server-backend 53 / server-github-read 131 / server-github-write 123 / server-github-probe 61 / server-github-envcheck 51 / server-read 132 / server-map 34 / server-project 51 / server-project-writes 49 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-backend 118 / upstream-list 191 / upstream-mapdetail 78 / upstream-detail 90 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 318 / upstream-chip 216 / upstream-inject 22 / server-git 35 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106 / server-git-project 26)。相对 0.6.1 的 2438:+584,来自七套新套件(github-room 28 / server-backend 53 / server-github-read 131 / server-github-write 123 / server-github-probe 61 / server-github-envcheck 51 / upstream-backend 118)与黄金对照(markdown-frozen 19);既有 25 套断言数一个没改 |
+| 一条总断言 | `node test/markdown-frozen.test.mjs`(黄金文件由 0.6.1 @ 908343b 的基线 dist 录制) | ✓ 17 条调用(列表全量/open/keys、get 01 与 1、counts、list_labels、map_tickets、project_list、create/comment/update/set_labels/close/reopen、写后读回、env_check)与黄金逐字一致。规范化只动四样:工作区根→`<WS>`、ISO 时间戳→`<ISO>`、`revision`→`<REV>`、`checkedAt`→`<AT>`;`deck_project_list` 的 `active.backend` 整块删掉。sanity 复验:不删 backend 时恰好只有 `project_list` 一条红——两版之间没有第二处差异 |
+| 版本 | 双清单 + scaffold(先改断言验红,再升双清单转绿) | ✓ plugin.json / marketplace.json / scaffold 断言均 0.7.0;package.json 保持 0.1.0(构建依赖清单,不参与发布) |
+
+**收口时修掉的一处时间敏感**:全量跑前两次时 `server-github-probe` 各红过一次(d 组「恢复后立即再拍仍按基础间隔限速」、f 组「第二次不出站」)。根因在 `src/github/probe.mjs`:探测时刻原先按**开始**记,而测试把 `ZCODE_GITHUB_PROBE_MS` 收短到 500ms,机器忙时一次探测(数次假 gh 起进程)本身跨过 500ms,紧接着的一拍就会再探。已改成按**探测结束**记(间隔的语义本来就是「两次出站之间至少隔多久」,慢探测不该让下一拍立刻到点);改后该套连跑三次、全量一次全绿,判据与断言一条没改。
 
 ## 自动化实测记录(m6 收口,0.6.1,2026-11-24,离线)
 
