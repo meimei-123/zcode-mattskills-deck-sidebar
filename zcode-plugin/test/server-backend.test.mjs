@@ -3,7 +3,7 @@
 // 沿用 server-project 的 startServer + rpc 会话形状:只断言工具回包,不 import 服务端内部模块。
 // 假 gh 只往日志追加一行,用来证明「提示位判断不出站」(零调用)。
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -281,8 +281,15 @@ async function sliceInvalidName() {
     const bad = await s.call("deck_backend_use", { backend: "gitlab" });
     check("非法名: gitlab 是工具级错误,列出 markdown、github",
       bad.result?.isError === true && /markdown/.test(textOf(bad)) && /github/.test(textOf(bad)), textOf(bad));
+    const badSc = bad.result?.structuredContent || {};
+    check("非法名: 带结构化回包 {ok:false, error.kind=parse, 人话进 message, raw}",
+      badSc.ok === false && badSc.error?.kind === "parse" && badSc.error?.message === textOf(bad) &&
+        typeof badSc.error?.raw === "string", JSON.stringify(badSc));
     const empty = await s.call("deck_backend_use", {});
     check("非法名: 缺 backend 是工具级错误", empty.result?.isError === true, textOf(empty));
+    check("非法名: 缺 backend 也是 parse 档结构化回包",
+      empty.result?.structuredContent?.ok === false && empty.result?.structuredContent?.error?.kind === "parse",
+      JSON.stringify(empty.result?.structuredContent));
     const after = backendOf(await s.call("deck_project_list", {}));
     check("非法名: 当前后端没被改(仍是默认 markdown)",
       after?.id === "markdown" && after?.source === "default", JSON.stringify(after));
@@ -314,6 +321,10 @@ async function slicePreflight() {
       const r = await s.call("deck_backend_use", { backend: "github" });
       check("预检: 没有 gh 时切 GitHub 被拒,说明怎么装/指路 ZCODE_GH_PATH",
         r.result?.isError === true && /gh/.test(textOf(r)) && /ZCODE_GH_PATH/.test(textOf(r)), textOf(r));
+      check("预检: 没有 gh 的拒绝带结构化回包(kind=env)",
+        r.result?.structuredContent?.ok === false && r.result?.structuredContent?.error?.kind === "env" &&
+          r.result?.structuredContent?.error?.message === textOf(r),
+        JSON.stringify(r.result?.structuredContent));
       const b = backendOf(await s.call("deck_project_list", {}));
       check("预检: 没有 gh 时后端没被改(仍 markdown,不是 session)",
         b?.id === "markdown" && b?.source !== "session", JSON.stringify(b));
@@ -335,6 +346,10 @@ async function slicePreflight() {
       const r = await s.call("deck_backend_use", { backend: "github" });
       check("预检: 解析不出仓库时切 GitHub 被拒,说明远端没指向 github.com",
         r.result?.isError === true && /仓库/.test(textOf(r)) && /github\.com/.test(textOf(r)), textOf(r));
+      check("预检: 解析不出仓库的拒绝带结构化回包(kind=not-found)",
+        r.result?.structuredContent?.ok === false && r.result?.structuredContent?.error?.kind === "not-found" &&
+          r.result?.structuredContent?.error?.message === textOf(r),
+        JSON.stringify(r.result?.structuredContent));
       const b = backendOf(await s.call("deck_project_list", {}));
       check("预检: 解析不出仓库时后端没被改(仍 markdown / default)",
         b?.id === "markdown" && b?.source === "default", JSON.stringify(b));
@@ -443,6 +458,13 @@ async function sliceRegression() {
     check("回归: deck_issue_counts 回包不出现 backend 键,open 数照旧(4)",
       !cr.result?.isError && csc.counts?.open === 4 && !JSON.stringify(csc).includes('"backend"'),
       JSON.stringify(csc.counts));
+
+    const ml = await s.call("deck_map_link", { key: "01" });
+    check("回归: 本地 deck_map_link 拒绝带结构化回包(kind=unsupported,人话照旧)",
+      ml.result?.isError === true && /不支持/.test(textOf(ml)) &&
+        ml.result?.structuredContent?.ok === false && ml.result?.structuredContent?.error?.kind === "unsupported" &&
+        ml.result?.structuredContent?.error?.message === textOf(ml),
+      JSON.stringify(ml.result?.structuredContent));
   } finally {
     await s.stop();
   }
@@ -473,6 +495,58 @@ async function sliceWorktreePointer() {
     const r = await s.call("deck_backend_use", { backend: "github" });
     check("worktree: 顺 gitdir/commondir 读到远端(切 github 后 repo.name=ptr/repo)",
       !r.result?.isError && backendOf(r)?.repo?.name === "ptr/repo", JSON.stringify(backendOf(r) || r.result || r.error));
+  } finally {
+    await s.stop();
+    rmSync(base, { recursive: true, force: true });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 切片 J:切后端时停/挂 .scratch 监听 —— GitHub 下不挂,切回 markdown 重新挂上。
+// 规格「新鲜度」:`.scratch/` 的文件监听在 GitHub 后端下不挂。
+// 判据:deck_backend_use 切 github 再切回 markdown,监听实例被重建(初扫必推进一次 =
+// 修订号恰好 +1);之后真改一张卡片,下一拍计数修订号继续前进。
+// ---------------------------------------------------------------------------
+async function sliceWatchFollowsBackend() {
+  const base = mkdtempSync(join(tmpdir(), "deck-backend-watch-"));
+  cpSync(FIX_MIXED, join(base, "ws"), { recursive: true });
+  // 监听根与 active.root 都走 realpath:两边同一串,ensureWatch 才会走「换根重建」这条路。
+  const ws = realpathSync.native(join(base, "ws"));
+  writeGitConfig(ws, "https://github.com/owner/name.git");
+  const fakeGh = writeFakeGh(base);
+  const s = await startServer(ws, {
+    PATH: emptyPathDir(base),
+    ZCODE_GH_PATH: fakeGh,
+    ZCODE_FAKE_GH_LOG: join(base, "gh.log"),
+    ZCODE_REFRESH_DEBOUNCE_MS: "80",
+    ZCODE_REFRESH_GRID_MS: "160",
+  });
+  const revisionOf = async () => (await s.call("deck_issue_counts", {})).result?.structuredContent?.revision;
+  try {
+    const r0 = await revisionOf();
+    check("监听: (前置)markdown 下计数带修订号", Number.isFinite(r0), String(r0));
+
+    const toGh = await s.call("deck_backend_use", { backend: "github" });
+    check("监听: 切到 GitHub 成功", !toGh.result?.isError && backendOf(toGh)?.id === "github",
+      JSON.stringify(backendOf(toGh) || toGh.result || toGh.error));
+    const toMd = await s.call("deck_backend_use", { backend: "markdown" });
+    check("监听: 切回 markdown 成功", !toMd.result?.isError && backendOf(toMd)?.id === "markdown",
+      JSON.stringify(backendOf(toMd) || toMd.result || toMd.error));
+
+    const r1 = await revisionOf();
+    check("监听: 切回 markdown 后监听重新挂上(新实例初扫 → 修订号恰好 +1)",
+      r1 === r0 + 1, `${r0} → ${r1}`);
+
+    // 真改一张卡片文件(落盘)→ 下一拍计数修订号继续前进(挂上的监听真的在看)
+    appendFileSync(join(ws, ".scratch", "m1-core-board", "issues", "01-skeleton.md"), "\n监听回归:改一行。\n", "utf8");
+    let r2 = r1;
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      r2 = await revisionOf();
+      if (r2 > r1) break;
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    check("监听: 改一张卡片后下一拍修订号前进", Number.isFinite(r2) && r2 > r1, `${r1} → ${r2}`);
   } finally {
     await s.stop();
     rmSync(base, { recursive: true, force: true });
@@ -574,6 +648,7 @@ await slicePreflight();
 await sliceHint();
 await sliceRegression();
 await sliceWorktreePointer();
+await sliceWatchFollowsBackend();
 
 console.log(failures === 0 ? `\n全部通过(${checks} 项断言)` : `\n${failures} 项失败(${checks} 项断言)`);
 process.exit(failures === 0 ? 0 : 1);

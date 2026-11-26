@@ -78,6 +78,18 @@ function ensureWatch(root) {
   deckWatchRoot = root;
 }
 
+/** 票 02/05/07:`.scratch/` 监听跟着目标根的后端走 —— GitHub 根不挂监听(停掉并把监听根
+ *  复位成空串,之后切回 markdown 时 ensureWatch 才能重新挂上);markdown 目标照旧 ensureWatch。
+ *  deck_project_use 与 deck_backend_use 共用这一处(两个入口都能把活动根翻成 GitHub)。 */
+function settleWatch(targetRoot) {
+  if (backendStateOf(targetRoot).id === "github") {
+    deckWatch.stop();
+    deckWatchRoot = "";
+    return;
+  }
+  ensureWatch(targetRoot);
+}
+
 // 票 01:活动项目进程内状态 —— 只存清单里的名字,null = home-repo。新会话复位,
 // 不持久化;每次工具调用经 readRegistry 现读清单再解析根(同名项改路径自然指新路径)。
 let activeProjectName = null;
@@ -518,15 +530,6 @@ function handleProjectUse(a, reg, active, activeGitRoot, homeRoot) {
   if (!wanted) {
     return { content: [{ type: "text", text: "缺少 name:请给项目清单里的名字(deck_project_list 可看全量)。" }], isError: true };
   }
-  // 票 05:监听跟着目标根的后端走(GitHub 根不挂 .scratch 监听)。
-  const settleWatch = (targetRoot) => {
-    if (backendStateOf(targetRoot).id === "github") {
-      deckWatch.stop();
-      deckWatchRoot = "";
-      return;
-    }
-    ensureWatch(targetRoot);
-  };
   // 票 02:回包带目标项目根的后端结论(与 list 同一份形状)。
   const useReply = (next, head) => {
     const sc = { ...registryState(reg, { ...next, backend: backendStateOf(next.root) }), note: null };
@@ -566,40 +569,35 @@ function handleProjectUse(a, reg, active, activeGitRoot, homeRoot) {
 /** deck_backend_use(票 02):按名字切活动项目的后端。只认 markdown / github。
  *  切 github 前两项本地预检(gh 可解析、项目根能解析出 GitHub 仓库),不过就拒绝:
  *  不写 state、不改任何东西。登录态与网络留给环境检查(票 06)。
- *  成功回包与 deck_project_list 同一份形状(registryState + note:null)。 */
+ *  成功回包与 deck_project_list 同一份形状(registryState + note:null)。
+ *  票 07:切换落定后按新后端停/挂 .scratch 监听(与 deck_project_use 同一条 settleWatch);
+ *  三条拒绝带结构化回包 {ok:false,error:{kind,message,raw}},人话照旧进 content。 */
 function handleBackendUse(a, reg, active) {
   const wanted = String(a.backend === undefined || a.backend === null ? "" : a.backend).trim().toLowerCase();
+  const reject = (text, kind) => ({
+    content: [{ type: "text", text }],
+    isError: true,
+    structuredContent: { ok: false, error: { kind, message: text, raw: "" } },
+  });
   if (wanted !== "markdown" && wanted !== "github") {
-    return {
-      content: [{ type: "text", text: `后端只支持 markdown、github;收到「${wanted || "(空)"}」。可用值:markdown、github。` }],
-      isError: true,
-    };
+    return reject(`后端只支持 markdown、github;收到「${wanted || "(空)"}」。可用值:markdown、github。`, "parse");
   }
   if (wanted === "github") {
     if (!resolveGhPath(process.env)) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "切换被拒:找不到 gh 可执行文件(没装 GitHub CLI,或没在 PATH 里)。先装 GitHub CLI 并加进 PATH,或用环境变量 ZCODE_GH_PATH 指向 gh.exe 的绝对路径,然后重启 ZCode。",
-          },
-        ],
-        isError: true,
-      };
+      return reject(
+        "切换被拒:找不到 gh 可执行文件(没装 GitHub CLI,或没在 PATH 里)。先装 GitHub CLI 并加进 PATH,或用环境变量 ZCODE_GH_PATH 指向 gh.exe 的绝对路径,然后重启 ZCode。",
+        "env"
+      );
     }
     if (!resolveRepoLocal(active.root)) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `切换被拒:项目根 ${active.root} 的远端解析不出 GitHub 仓库(origin 没指向 github.com)。先把项目根接到一个 GitHub 仓库,再切到 GitHub 后端。`,
-          },
-        ],
-        isError: true,
-      };
+      return reject(
+        `切换被拒:项目根 ${active.root} 的远端解析不出 GitHub 仓库(origin 没指向 github.com)。先把项目根接到一个 GitHub 仓库,再切到 GitHub 后端。`,
+        "not-found"
+      );
     }
   }
   setChoice(active.root, wanted);
+  settleWatch(active.root);
   const backend = backendStateOf(active.root);
   return {
     content: [
@@ -788,9 +786,11 @@ function handleCall(name, args) {
     return createIssue(scanRoot, { effort: a.effort, title: a.title, body: a.body, labels: a.labels }).then((res) => finishWrite(scanRoot, res, name, active));
   }
   if (name === "deck_map_link") {
+    const text = "本地 Markdown 看板不支持用工具挂图/加阻塞边；请直接改卡片正文的 `Blocked by` 行。";
     return {
-      content: [{ type: "text", text: "本地 Markdown 看板不支持用工具挂图/加阻塞边；请直接改卡片正文的 `Blocked by` 行。" }],
+      content: [{ type: "text", text }],
       isError: true,
+      structuredContent: { ok: false, error: { kind: "unsupported", message: text, raw: "" } },
     };
   }
 

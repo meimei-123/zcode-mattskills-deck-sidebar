@@ -1366,7 +1366,11 @@ function apply(ctx) {
       return function () { if (ro) { try { ro.disconnect(); } catch (e) { /* 忽略 */ } } };
     }, []);
     // ---- 工单 05(P1-1):检查页可见拍(上游靠宿主事件源驱动,本仓没有) ----
-    // 仅当停在检查页签时注册 5 秒拍:force=true 绕本地缓存,每次都真扫 deck_env_check;
+    // 仅当停在检查页签时注册 5 秒拍。**按后端分流**:本地 Markdown 照 0.6.1 每拍真重扫
+    // (事实全在本地,零出站);GitHub 后端缓存优先 —— 规格「这四步会出站,结果按探测间隔
+    // 缓存,检查页的 5 秒拍读到的是缓存,只有『重新检查』才真重探」。真重探只有「重新检查」:
+    // check.recheck 走 refreshAll → chainEventRefresh(st, "user-recheck") 不传第三参 =
+    // 上游默认绕缓存。
     // document.visibilityState === "hidden"(页面在后台)时这一拍跳过;页签切走或卸载时清掉。
     // 回调自己吞掉拒绝(失败由 loadChain 记录),不产生未处理拒绝。
     React.useEffect(function () {
@@ -1377,7 +1381,7 @@ function apply(ctx) {
         if (!alive) return; // 已离页/卸载:清掉时可能还有一拍排在队里,不再发车
         try {
           if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-          const p = chainEventRefresh(st, "checks-visible-tick", true);
+          const p = chainEventRefresh(st, "checks-visible-tick", activeBackendId() === "github" ? false : true);
           if (p && typeof p.catch === "function") p.catch(function () {});
         } catch (e) { /* 一拍失败不挡下一拍 */ }
       }, CHECKS_REVALIDATE_MS);

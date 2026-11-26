@@ -815,6 +815,40 @@ async function bootPanel(opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// 切片 6b:检查页 5 秒拍 —— 缓存优先(不带 force);只有「重新检查」才真重探
+// 规格「环境检查」:这四步会出站,结果按探测间隔缓存;检查页的 5 秒拍读到的是缓存,
+// 只有「重新检查」才真重探。实现口径:可见拍 chainEventRefresh(..., false)。
+// ---------------------------------------------------------------------------
+{
+  const t = await bootPanel({ projectList: () => listOf(GH_ANCHOR), rows: GH_ROWS });
+  // 切到检查页签 → 注册检查页可见拍(页签变化触发 effect 重挂,新拍排在清单拍之后)
+  const tabBtn = walk(t.surface).find((n) => n.attributes["data-log"] === "panel.tab.checks" && n.tagName === "BUTTON");
+  check("检查页拍: (前置)环境检查页签按钮在", !!tabBtn);
+  if (tabBtn) fireClick(tabBtn);
+  await flush();
+  eq("检查页拍: (前置)st.tab = checks", t.st.tab, "checks");
+  // 打开页签那一次链取数是缓存优先语义(不带 force)
+  const envAtOpen = t.envCalls.length;
+  check("检查页拍: 打开页签这一次不带 force", envAtOpen >= 1 && t.envCalls[envAtOpen - 1].force !== true, JSON.stringify(t.envCalls[envAtOpen - 1]));
+  const countsBeforeTicks = t.countsCalls().length;
+  // 连续两拍:5 秒拍读缓存,不重探
+  await t.fireTick();
+  await t.fireTick();
+  eq("检查页拍: (前置)这枚 5 秒拍是检查页可见拍(不碰清单计数)", t.countsCalls().length, countsBeforeTicks);
+  const tickCalls = t.envCalls.slice(envAtOpen);
+  check("检查页拍: 连续两拍都不带 force(缓存优先)", tickCalls.every((a) => a.force !== true), JSON.stringify(tickCalls));
+  eq("检查页拍: 读到缓存,不重探(零出站)", tickCalls.length, 0);
+  // 「重新检查」仍真重探:带 force
+  const recheck = walk(t.surface).find((n) => n.attributes["data-log"] === "check.recheck");
+  check("检查页拍: 重检按钮在(check.recheck)", !!recheck);
+  if (recheck) fireClick(recheck);
+  await flush();
+  await flush();
+  const forced = t.envCalls.slice(envAtOpen).filter((a) => a.force === true);
+  check("检查页拍: 点「重新检查」带 force:true(真重探)", forced.length >= 1, JSON.stringify(t.envCalls.slice(envAtOpen)));
+}
+
+// ---------------------------------------------------------------------------
 // 切片 7:电话(GitHub)—— 列表游标/页大小、详情不并取列表、评论游标、写键不补零
 // ---------------------------------------------------------------------------
 {

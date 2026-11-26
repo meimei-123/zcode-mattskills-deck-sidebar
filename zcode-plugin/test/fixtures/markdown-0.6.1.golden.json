@@ -54,6 +54,30 @@
       "args": {}
     },
     {
+      "name": "deck_project_use",
+      "args": {
+        "name": "proj-b"
+      }
+    },
+    {
+      "name": "deck_project_use",
+      "args": {
+        "name": "ws"
+      }
+    },
+    {
+      "name": "deck_skill_doc",
+      "args": {
+        "name": "不存在的技能"
+      }
+    },
+    {
+      "name": "deck_git",
+      "args": {
+        "method": "gitStatus"
+      }
+    },
+    {
       "name": "deck_issue_create",
       "args": {
         "effort": "frozen-check",
@@ -838,6 +862,118 @@
           "error": null
         },
         "note": null
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "活动项目已切到 proj-b(<WS>\\proj-b)。\n清单共 2 个可用项目(home-repo 第一)。"
+        }
+      ],
+      "structuredContent": {
+        "ok": true,
+        "active": {
+          "name": "proj-b",
+          "path": "<WS>\\proj-b",
+          "isHome": false
+        },
+        "home": {
+          "name": "ws",
+          "path": "<WS>",
+          "isHome": true
+        },
+        "projects": [
+          {
+            "name": "ws",
+            "path": "<WS>",
+            "isHome": true,
+            "valid": true
+          },
+          {
+            "name": "proj-b",
+            "path": "<WS>\\proj-b",
+            "isHome": false,
+            "valid": true
+          }
+        ],
+        "warnings": [],
+        "registry": {
+          "status": "ok",
+          "path": "<WS>\\.deck\\projects.json",
+          "error": null
+        },
+        "note": null
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "活动项目已设为 home-repo(ws)。\n清单共 2 个可用项目(home-repo 第一)。"
+        }
+      ],
+      "structuredContent": {
+        "ok": true,
+        "active": {
+          "name": "ws",
+          "path": "<WS>",
+          "isHome": true
+        },
+        "home": {
+          "name": "ws",
+          "path": "<WS>",
+          "isHome": true
+        },
+        "projects": [
+          {
+            "name": "ws",
+            "path": "<WS>",
+            "isHome": true,
+            "valid": true
+          },
+          {
+            "name": "proj-b",
+            "path": "<WS>\\proj-b",
+            "isHome": false,
+            "valid": true
+          }
+        ],
+        "warnings": [],
+        "registry": {
+          "status": "ok",
+          "path": "<WS>\\.deck\\projects.json",
+          "error": null
+        },
+        "note": null
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "本机技能目录里找不到 不存在的技能 的 SKILL.md(找过 工作区/.zcode/skills、~/.zcode/skills、~/.agents/skills、插件内置 skills)。"
+        }
+      ],
+      "structuredContent": {
+        "ok": false,
+        "name": "不存在的技能",
+        "reason": "missing"
+      }
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "git 方法 gitStatus 失败:这个目录不在任何 git 仓库里"
+        }
+      ],
+      "structuredContent": {
+        "ok": false,
+        "error": {
+          "kind": "not-repo",
+          "message": "这个目录不在任何 git 仓库里"
+        }
       }
     },
     {

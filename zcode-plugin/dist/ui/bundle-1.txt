@@ -44448,7 +44448,7 @@ ${formatProgressEntry(entry)}
           if (!alive) return;
           try {
             if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-            const p3 = chainEventRefresh(st, "checks-visible-tick", true);
+            const p3 = chainEventRefresh(st, "checks-visible-tick", activeBackendId() === "github" ? false : true);
             if (p3 && typeof p3.catch === "function") p3.catch(function() {
             });
           } catch (e3) {

@@ -485,7 +485,8 @@ if (U) {
   check("document.visibilityState=hidden 时这一拍不触发重扫", chainCalls.length === callsBeforeHidden, `${callsBeforeHidden} → ${chainCalls.length}`);
   doc.visibilityState = "visible";
 
-  // 改 fake 链状态 → 手动跑一拍 → 面板跟着变(force 真重扫)
+  // 改 fake 链状态 → 手动跑一拍 → 面板跟着变(本地 Markdown 下每拍真重扫,与 0.6.1 一致;
+  // GitHub 后端才改成缓存优先,那一路由 upstream-backend 套件的切片 6b 守)
   currentChain = CHAIN_C;
   const callsBeforeTick = chainCalls.length;
   if (tickInterval) tickInterval.fire();
