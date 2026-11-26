@@ -143,6 +143,37 @@ export function trackerDeckOf(rows) {
   return groupDeck(rows, (r) => r);
 }
 
+// 本地 Markdown 后端声明(#684「体检」按钮的门与科目)。上游真源是
+// src/tracker/rooms/markdown/index.ts 的 prompts.healthCheck(只读快照,原文照搬;上游改了这里跟)。
+// 内核 healthCheckVisible 只认「当前后端声明了 prompts.healthCheck」这一个判据点亮按钮;
+// promptTextFor('healthCheck') 再把这段填进总纲模板的 {subject} —— 两处都不按后端 id 分支。
+const MARKDOWN_HEALTH_CHECK_PROMPTS = {
+  healthCheck: {
+    zh: `**本后端的票就是工作区里的文件**（每个工作单元一个目录，地图写在 map.md 里、每张票写成一个文件），所以「游离」必须落到文件上。**查两条文件级判据**：
+1. 票文件存在，却没有被任何 map.md 的清单引用 —— 游离在外；
+2. map.md 的清单里列了某张票，但对应的文件不存在 —— 断链。
+
+**一条 AI 判断照同一套口径一起带上**：对每一张判一句「这张是不是明确可以单张票处理掉的」；是的话也可以不管，只登记一行。
+
+**三种结论**（挂在某张地图下 / 建议自立成一张新地图 / 建议留在原地 + 一句话理由）都只进建议清单，等人点头才动手。
+
+**不碰**：已关闭的票、任何票的标题与正文、标签与认领状态、别的仓库；不关票、不改源码、不提交。
+
+体检的范围是这个工作区里的全部票文件，不跟随面板当前的筛选。`,
+    en: `**On this backend a ticket is a file in this workspace** (one directory per work unit, the map written as map.md and each ticket as a file), so "orphaned" has to land on files. **Check two file-level criteria**:
+1. a ticket file exists but no map.md list references it — it is floating outside;
+2. a map.md list references a ticket whose file does not exist — a broken link.
+
+**One AI judgement on the same rules**: for each ticket, judge with one sentence — "is this clearly something a single ticket can finish?" If yes, you may also leave it alone and just log one line.
+
+**All three conclusions** (attach under a map / suggest a new map of its own / suggest leaving it where it is + a one-sentence reason) only go into the suggestion list — act only after the human nods.
+
+**Never touch**: closed tickets, any ticket title or body, labels and claim state, other repositories; do not close tickets, change source code, or commit.
+
+The health check covers every ticket file in this workspace and does not follow the current panel filters.`,
+  },
+};
+
 /**
  * 组装上游面板快照(store 的 st)。deps:
  *   rows          我们的行(scanWorkspace().rows,或 deck_issue_list 的薄行 —— 计数只读映射表里的格子)
@@ -207,8 +238,13 @@ export function ingestSnapshot({ rows, counts, workspaceRoot, labels, atMs, back
   return {
     cwd: root,
     workspaceRoot: root,
+    // 票 07:后端是 GitHub 时仓库身份来自后端回包;markdown 的模块条目带体检科目
+    // (#685 的仓库自带改动,与 0.7.0 合并:只有 markdown 这一个模块声明 prompts.healthCheck,
+    // GitHub 的模块条目保持最小面,体检按钮在 GitHub 后端下不点亮)。
     selection: { backendId: github ? "github" : "markdown" },
-    backendModules: [{ id: github ? "github" : "markdown", capabilities: { pullRequests: false } }],
+    backendModules: github
+      ? [{ id: "github", capabilities: { pullRequests: false } }]
+      : [{ id: "markdown", capabilities: { pullRequests: false }, prompts: MARKDOWN_HEALTH_CHECK_PROMPTS }],
     snapshot,
   };
 }

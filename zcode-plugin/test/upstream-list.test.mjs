@@ -364,6 +364,7 @@ if (code) {
 let U = null;
 const doc = createFakeDom();
 const toolCalls = [];
+const sentMessages = []; // 体检按钮点击 → st.injector → sendMessage 的实参
 {
   const { scanWorkspace, thinRow } = await import(pathToFileURL(join(ROOT, "src", "cards.mjs")).href);
   const { mapTicketsFor } = await import(pathToFileURL(join(ROOT, "src", "map-tickets.mjs")).href);
@@ -402,6 +403,10 @@ const toolCalls = [];
       // 契约形状由 server-map 套件看守,这里要的是「页面吃到真形状也能画对」。
       if (name === "deck_map_tickets") return { structuredContent: mapTicketsFor({ rows: scan.rows }, args) };
       throw new Error("no tool " + name);
+    },
+    sendMessage: async (text) => {
+      sentMessages.push(String(text));
+      return { ok: true };
     },
   };
   if (code) {
@@ -452,7 +457,7 @@ if (U) {
     const open = U.kernel.openIssuesOf(st);
     const r02 = open.find((x) => String(x.effortId) === "dogfood-test" && String(x.key) === "02");
   }
-  if (st)  if (!kpiRow)  if (kpiRow && st) {
+  if (kpiRow && st) {
     const { openN, closedN } = globalThis.__u04;
     // 占用 = open 行里 isOccupied(已认领或有 open 阻塞者):dogfood-test/02(被 01 阻塞)+ m2/02(认领 dev)
     const kpiText = textOf(kpiRow);
@@ -467,6 +472,42 @@ if (U) {
     eq("kernel 对拍:占用数", occ, 2);
     eq("kernel 对拍:deckCounts closed", dc && dc.closed, closedN);
     eq("kernel 对拍:KPI 可接投影", dc ? Math.max(0, dc.open - occ) : null, openN - 2);
+
+    // ---- 体检按钮(上游 #685):KPI 行右端的门 / 件数 / 点击注入 ----
+    // 门的三条判据全读现成数据:当前后端身份、快照里已有关联仓库、后端声明了体检科目。
+    // 本地 markdown 后端在 ingest 的 backendModules 里声明了 prompts.healthCheck(科目原文
+    // 照搬上游 rooms/markdown),三条才都成立 —— 这也是与上游按钮像素对齐的最后一环。
+    check("healthCheckVisible:本地 markdown 后端点亮体检按钮", U.kernel.healthCheckVisible(st) === true);
+    check(
+      "没声明体检科目 → 整颗不渲染",
+      U.kernel.healthCheckVisible(Object.assign({}, st, { backendModules: [{ id: "markdown", capabilities: {} }] })) === false
+    );
+    check(
+      "没关联仓库(snapshot.repository 缺)→ 整颗不渲染",
+      U.kernel.healthCheckVisible(Object.assign({}, st, { snapshot: Object.assign({}, st.snapshot, { repository: null }) })) === false
+    );
+    check(
+      "没绑定后端(selection 缺)→ 整颗不渲染",
+      U.kernel.healthCheckVisible(Object.assign({}, st, { selection: null, snapshot: Object.assign({}, st.snapshot, { selection: null }) })) === false
+    );
+    // 件数口径 #678:未关闭 + 不是地图/规格 + 不在任何地图的子票里。
+    // fixture 独立清点:只有 m2-planning 的 01/02 是开放孤儿票(其余开放票都挂在容器下)。
+    const hcBtn = walk(kpiRow).find((n) => n.tagName === "BUTTON" && n.attributes["data-log"] === "list.healthcheck");
+    check("体检按钮在 KPI 行(list.healthcheck)", !!hcBtn);
+    check("体检件数 = 2(两张开放孤儿票)", hcBtn ? textOf(hcBtn).includes("体检 2") : false, hcBtn ? textOf(hcBtn) : "");
+    eq("kernel 件数与 fixture 清点一致", U.kernel.healthCheckCountOf(st), 2);
+    // 点击:走「+ 新建需求」同一条开新会话路(seam 的 sessions.create 缺席 → 与行级
+    // 「新会话」按钮同口径,回落注入当前对话);提示词 = 体检总纲 + 当前后端科目。
+    if (hcBtn) {
+      const before = sentMessages.length;
+      fireClick(hcBtn);
+      await tick();
+      check("点体检发话恰好一条", sentMessages.length === before + 1, `+${sentMessages.length - before}`);
+      const txt = sentMessages[sentMessages.length - 1] || "";
+      check("注入的是体检总纲(## 体检（把游离的开放票归位）)", txt.includes("## 体检（把游离的开放票归位）"));
+      check("总纲带上本地后端科目(文件级游离/断链判据)", txt.includes("本后端的票就是工作区里的文件") && txt.includes("断链"));
+      check("模板占位符已填净(无 {subject})", !txt.includes("{subject}"));
+    }
   }
 
   // ---- 筛选行:状态/排序/标签三组 + 墨块宿主 ----

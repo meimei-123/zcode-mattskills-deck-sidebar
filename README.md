@@ -43,7 +43,7 @@ zcode-plugin/
 │   ├── skill-roots.mjs          # 技能根单一真源(工作区→用户→插件内置)
 │   └── node-shims.mjs / git-entry.mjs / github-entry.mjs  # Node 服务垫片与两条 bundle 的入口
 ├── build.mjs / build-upstream.mjs / build-git.mjs / build-github.mjs   # 四段构建,见下
-└── test/                        # 33 套 3045 断言(0.7.0,含黄金对照 markdown-frozen 24 条)
+└── test/                        # 33 套 3064 断言(0.7.0,含黄金对照 markdown-frozen 24 条与体检按钮)
 ```
 
 运行时一条数据流:

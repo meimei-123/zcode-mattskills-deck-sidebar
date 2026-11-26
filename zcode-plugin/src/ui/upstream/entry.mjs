@@ -1968,6 +1968,8 @@ function apply(ctx) {
     deriveDeck: deriveDeck, parseProgress: parseProgress, DECK_DERIVE: DECK_DERIVE,
     // locale / prompts 抽检口
     uiText: uiText, langChainOf: langChainOf, promptText: promptText, promptLanguages: promptLanguages,
+    // 体检按钮三件(#685;按钮只按结果渲染,门/件数/开新会话的真源都在 kernel:healthCheck)
+    healthCheckVisible: healthCheckVisible, healthCheckCountOf: healthCheckCountOf, openHealthCheck: openHealthCheck,
   };
 
   // 视觉层自检面(工单 U03;视图层的接口约定):

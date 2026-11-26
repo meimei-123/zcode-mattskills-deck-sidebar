@@ -1055,7 +1055,15 @@ async function bootPanel(opts = {}) {
   const md = t.U.ingest.ingestSnapshot({ rows: MD_ROWS, counts: null, workspaceRoot: "X:/repo", labels: null }, k);
   eq("接驳: 不给 backend 时逐字保持本地口径", md.snapshot.repository, { backend: "markdown", name: "repo", refId: "", path: "X:/repo" });
   eq("接驳: 默认 selection 仍是 markdown", md.selection.backendId, "markdown");
-  eq("接驳: 默认 backendModules 只有 markdown 一项", md.backendModules, [{ id: "markdown", capabilities: { pullRequests: false } }]);
+  const mdMods = md.backendModules;
+  eq(
+    "接驳: 默认 backendModules 只有 markdown 一项",
+    mdMods.map((m) => ({ id: m.id, capabilities: m.capabilities })),
+    [{ id: "markdown", capabilities: { pullRequests: false } }]
+  );
+  // 0.7.0 与「体检按钮 #685」合并后,markdown 模块多声明了 prompts.healthCheck(体检按钮的门);
+  // 上面那条只钉 id 与能力位,这里单独钉体检科目在。
+  check("接驳: 默认 markdown 模块带体检科目(#685)", !!(mdMods[0] && mdMods[0].prompts && mdMods[0].prompts.healthCheck));
   const part = t.U.ingest.ingestSnapshot(
     { rows: MD_ROWS, counts: null, workspaceRoot: "X:/repo", labels: null, backend: { id: "github", repoName: "o/n", repoUrl: "" }, partial: true },
     k

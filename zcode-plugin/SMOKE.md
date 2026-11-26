@@ -30,6 +30,7 @@
 | 2t | 没有清单的 home-repo(如 dtz-team-repo),点头部「＋ 项目」 | 对话里出现一条请求,首行是 `/setup-home-repo`,带工作区根与清单路径;点完到下一次刷新落定前入口变淡禁点,连点只发一条 | upstream-chip(入口发话全文/在途不叠发/修正入口免项目前言)覆盖 |
 | 2u | 接 2t:看 agent 执行 setup-home-repo | 先调 `deck_project_list`;从 `AGENTS.md` 的产品线地图抽出项目指针并逐个核实;给出候选表(建议短名/路径/出处/佐证),文档里没写的项目靠同级目录兜底列出;**停下等确认**;确认后才写 `.deck/projects.json`;最后用 `deck_project_list` 验证到警告为空。默认不改 `AGENTS.md` 与 `.gitignore` | **待人工(真机)**(技能驱动 agent 的行为无法自动化) |
 | 2v | 接 2u:清单落盘后不碰面板;之后把清单整份删掉 | 最迟约 5 秒头部冒出项目 chip、入口消失,不用重开会话;清单删掉后 chip 消失、入口回来;清单展开着等几个刷新周期不会自己收起 | upstream-chip(刷新拍/清单出现·被删·损坏三态/展开层不自收)覆盖 |
+| 2w | 列表 KPI 行右端点「体检」 | 按钮显示「体检 <游离票数>」(算不出来时只显示名字,不显示 0);件数按「未关闭、自己不是地图/规格、不在任何地图的子票里」算,与列表里的独立票行数一致;点一下把体检提示词(公共总纲 + 本地 Markdown 的文件级游离开断链判据)注入当前对话 —— 本仓宿主还没有开新会话的电话,回落口径与行级「新会话」按钮同;提示词里没有残留 `{subject}` 占位符 | upstream-list 覆盖(门的三个不渲染判据 / 件数 / 点击注入与占位符);agent 照它执行的体检流程 **待人工(真机)** |
 | 3 | 对 agent 说"用 /to-tickets 在 m1-core-board 下建几张测试卡" | agent 调 `deck_issue_create`,卡片落盘 `.scratch/m1-core-board/issues/` | server-write 覆盖 |
 | 4 | 看板(不刷新面板):让 agent 建一张卡、改一张卡的状态;或用外部编辑器直接改卡片文件 | 最迟约 5 秒(一个刷新周期)列表自己跟上:新卡出现、状态色与计数变;用户正开着的详情、筛选、滚动位置都不被打断。把面板切到后台再改卡片,回到前台应立即跟上,不用等下一拍。连续两次改动之间面板不会闪空或跳回顶部 | upstream-chip 列表跟随切片(跟随/修订号不变不重取/保留用户状态/隐藏不取与回可见补一格/重取在途不叠发/读失败保留旧内容/切项目换基准/迟到的旧项目重取不盖新项目);live-refresh 覆盖服务端监听与 revision |
 | 5 | 点开一张卡 | 详情:元行/正文/评论时间线;长文折叠可展开 | upstream-detail 覆盖 |
@@ -76,15 +77,16 @@
 - `git-filter-repo` 等外部工具缺席时的提示:历史改写/维护页应回上游的诚实错误(说明缺什么),不静默失败。**待人工**
 - 非 git 工作区的「不是仓库」引导态:真机要在协调根这类非 git 工作区确认 VC 页给引导而不是报错。**待人工**
 - (可选)双击工作区本地的 m1-ui-preview.html 原型副本对照快照原型(U06 已随新 UI 重生成;源在 ui-preview 分支 `zcode-plugin/prototype/`);差异以真机为准——原型是一次性快照,不随代码日常更新。**待人工**
+- 体检按钮点开后的 agent 行为:按钮的显隐/件数/注入文本都有自动化断言,但「照总纲先出建议清单、只做人点过头的结构动作」只能真机走一遍(挑一个确实有游离票的工作区点一次,确认它先列清单、不自己挂图/不关票)。**待人工**
 
 ## 自动化实测记录(m7 收口,0.7.0,2026-11-26,离线)
 
-集成分支 `m7-github-backend` 的终态(七票:垫片与房间 bundle、后端判定、读通路、写通路与 `deck_map_link`、修订号与探测、环境检查七步、面板后端 chip,加本票收口),`node build.mjs` 重建 dist 后跑全量;真实退出码 0,零失败。
+集成分支 `m7-github-backend` 的终态(七票:垫片与房间 bundle、后端判定、读通路、写通路与 `deck_map_link`、修订号与探测、环境检查七步、面板后端 chip,加本票收口),并并入仓库里原先未提交的「体检按钮 #685」改动(与 0.7.0 的三处冲突已解:`ingestSnapshot` 的模块条目按后端分流、README 目录树取 0.7.0 口径、面板 bundle 重建);`node build.mjs` 重建 dist 后跑全量;真实退出码 0,零失败。
 
 | 面 | 跑法 | 结果 |
 |---|---|---|
 | 构建 | `node build.mjs` | ✓ 四段构建(src→dist + build-upstream 拼包 + build-git + build-github):dist/ui 只余 assets.json / bundle-1.txt / panel.html;bundle-1.txt code.length=2393650(UTF-16 码元),2550414 字节;dist/git.mjs code.length=955248,1021589 字节;dist/github-room.mjs code.length=317718,342567 字节(上游依赖闭包 68 个文件 + 1 个时间参数生成物,`node --check` 通过) |
-| 测试 | `npm test` | ✓ 三十三套 3045 断言全绿(scaffold 83 / markdown-frozen 24 / github-room 28 / server-backend 63 / server-github-read 131 / server-github-write 123 / server-github-probe 61 / server-github-envcheck 51 / server-read 132 / server-map 34 / server-project 51 / server-project-writes 49 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-backend 126 / upstream-list 191 / upstream-mapdetail 78 / upstream-detail 90 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 318 / upstream-chip 216 / upstream-inject 22 / server-git 35 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106 / server-git-project 26)。相对 0.6.1 的 2438:+607,来自七套新套件(github-room 28 / server-backend 63 / server-github-read 131 / server-github-write 123 / server-github-probe 61 / server-github-envcheck 51 / upstream-backend 126)与黄金对照(markdown-frozen 24);既有 25 套断言数一个没改 |
+| 测试 | `npm test` | ✓ 三十三套 3064 断言全绿(scaffold 83 / markdown-frozen 24 / github-room 28 / server-backend 63 / server-github-read 131 / server-github-write 123 / server-github-probe 61 / server-github-envcheck 51 / server-read 132 / server-map 34 / server-project 51 / server-project-writes 49 / server-write 98 / live-refresh 17 / upstream-skeleton 71 / upstream-kernel 113 / upstream-cards 171 / upstream-backend 127 / upstream-list 209 / upstream-mapdetail 78 / upstream-detail 90 / upstream-skills 78 / upstream-responsive 76 / upstream-checks 63 / upstream-versioncontrol 318 / upstream-chip 216 / upstream-inject 22 / server-git 35 / server-git-history 99 / server-git-refs 84 / server-git-admin 137 / server-git-writes 106 / server-git-project 26)。相对 0.6.1 的 2438:+626,来自七套新套件(github-room 28 / server-backend 63 / server-github-read 131 / server-github-write 123 / server-github-probe 61 / server-github-envcheck 51 / upstream-backend 127)、黄金对照(markdown-frozen 24)与随仓库带上的体检按钮(upstream-list +18);既有 25 套断言数一个没改 |
 | 一条总断言 | `node test/markdown-frozen.test.mjs`(黄金文件由 0.6.1 @ 908343b 的基线 dist 录制) | ✓ 21 条调用(列表全量/open/keys、get 01 与 1、counts、list_labels、map_tickets、project_list、project_use 切出与切回、skill_doc 缺文、git 非仓库、create/comment/update/set_labels/close/reopen、写后读回、env_check)与黄金逐字一致。规范化只动四样:工作区根→`<WS>`、ISO 时间戳→`<ISO>`、`revision`→`<REV>`、`checkedAt`→`<AT>`;`active.backend` **只对** project_list / project_use 删,其它回包出现 `backend` 键直接报红。sanity 复验:不删 backend 时恰好只有 project_list 一条红——两版之间没有第二处差异。`deck_backend_use` 与 `deck_map_link` 是 0.7.0 新工具(0.6.1 没有),不在此对照;本地 map_link 的拒绝由 server-github-write 覆盖 |
 | 版本 | 双清单 + scaffold(先改断言验红,再升双清单转绿) | ✓ plugin.json / marketplace.json / scaffold 断言均 0.7.0;package.json 保持 0.1.0(构建依赖清单,不参与发布) |
 
