@@ -6,25 +6,20 @@
 //     有 cursor 走按页(服务端筛 state/labels,创建时间倒序,每页固定 50;keys/type 在页内再筛)。
 //   - 详情按十进制偏移翻评论(commentsFirst 缺省 50,夹 1..200;commentsAfter 是偏移串),
 //     回包带 commentCount 与 commentsPage{hasNextPage,endCursor}(面板票 07 直接消费这个名字)。
-//   - 计数:三个数信房间;胶囊口径由已取回的开放行算;缓存 TTL = ZCODE_GITHUB_PROBE_MS(缺省 60000),
-//     TTL 内零出站(面板 5 秒一拍不能每拍问 GitHub)。
+//   - 计数:三个数信房间;胶囊口径由已取回的开放行算。新鲜度由变更探测驱动(票 05):
+//     每拍先 probeGithub(限速、退避、force 都在 probe.mjs);探测没变/没到点就回缓存,
+//     有更新才重新发 counts + list 两笔(面板 5 秒一拍不能每拍问 GitHub)。
 //   - 标签色表:仓库真色叠内置色板(同名覆盖),规范标签名单不变;按根在会话内缓存。
 //   - 地图子票:房间 listSubIssues,回包形状不变,拿不全时照旧带 capped/missing。
 import { computeCounts } from "../cards.mjs";
 import { countsCacheOf, revisionOf, setCountsCache } from "./state.mjs";
 import { countsOf, errorOf, keyOf, thinRowOf, ticketItemOf } from "./rows.mjs";
 import { roomFor } from "./room.mjs";
+import { probeGithub } from "./probe.mjs";
 
-const PROBE_DEFAULT_MS = 60000;
 const COMMENTS_MAX = 200;
 const COMMENTS_DEFAULT = 50;
 const PAGE_LIMIT = 50;
-
-/** 面板 5 秒一拍与探测共用同一个间隔旋钮;非法值回落缺省。 */
-function probeMs() {
-  const v = Number(process.env.ZCODE_GITHUB_PROBE_MS);
-  return Number.isFinite(v) && v > 0 ? Math.floor(v) : PROBE_DEFAULT_MS;
-}
 
 function okReply(text, structuredContent) {
   return { content: [{ type: "text", text }], structuredContent };
@@ -221,7 +216,7 @@ export async function issueGet(args, ctx) {
 // ---------------------------------------------------------------------------
 // deck_issue_counts
 // ---------------------------------------------------------------------------
-function countsReply(root, value) {
+function countsReply(root, value, note) {
   const { counts, partial } = countsOf(value.rowsOpen, value.counts, value.partial);
   const sc = { workspaceRoot: root, revision: revisionOf(root), empty: false, counts, partial };
   const parts = [
@@ -230,15 +225,21 @@ function countsReply(root, value) {
     `(另有地图 ${counts.maps}、规格 ${counts.specs} 个容器)`,
   ];
   if (partial) parts.push("这份开放列表不全(截断或走了降级通道),胶囊口径按已取回的行算。");
-  return okReply(parts.join(" "), sc);
+  const text = parts.join(" ");
+  return okReply(note ? `${text}\n${note}` : text, sc);
 }
 
 export async function issueCounts(args, ctx) {
-  const ttl = probeMs();
+  const a = args && typeof args === "object" ? args : {};
+  // 限速只有探测这一处:每拍先问 probeGithub,它决定这一拍要不要出站。
+  const probe = await probeGithub(ctx.root, { force: a.force === true });
   const cached = countsCacheOf(ctx.root);
-  if (cached && Number.isFinite(cached.atMs) && Date.now() - cached.atMs >= 0 && Date.now() - cached.atMs < ttl) {
-    return countsReply(ctx.root, cached);
+  if (probe.error) {
+    if (cached) return countsReply(ctx.root, cached, "这次没探到远端,显示的是上次的计数。");
+    return failReply(errorOf(probe.error));
   }
+  // 缓存有且本轮没发现更新(或没到点没探)→ 直接回缓存,不再出站。
+  if (cached && probe.changed !== true) return countsReply(ctx.root, cached);
   const room = await roomFor(ctx.root);
   if (room.error) return roomFailure(room);
   // 两笔:计数信后端(只数工单),开放行用来算胶囊口径。counts 失败就整体失败、不动旧缓存。

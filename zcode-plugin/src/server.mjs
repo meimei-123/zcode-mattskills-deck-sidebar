@@ -150,7 +150,12 @@ const TOOLS = [
     name: "deck_issue_counts",
     description:
       "当前工作区各口径计数:open/closed/total 与面板胶囊口径(可接=frontier、占用、认领、阻塞、故障=bug、诊断=needs-triage)。空工作区返回 0 与 empty 标志,不是错误。响应携带数据修订号 revision;.scratch 监听在线时,卡片文件读不动则整体拒绝(不给偏小的数),离线降级为静默跳过。",
-    inputSchema: { type: "object", properties: {} },
+    inputSchema: {
+      type: "object",
+      properties: {
+        force: { type: "boolean", description: "GitHub 后端:面板回到前台或环境检查点「重新检查」时置 true,跳过探测限速真探一次;本地 Markdown 忽略" },
+      },
+    },
   },
   {
     name: "deck_issue_list_labels",
@@ -505,12 +510,23 @@ function handleProjectList(reg, active) {
 
 /** deck_project_use:只认清单里的名字;切 home-repo 是幂等 noop;坏名字明确报错并列可用名,不猜。
  *  版本管理页有未确认的危险 git 动作时拒绝真正的切换(票 03;切到当前项目本身是幂等
- *  noop,根没动,不挡)。票 02:落定分支(含 home 幂等)重挂监听;拒绝分支不落定,不重挂。 */
+ *  noop,根没动,不挡)。票 02:落定分支(含 home 幂等)重挂监听;拒绝分支不落定,不重挂。
+ *  票 05:目标根是 GitHub 后端时不挂 .scratch 监听 —— 停掉并把监听根复位成空串,
+ *  之后切回 markdown 时 ensureWatch 才能重新挂上;markdown 目标照旧 ensureWatch。 */
 function handleProjectUse(a, reg, active, activeGitRoot, homeRoot) {
   const wanted = String(a.name === undefined || a.name === null ? "" : a.name).trim();
   if (!wanted) {
     return { content: [{ type: "text", text: "缺少 name:请给项目清单里的名字(deck_project_list 可看全量)。" }], isError: true };
   }
+  // 票 05:监听跟着目标根的后端走(GitHub 根不挂 .scratch 监听)。
+  const settleWatch = (targetRoot) => {
+    if (backendStateOf(targetRoot).id === "github") {
+      deckWatch.stop();
+      deckWatchRoot = "";
+      return;
+    }
+    ensureWatch(targetRoot);
+  };
   // 票 02:回包带目标项目根的后端结论(与 list 同一份形状)。
   const useReply = (next, head) => {
     const sc = { ...registryState(reg, { ...next, backend: backendStateOf(next.root) }), note: null };
@@ -533,7 +549,7 @@ function handleProjectUse(a, reg, active, activeGitRoot, homeRoot) {
   }
   if (toHome) {
     activeProjectName = null; // 回 home-repo:幂等 noop
-    ensureWatch(homeRoot); // 票 02:监听跟着切(已在 home 根上是 noop)
+    settleWatch(homeRoot); // 票 02/05:监听跟着切(已在 home 根上是 noop;home 是 GitHub 后端则不挂)
     return useReply({ root: reg.home.path, name: reg.home.name, isHome: true, note: null }, `活动项目已设为 home-repo(${reg.home.name})。`);
   }
   const hit = reg.projects.find((p) => p.valid && p.name.toLowerCase() === wanted.toLowerCase());
@@ -543,7 +559,7 @@ function handleProjectUse(a, reg, active, activeGitRoot, homeRoot) {
     return { content: [{ type: "text", text: `没有叫「${wanted}」的项目,不能猜。可用的项目:${available}。${why}` }], isError: true };
   }
   activeProjectName = hit.name;
-  ensureWatch(hit.path); // 票 02:切换落定时停旧挂新,取消待执行的退避重试
+  settleWatch(hit.path); // 票 02/05:切换落定时停旧挂新(markdown)或不挂(GitHub),取消待执行的退避重试
   return useReply({ root: hit.path, name: hit.name, isHome: false, note: null }, `活动项目已切到 ${hit.name}(${hit.path})。`);
 }
 

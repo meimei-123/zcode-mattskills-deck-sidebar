@@ -308,14 +308,16 @@ async function sliceDetail() {
 }
 
 // ---------------------------------------------------------------------------
-// e. 计数:三个数来自后端、胶囊由开放行算、TTL 内零出站
+// e. 计数:三个数来自后端、胶囊由开放行算、探测间隔内零新增出站
+//    票 05:新鲜度改由变更探测驱动(限速在 probe.mjs)。这里把探测间隔放宽到 1s,
+//    让「第一拍之后立即第二拍」落在窗口内;断言意图不变:面板 5 秒一拍不能每拍问 GitHub。
 // ---------------------------------------------------------------------------
 async function sliceCounts() {
   const ws = makeWorkspace({ repo: "owner/name", anchor: ANCHOR_GITHUB });
   const state = baseState();
   state.repos["owner/name"].counts = { open: 7, closed: 5 }; // 与行面(3 开放/1 关闭)故意不一致
   const gh = makeFakeGh({ state });
-  const s = await startServer(ws.root, { ...gh.env, ZCODE_GITHUB_PROBE_MS: "200" });
+  const s = await startServer(ws.root, { ...gh.env, ZCODE_GITHUB_PROBE_MS: "1000" });
   try {
     const first = sc(await s.call("deck_issue_counts", {}));
     check("计数: open/closed/total 信后端", first.counts.open === 7 && first.counts.closed === 5 && first.counts.total === 12, JSON.stringify(first.counts));
@@ -323,17 +325,21 @@ async function sliceCounts() {
     check("计数: frontier 由行面算(两条开放工单都占用)", first.counts.frontier === 0 && first.counts.occupied === 2, JSON.stringify(first.counts));
     check("计数: maps 计数", first.counts.maps === 1, String(first.counts.maps));
     check("计数: partial 为假", first.partial === false, String(first.partial));
-    check("计数: revision 在场", first.revision === 0, String(first.revision));
+    // 票 05:首次探测没有时间窗,已有议题会被算作一次「远端有更新」,所以首拍后 revision ≥ 1。
+    check("计数: revision 在场且首拍后至少 1", Number.isInteger(first.revision) && first.revision >= 1, String(first.revision));
     const afterFirst = gh.calls().length;
-    check("计数: 第一拍真的出站", afterFirst >= 2, String(afterFirst));
+    check("计数: 第一拍真的出站(探测 + 计数 + 开放列表)", afterFirst >= 2, String(afterFirst));
 
     const second = sc(await s.call("deck_issue_counts", {}));
-    check("计数: TTL 内第二次零新增 gh 调用", gh.calls().length === afterFirst, `${gh.calls().length} vs ${afterFirst}`);
-    check("计数: TTL 内第二次拿到同样的数", second.counts.open === 7 && second.counts.total === 12, JSON.stringify(second.counts));
+    check("计数: 探测间隔内第二次零新增 gh 调用", gh.calls().length === afterFirst, `${gh.calls().length} vs ${afterFirst}`);
+    check("计数: 探测间隔内第二次拿到同样的数", second.counts.open === 7 && second.counts.total === 12, JSON.stringify(second.counts));
 
-    await new Promise((r) => setTimeout(r, 260));
+    await new Promise((r) => setTimeout(r, 1150));
+    const dueN = gh.calls().length;
     await s.call("deck_issue_counts", {});
-    check("计数: TTL 到期后再问一次", gh.calls().length > afterFirst, `${gh.calls().length} vs ${afterFirst}`);
+    const dueCalls = gh.calls().slice(dueN);
+    const windowed = dueCalls.filter((c) => callText(c).includes("orderBy:{field:CREATED_AT") && c.argv.some((a) => String(a).startsWith("since=")));
+    check("计数: 过了探测间隔再探一次(带时间窗)", windowed.length === 1, JSON.stringify(dueCalls.map(callText)));
   } finally {
     await s.stop();
     gh.cleanup();
