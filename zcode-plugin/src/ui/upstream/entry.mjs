@@ -60,6 +60,9 @@ const deckPanelState = { st: null };
 let showDeckDataRef = null;
 // 工具桥位(U04):host 适配的 wf.issuesPage 要打 deck_issue_list,boot 握到 client 后存这儿。
 let clientRef = null;
+// 票 07:活动项目后端参数({id,repoName,repoUrl})的现读取口。apply 内装配(读 deckChip.data
+// 的 active.backend),模块级的 boot/fetchDeckData 经它取 —— 首屏时 chip 尚未到手,按 markdown。
+let backendArgRef = null;
 
 function apply(ctx) {
   const slots = ctx.get("slots");
@@ -89,6 +92,35 @@ function apply(ctx) {
   // 那次」在我们这落成「都打 deck_issue_get,评论按 after 偏移切页」)、wf.commentIssue
   // (评论提交 → deck_issue_comment 落 `### 谁 — ISO时间` 块)。其余 wf.* 电话(ZCode 数据面
   // 没有对应物)回八档里的 unsupported 形状,上游消费方按各自兜底分支走,不抛。
+  // 票 07:活动项目的后端 id。数据源是清单回包的 active.backend(票 02);未到手/读不到时按
+  // markdown —— 首屏先按本地渲染,chip 到手后由 loadProjectChip 的后端变化分支整体重取补上。
+  const activeBackendId = function () {
+    const active = deckChip.data && deckChip.data.active;
+    const b = active && active.backend;
+    return b && b.id === "github" ? "github" : "markdown";
+  };
+  // 票 07:详情电话的子票/被阻塞邻居池 —— 从已加载的面板快照取(不再为详情并取整张列表)。
+  const snapshotPoolOf = function () {
+    const snap = deckPanelState.st && deckPanelState.st.snapshot;
+    const pool = [];
+    if (snap) {
+      for (const m of Array.isArray(snap.maps) ? snap.maps : []) {
+        if (m && Array.isArray(m.tickets)) pool.push.apply(pool, m.tickets);
+      }
+      if (Array.isArray(snap.issues)) pool.push.apply(pool, snap.issues);
+    }
+    return pool;
+  };
+  // 票 07:工具失败回包 → 上游 phone 的 error 形状(只认工具给的人话与档位,不另猜)。
+  const phoneErrorOf = function (res, fallback) {
+    const sc = res && res.structuredContent;
+    const e = sc && sc.error;
+    return {
+      kind: (e && e.kind) || "network",
+      message: (e && e.message) || (res && res.content && res.content[0] && res.content[0].text) || fallback,
+      raw: (e && e.raw) || "",
+    };
+  };
   const issuesPageOverList = function (args) {
     const o = args || {};
     const client = clientRef;
@@ -96,6 +128,28 @@ function apply(ctx) {
       return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
     }
     const state = o.state === "open" || o.state === "closed" ? String(o.state) : "all";
+    // 票 07:GitHub 后端把游标原样交给 deck_issue_list(页大小由服务端固定 50,面板不传 limit;
+    // 不做客户端排序、不补零)。第一页按上游口径传 cursor:""(分页分支由参数在不在决定)。
+    if (activeBackendId() === "github") {
+      const cursor = typeof o.cursor === "string" ? o.cursor : "";
+      return client
+        .callTool("deck_issue_list", { state: state, cursor: cursor })
+        .then(function (res) {
+          if (res && res.isError) return { ok: false, error: phoneErrorOf(res, "议题列表读取失败。") };
+          const sc = res && res.structuredContent;
+          if (!sc) return { ok: false, error: { kind: "parse", message: "list reply missing", raw: "" } };
+          const rows = Array.isArray(sc.rows) ? sc.rows : [];
+          return {
+            ok: true,
+            items: rows.map(panelRowOf),
+            nextCursor: typeof sc.nextCursor === "string" && sc.nextCursor ? sc.nextCursor : null,
+            total: typeof sc.total === "number" ? sc.total : rows.length,
+          };
+        })
+        .catch(function (e) {
+          return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
+        });
+    }
     return client
       .callTool("deck_issue_list", { state: state })
       .then(function (res) {
@@ -128,6 +182,23 @@ function apply(ctx) {
     if (isNaN(num) || num < 0) {
       return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
     }
+    // 票 07:GitHub 后端的详情 —— 键不补零,一次 get 带首屏评论;子票/被阻塞邻居从已加载快照
+    // 取池(不再并取整张列表),评论分页信息直接用回包的 commentsPage。
+    if (activeBackendId() === "github") {
+      const key = String(num);
+      return client
+        .callTool("deck_issue_get", { key: key, commentsFirst: 50 })
+        .then(function (res) {
+          if (res && res.isError) return { ok: false, error: phoneErrorOf(res, "议题详情读取失败。") };
+          const sc = res && res.structuredContent;
+          const card = sc && sc.card;
+          if (!card) return { ok: false, error: { kind: "parse", message: "issue missing", raw: "" } };
+          return { ok: true, issue: detailIssueOf(card, snapshotPoolOf(), sc.commentsPage) };
+        })
+        .catch(function (e) {
+          return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
+        });
+    }
     const nn = String(num).padStart(2, "0");
     const key = o.effortId ? String(o.effortId) + "/" + nn : nn;
     return Promise.all([
@@ -159,6 +230,31 @@ function apply(ctx) {
     if (isNaN(num) || num < 0) {
       return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
     }
+    // 票 07:GitHub 后端按评论条数与偏移游标翻页(键不补零);分页信息用回包的 commentsPage。
+    if (activeBackendId() === "github") {
+      const key = String(num);
+      const first = typeof o.limit === "number" && o.limit > 0 ? o.limit : 50;
+      return client
+        .callTool("deck_issue_get", {
+          key: key,
+          commentsFirst: first,
+          commentsAfter: typeof o.after === "string" ? o.after : "",
+        })
+        .then(function (res) {
+          if (res && res.isError) return { ok: false, error: phoneErrorOf(res, "评论读取失败。") };
+          const sc = res && res.structuredContent;
+          const card = sc && sc.card;
+          if (!card) return { ok: false, error: { kind: "parse", message: "issue missing", raw: "" } };
+          return {
+            ok: true,
+            nodes: Array.isArray(card.comments) ? card.comments : [],
+            pageInfo: sc.commentsPage || { hasNextPage: false, endCursor: String((card.comments || []).length) },
+          };
+        })
+        .catch(function (e) {
+          return { ok: false, error: { kind: "network", message: String((e && e.message) || e), raw: "" } };
+        });
+    }
     const nn = String(num).padStart(2, "0");
     const key = o.effortId ? String(o.effortId) + "/" + nn : nn;
     return client
@@ -187,8 +283,9 @@ function apply(ctx) {
     if (isNaN(num) || num < 0) {
       return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
     }
-    const nn = String(num).padStart(2, "0");
-    const key = o.effortId ? String(o.effortId) + "/" + nn : nn;
+    // 票 07:GitHub 后端的键是议题号,不补零。
+    const nn = activeBackendId() === "github" ? String(num) : String(num).padStart(2, "0");
+    const key = activeBackendId() === "github" ? nn : (o.effortId ? String(o.effortId) + "/" + nn : nn);
     return client
       .callTool("deck_issue_comment", { key: key, body: String(o.body || ""), actor: "panel" })
       .then(function (res) {
@@ -544,8 +641,8 @@ function apply(ctx) {
   styles.insert(
     [
       "[data-deck-chip-wrap]{position:relative;margin-left:auto;flex:none}",
-      "[data-deck-chip]{display:inline-flex;align-items:center;gap:4px;max-width:220px;padding:2px 8px;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary,#8b949e);background:var(--dsw-alias-bg-layer-2,#1c2128);border:1px solid var(--dsw-alias-border-l1,#2a2d35);border-radius:99px;cursor:pointer;white-space:nowrap}",
-      "[data-deck-chip]:hover{border-color:var(--dsw-alias-border-l2,#3d444d);color:var(--dsw-alias-label-primary,#e6edf3)}",
+      "[data-deck-chip],[data-deck-backend-chip]{display:inline-flex;align-items:center;gap:4px;max-width:220px;padding:2px 8px;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary,#8b949e);background:var(--dsw-alias-bg-layer-2,#1c2128);border:1px solid var(--dsw-alias-border-l1,#2a2d35);border-radius:99px;cursor:pointer;white-space:nowrap}",
+      "[data-deck-chip]:hover,[data-deck-backend-chip]:hover{border-color:var(--dsw-alias-border-l2,#3d444d);color:var(--dsw-alias-label-primary,#e6edf3)}",
       "[data-deck-chip].dsws-pchip-warn{border-color:var(--dsw-alias-state-warning-primary,#d29922);color:var(--dsw-alias-state-warn-label,#e3b341)}",
       "[data-deck-chip].dsws-pchip-busy{opacity:.55;pointer-events:none}",
       "[data-deck-chip-name]{overflow:hidden;text-overflow:ellipsis;max-width:150px}",
@@ -565,6 +662,24 @@ function apply(ctx) {
       // 展开层末行的修正动作:通栏文字按钮,与 warning 行同一道虚线分隔
       "[data-deck-chip-fix]{display:block;width:100%;text-align:left;padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-primary,#e6edf3);background:transparent;border:0;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35);border-radius:0 0 5px 5px;cursor:pointer}",
       "[data-deck-chip-fix]:hover{background:var(--dsw-alias-interactive-bg-hover,#21262d)}",
+      // 票 07:后端 chip(紧挨项目 chip,同一套按钮底样式;四态各一枚类名)。令牌族与回退值
+      // 同项目 chip 口径;窄档只收文案,尺寸不另设。
+      "[data-deck-backend-wrap]{position:relative;flex:none;margin-left:4px}",
+      "[data-deck-backend-chip]{max-width:170px}",
+      "[data-deck-backend-chip].dsws-bchip-warn{border-color:var(--dsw-alias-state-warning-primary,#d29922);color:var(--dsw-alias-state-warn-label,#e3b341)}",
+      "[data-deck-backend-chip].dsws-bchip-busy{opacity:.55;pointer-events:none}",
+      "[data-deck-backend-chip].dsws-bchip-hint{border-color:var(--dsw-alias-state-info-primary,#58a6ff);color:var(--dsw-alias-state-info-label,#79c0ff)}",
+      "[data-deck-backend-caret]{font-size:9px;opacity:.75}",
+      "[data-deck-backend-pop]{position:absolute;top:calc(100% + 6px);right:0;z-index:41;min-width:220px;max-width:320px;padding:4px;background:var(--dsw-alias-bg-layer-1,#161b22);border:1px solid var(--dsw-alias-border-l1,#2a2d35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45)}",
+      "[data-deck-backend-item]{display:block;width:100%;text-align:left;padding:5px 8px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-primary,#e6edf3);background:transparent;border:0;border-radius:5px;cursor:pointer}",
+      "[data-deck-backend-item]:hover{background:var(--dsw-alias-interactive-bg-hover,#21262d)}",
+      "[data-deck-backend-item].dsws-pchip-active{color:var(--dsw-alias-state-success-primary,#3fb950)}",
+      "[data-deck-backend-repo]{display:block;font-size:10px;color:var(--dsw-alias-label-caption,#7d8590);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+      "[data-deck-backend-warnrow]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#e3b341);white-space:normal;word-break:break-all;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35)}",
+      "[data-deck-backend-hintrow]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-info-label,#79c0ff);white-space:normal;word-break:break-all;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35)}",
+      "[data-deck-backend-error]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#e3b341);white-space:normal;word-break:break-all}",
+      "[data-deck-backend-anchor],[data-deck-backend-checks]{display:block;width:100%;text-align:left;padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-primary,#e6edf3);background:transparent;border:0;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35);border-radius:0 0 5px 5px;cursor:pointer}",
+      "[data-deck-backend-anchor]:hover,[data-deck-backend-checks]:hover{background:var(--dsw-alias-interactive-bg-hover,#21262d)}",
     ].join("\n")
   );
 
@@ -730,7 +845,10 @@ function apply(ctx) {
   // 人话原因行内展示在展开层([data-deck-chip-error])。
   // errorIsFallback:error 里那一条是不是回退说明(是则根不再变化后的下一拍撤掉;chip 切换
   // 被拒写进去的错误不是,留到用户下一次操作)。
-  const deckChip = { data: null, open: false, busy: false, error: null, errorIsFallback: false, entryBusy: false };
+  // 票 07 增补:backendOpen(后端展开层自己一份开合态)、backendError(切后端被拒/桥异常,
+  // 留在展开层)、fetchError(首屏/刷新取数失败)、backendBlock(deck_env_check 给的阻塞项与
+  // 原因;undefined = 还没取过,null = 取过且干净)。
+  const deckChip = { data: null, open: false, busy: false, error: null, errorIsFallback: false, entryBusy: false, backendOpen: false, backendError: null, fetchError: null, backendBlock: undefined };
   // 票 02:清单状态刷新拍的管理件(拍本身挂在 DeckBody 的 effect 上,见 REGISTRY_TICK_MS 处)。
   let registryTickId = null; // 在跑的那一枚(setInterval 句柄)
   let registryTickArmed = false; // DeckBody 在不在(卸载后拍不再重挂)
@@ -739,6 +857,9 @@ function apply(ctx) {
   // 列表跟随:面板上这份数据对应的数据修订号。undefined = 还不知道(首帧没拿到,或读失败过),
   // 这时不拿它去比,只把下一次读到的数记下来当基准。
   let deckRevision = undefined;
+  // 票 07:面板上这份数据是以哪个后端接驳进快照的(markdown / github)。清单回包的 backend 与它
+  // 不同才整体重取;首屏 chip 未到手时按 markdown,chip 到手后自然补上。
+  let renderedBackendId = "markdown";
   let deckTickBusy = false; // 上一次 deckTick 还没跑完(读得慢时下一拍不叠发)
   const chipToggle = function (e) {
     if (deckChip.busy) return; // 在途禁点:busy 时不展开/收起(不因点击错乱展开层)
@@ -855,6 +976,264 @@ function apply(ctx) {
       deckChip.open ? chipPopNode(data, narrow, busy) : null,
     ]);
   };
+  // ---- 票 07(本仓补件,上游零改动):头部后端 chip ----
+  // 数据源是清单回包的 active.backend(票 02 的 {id,source,repo,writable,hint})。四态:
+  //   普通(默认)/ 警告(没有关联仓库、没装 gh、没登录、仓库访问不到、上次取数失败)/
+  //   在途(切后端与整体重取期间)/ 提示(hint 非空:远端在 GitHub 或锚文件写了 GitLab)。
+  // 警告来源三处:backend 块自己(repo=null)、deck_env_check 的 blockingCheck + 该步原因
+  // (backendBlock,仅 GitHub 时每拍拉一次,服务端有缓存)、首屏/刷新取数失败(fetchError)。
+  // 隐藏条件与项目 chip 相同:清单状态未到手或 registry.status === "missing" 时不画。
+  const backendOfChip = function () {
+    const active = deckChip.data && deckChip.data.active;
+    return (active && active.backend) || null;
+  };
+  const isGithubBackend = function (b) {
+    return !!(b && b.id === "github");
+  };
+  const backendLabelOf = function (b, narrow) {
+    if (isGithubBackend(b)) return "GitHub";
+    return narrow ? "本地" : "本地 Markdown";
+  };
+  // 警告文案(五种原因,按票面顺序):没有关联仓库 → 检查块阻塞 → 上次取数失败。
+  const backendWarnText = function (b) {
+    if (isGithubBackend(b) && !b.repo) return "没有关联仓库";
+    const block = deckChip.backendBlock;
+    if (block && isGithubBackend(b)) {
+      if (block.check === "gh:installed") return "没装 gh";
+      if (block.check === "gh:authed") return "没登录 GitHub";
+      if (block.check === "gh:repoAccess") return "仓库访问不到" + (block.desc ? ":" + block.desc : "");
+      if (block.check === "env:check") return "环境检查失败" + (block.desc ? ":" + block.desc : "");
+    }
+    if (deckChip.fetchError) return "上次取数失败:" + deckChip.fetchError;
+    return "";
+  };
+  // 数据接驳用的后端参数(ingestSnapshot 认 id/repoName/repoUrl);markdown 时 repo 两格为空。
+  const backendArgOfChip = function () {
+    const b = backendOfChip();
+    if (isGithubBackend(b)) {
+      return { id: "github", repoName: (b.repo && b.repo.name) || "", repoUrl: (b.repo && b.repo.url) || "" };
+    }
+    return { id: "markdown", repoName: "", repoUrl: "" };
+  };
+  backendArgRef = backendArgOfChip;
+  const backendToggle = function (e) {
+    if (deckChip.busy) return; // 在途禁点:切换中不展开/收起
+    try {
+      if (e && e.stopPropagation) e.stopPropagation();
+    } catch (eT) {
+      /* 忽略 */
+    }
+    deckChip.backendOpen = !deckChip.backendOpen;
+    rerenderPanels();
+  };
+  // 拉一次检查链,把「第一个没过的是哪一步 + 该步原因」记进 backendBlock。不带 force:
+  // 服务端按探测间隔缓存(零出站)。isError/桥异常也记一笔,chip 进警告态并把原因说给人听。
+  const refreshBackendBlock = function () {
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function" || activeBackendId() !== "github") {
+      if (deckChip.backendBlock !== null) deckChip.backendBlock = null;
+      return Promise.resolve(null);
+    }
+    const prev = deckChip.backendBlock;
+    const rootAtStart = String((deckPanelState.st && deckPanelState.st.workspaceRoot) || "");
+    const store = function (next) {
+      // 迟到的一份(期间切了项目或后端)不落到新身份上:后端已不是 GitHub/根变了就记干净,
+      // 由下一拍按新身份重取;否则照常记(原因与阻塞项)。
+      const nowRoot = String((deckPanelState.st && deckPanelState.st.workspaceRoot) || "");
+      const value = activeBackendId() === "github" && nowRoot === rootAtStart ? next : null;
+      const changed = JSON.stringify(prev === undefined ? null : prev) !== JSON.stringify(value === undefined ? null : value);
+      deckChip.backendBlock = value;
+      if (changed) rerenderPanels();
+      return value;
+    };
+    return client
+      .callTool("deck_env_check", {})
+      .then(function (res) {
+        if (res && res.isError) {
+          const text = (res.content && res.content[0] && res.content[0].text) || "环境检查失败。";
+          return store({ check: "env:check", desc: text });
+        }
+        const snap = res && res.structuredContent && res.structuredContent.snapshot;
+        const checkId = snap && typeof snap.blockingCheck === "string" ? snap.blockingCheck : "";
+        if (!checkId) return store(null);
+        const step = (Array.isArray(snap.steps) ? snap.steps : []).find(function (s) {
+          return s && s.id === checkId;
+        });
+        const desc = step && step.show && typeof step.show.desc === "string" ? step.show.desc : "";
+        return store({ check: checkId, desc: desc });
+      })
+      .catch(function (e) {
+        return store({ check: "env:check", desc: String((e && e.message) || e || "环境检查失败。") });
+      });
+  };
+  // 「让 agent 写进锚文件」:手选只在本会话有效,这句话让 agent 把选择落到项目根的锚文件。
+  // 经面板唯一的注入收口(st.injector)发出;projectActionText 认它(首行必须是目标文件,不前置)。
+  const backendAnchorText = function () {
+    const active = deckChip.data && deckChip.data.active;
+    const st = deckPanelState.st;
+    const root = String((active && active.path) || (st && st.workspaceRoot) || "").replace(/[\\/]+$/, "");
+    return [
+      root + "/docs/agents/issue-tracker.md 的首行写入 \"# Issue tracker: GitHub\"",
+      "锚文件只认一级标题,标题必须是文件的第一行;保留文件其余内容,不要改动其它段落。",
+      "写完用 deck_project_list 确认活动项目的 backend 块变成 GitHub(id=github、source=anchor),再告诉用户结果。",
+    ].join("\n");
+  };
+  const sendBackendAnchor = function () {
+    const st = deckPanelState.st;
+    if (!st || typeof st.injector !== "function") return;
+    try {
+      st.injector(backendAnchorText());
+    } catch (e) {
+      /* 发话失败不挡面板 */
+    }
+  };
+  const openBackendChecks = function () {
+    const st = deckPanelState.st;
+    if (!st) return;
+    st.tab = "checks";
+    deckChip.backendOpen = false;
+    rerenderPanels();
+  };
+  // 点非当前后端 → deck_backend_use。成功且后端 id 真的变了:与切项目同一条整体重取路径
+  // (refreshActiveProject 清导航与详情缓存、换修订号基准),再重拉一次检查块;被拒/桥异常
+  // 把原因留在展开层(data-deck-backend-error),chip 数据一字不动。
+  const switchBackend = function (id) {
+    const client = clientRef;
+    if (!client || typeof client.callTool !== "function") return;
+    if (deckChip.busy) return;
+    const target = id === "github" ? "github" : "markdown";
+    deckChip.busy = true;
+    deckChip.backendError = null;
+    rerenderPanels();
+    const finish = function () {
+      deckChip.busy = false;
+      rerenderPanels();
+    };
+    client
+      .callTool("deck_backend_use", { backend: target })
+      .then(function (res) {
+        if (res && res.isError) {
+          deckChip.backendError = (res.content && res.content[0] && res.content[0].text) || "切换后端失败。";
+          finish();
+          return;
+        }
+        const sc = res && res.structuredContent;
+        if (!(sc && sc.ok === true)) {
+          deckChip.backendError = "切换后端失败:回包不可用。";
+          finish();
+          return;
+        }
+        const before = activeBackendId();
+        deckChip.data = sc; // 用回包刷新活动项目身份(与 deck_project_list 同一份形状)
+        if (activeBackendId() === before) {
+          finish();
+          return;
+        }
+        deckChip.backendError = null;
+        deckChip.fetchError = null;
+        deckChip.backendBlock = undefined;
+        Promise.resolve(refreshActiveProject())
+          .catch(function () {
+            /* 重取失败由数据面自己兜底;身份已按回包落定 */
+          })
+          .then(function () {
+            return refreshBackendBlock();
+          })
+          .then(finish);
+      })
+      .catch(function (e) {
+        deckChip.backendError = String((e && e.message) || e || "切换后端失败。");
+        finish();
+      });
+  };
+  const backendPopNode = function (data, busy) {
+    const b = data && data.active && data.active.backend;
+    const current = isGithubBackend(b) ? "github" : "markdown";
+    const kids = [];
+    if (deckChip.backendError) {
+      kids.push(h("div", { "data-deck-backend-error": "" }, [String(deckChip.backendError)]));
+    }
+    const itemOf = function (bid, label) {
+      const active = bid === current;
+      const line = [h("span", { "data-deck-backend-name": "" }, [(active ? "✓ " : "") + label])];
+      if (bid === "github" && isGithubBackend(b) && b.repo && b.repo.name) {
+        const perm = b.writable === true ? "可写" : b.writable === false ? "只读" : "权限未知";
+        line.push(h("span", { "data-deck-backend-repo": "" }, [" " + String(b.repo.name) + " · " + perm]));
+      }
+      return h(
+        "button",
+        {
+          type: "button",
+          key: bid,
+          "data-deck-backend-item": "",
+          "data-id": bid,
+          className: "dsws-pchipitem" + (active ? " dsws-pchip-active" : ""),
+          disabled: busy,
+          onClick: function () {
+            if (!active) switchBackend(bid);
+          },
+        },
+        line
+      );
+    };
+    kids.push(itemOf("markdown", "本地 Markdown"));
+    kids.push(itemOf("github", "GitHub"));
+    // 手选生效时:把这次选择落进锚文件(只写一级标题,其余内容保留)
+    if (isGithubBackend(b) && b.source === "session") {
+      kids.push(
+        h("button", { type: "button", "data-deck-backend-anchor": "", className: "dsws-pchipfix", disabled: busy, onClick: sendBackendAnchor }, [
+          "让 agent 写进锚文件",
+        ])
+      );
+    }
+    const hint = b && typeof b.hint === "string" ? b.hint : "";
+    if (hint) kids.push(h("div", { "data-deck-backend-hintrow": "" }, [hint]));
+    const warn = backendWarnText(b);
+    if (warn) {
+      kids.push(h("div", { "data-deck-backend-warnrow": "" }, [warn]));
+      kids.push(
+        h("button", { type: "button", "data-deck-backend-checks": "", className: "dsws-pchipfix", onClick: openBackendChecks }, ["去环境检查"])
+      );
+    }
+    return h("div", { "data-deck-backend-pop": "", role: "listbox" }, kids);
+  };
+  const BackendChip = function (props) {
+    const data = deckChip.data;
+    if (!data || !data.registry || data.registry.status === "missing") return null;
+    const narrow = !!(props && props.narrow);
+    const b = backendOfChip();
+    const busy = deckChip.busy === true;
+    const warn = backendWarnText(b);
+    const hint = !!(b && typeof b.hint === "string" && b.hint);
+    const cls =
+      "dsws-bchip" +
+      (warn ? " dsws-bchip-warn" : "") +
+      (busy ? " dsws-bchip-busy" : "") +
+      (hint ? " dsws-bchip-hint" : "");
+    return h("div", { "data-deck-backend-wrap": "" }, [
+      h(
+        "button",
+        {
+          type: "button",
+          "data-deck-backend-chip": "",
+          "data-backend": isGithubBackend(b) ? "github" : "markdown",
+          className: "dsws-pchipbtn " + cls,
+          title: warn || "切换议题后端",
+          "aria-haspopup": "true",
+          "aria-expanded": deckChip.backendOpen ? "true" : "false",
+          "aria-busy": busy ? "true" : "false",
+          disabled: busy,
+          onClick: backendToggle,
+        },
+        [
+          h("span", { "data-deck-backend-name": "" }, [backendLabelOf(b, narrow)]),
+          narrow ? null : h("span", { "data-deck-backend-caret": "" }, ["▾"]),
+        ]
+      ),
+      deckChip.backendOpen ? backendPopNode(data, busy) : null,
+    ]);
+  };
+
   // ---- 票 02(0.6.1,本仓补件,上游零改动):清单入口 ----
   // 没有清单时 chip 位置是一枚「＋ 项目」;清单损坏或有条目被跳过时展开层末行是
   // 「让 agent 修正清单」。两处经面板唯一的注入收口 st.injector 发同一段 prompt:首行是
@@ -913,24 +1292,40 @@ function apply(ctx) {
   const isRegistryEntryText = function (text) {
     return String(text == null ? "" : text).split("\n")[0] === CHIP_ENTRY_COMMAND;
   };
+  // 票 07:认出手选后「写进锚文件」的话 —— 它首行必须点明目标文件与标题行,不前置任何说明。
+  const isBackendAnchorText = function (text) {
+    return /\/docs\/agents\/issue-tracker\.md\s*的首行写入/.test(String(text == null ? "" : text).split("\n")[0]);
+  };
   // ---- 票 05(本仓补件,上游零改动):动作 prompt 的项目前言 ----
   // 活动项目 ≠ home-repo 时,经 st.injector 注入的动作文本(领取/实施/诊断/评论/讨论/
   // ChecksTab inject-prompt 等全部出口)前置恰好一行「项目:<name>(<root>);以下操作都在
   // 该项目内进行。」(全角冒号/括号/分号,<root> 用活动项目根真实路径);home-repo 或身份
   // 残缺时逐字放行,与上游一致;已带前言的文本不再二次前置(多次点击/重取不叠加)。
+  // 票 07:活动项目的后端是 GitHub 时,在项目前言之后再添一行「后端:GitHub(<owner/name>);
+  // 议题用本插件的 deck_* 工具读写」;home-repo 且 GitHub 时只有这一行。本地 Markdown /
+  // 无清单与 0.6.1 逐字一致。
   // 活动项目身份与 chip 同源(deckChip.data.active,票 04 的状态持有处),发话时现读:
   // deck_project_use 成功回包落进 deckChip.data 即翻面,不等看板重取。
   const projectActionText = function (text) {
     const body = String(text == null ? "" : text);
-    if (isRegistryEntryText(body)) return body; // 票 02:清单入口的话改的是 home-repo 的清单,与活动项目无关,不前置
+    if (isRegistryEntryText(body) || isBackendAnchorText(body)) return body; // 清单/锚文件动作与「活动项目的动作」无关,不前置
     const a = deckChip.data && deckChip.data.active;
-    if (!a || a.isHome !== false) return body; // home-repo/无清单/身份未落定 → 与现在逐字一致
-    const name = String(a.name || "");
-    const root = String(a.path || "");
-    if (!name || !root) return body;
-    const head = "项目：" + name + "（" + root + "）；以下操作都在该项目内进行。";
-    if (body.startsWith(head)) return body; // 已带前言:不叠加
-    return head + "\n" + body;
+    if (!a) return body; // 无清单/身份未落定 → 与现在逐字一致
+    const b = a.backend;
+    const github = !!(b && b.id === "github");
+    const repo = github && b.repo && b.repo.name ? String(b.repo.name) : "仓库未解析出";
+    const backendLine = github ? "后端：GitHub（" + repo + "）；议题用本插件的 deck_* 工具读写" : "";
+    let out = body;
+    if (backendLine && out.indexOf(backendLine) < 0) out = backendLine + "\n" + out;
+    if (a.isHome === false) {
+      const name = String(a.name || "");
+      const root = String(a.path || "");
+      if (name && root) {
+        const head = "项目：" + name + "（" + root + "）；以下操作都在该项目内进行。";
+        if (!out.startsWith(head)) out = head + "\n" + out;
+      }
+    }
+    return out;
   };
   const DeckShell = function () {
     if (!deckPanelState.st) return h("div", { className: "dsws-hold" });
@@ -1059,7 +1454,8 @@ function apply(ctx) {
     const narrow = dw < 380;
     return h("div", { ref: panelRef, className: "dsws-panel" + (narrow ? " dsws-narrow" : "") }, [
       // 票 04 分叉(本仓补件):头部右侧项目 chip;无清单时 chip 位置是清单入口(票 02)。
-      h("div", { className: "dsws-head" }, [h("span", { className: "dsws-mtitle" }, [tr("panel.title")]), h(ProjectChip, { narrow: narrow })]),
+      // 票 07:紧挨其后是后端 chip(本地 Markdown / GitHub)。
+      h("div", { className: "dsws-head" }, [h("span", { className: "dsws-mtitle" }, [tr("panel.title")]), h(ProjectChip, { narrow: narrow }), h(BackendChip, { narrow: narrow })]),
       h(
         "div",
         { className: "dsws-tabs dsws-ink-host", ref: function (el) { tabsRef.current = el; tabs.inkHostRef.current = el; }, style: { padding: "0 12px 7px", borderBottom: "1px solid var(--dsw-alias-border-l1,#2a2d35)", flex: "none", display: "flex", alignItems: "center", gap: 4 } },
@@ -1125,11 +1521,30 @@ function apply(ctx) {
     });
   };
   showDeckDataRef = function (data) {
+    // 票 07:数据接驳不再写死后端 —— backend 由活动项目清单回包给(首屏 chip 未到手时按 markdown)。
+    const backendArg = data.backend || backendArgOfChip();
     const st = Object.assign(makeStore(), ingestSnapshot(
-      { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: data.workspaceRoot },
+      {
+        rows: data.rows,
+        counts: data.counts,
+        labels: data.labels,
+        workspaceRoot: data.workspaceRoot,
+        backend: backendArg,
+        partial: data.partial === true,
+      },
       { planDeckCounts: planDeckCounts, rowCountsOf: rowCountsOf }
     ));
-    st.snapMode = "real"; // 快照已到手(上游 hydrateFromCache 同款拨位)
+    if (data.error) {
+      // 票 07:首屏取数失败不留空壳 —— 空数据起面板,标记取数失败(上游 ListTab 的
+      // list.errFull / truth 失败句据此出提示),chip 进警告态。
+      st.snapMode = "err";
+      st.snapError = String(data.error);
+      deckChip.fetchError = String(data.error);
+    } else {
+      st.snapMode = "real"; // 快照已到手(上游 hydrateFromCache 同款拨位)
+      deckChip.fetchError = null;
+    }
+    renderedBackendId = backendArg && backendArg.id === "github" ? "github" : "markdown";
     st.workspaceRoot = data.workspaceRoot || st.cwd;
     deckRevision = data.revision; // 列表跟随:首帧的修订号就是基准
     // U05:注入通道 —— 上游 inject(st, text) 读 st.injector(缺席时降级复制到剪贴板);
@@ -1171,13 +1586,28 @@ function apply(ctx) {
   // 返回里只有快照与工作区根,导航栈、筛选、当前开着的卡都不在里面,所以用户正开着的东西
   // 原样保留。成功返回取到的数据(带 revision),失败返回 null、store 一字不动。
   // 周期刷新(清单状态拍里发现修订号变了)与切项目(refreshActiveProject)共用这一处。
+  // 票 07:取数失败时把原因记进 chip 的警告位(内容保留不动,不重取、不清屏)。
+  const setFetchError = function (reason) {
+    const next = reason ? String(reason) : null;
+    if (deckChip.fetchError === next) return;
+    deckChip.fetchError = next;
+    rerenderPanels();
+  };
   const applyDeckData = function (st, data, root) {
     if (!st || !data) return null;
+    const backendArg = data.backend || backendArgOfChip();
     try {
       Object.assign(
         st,
         ingestSnapshot(
-          { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: root },
+          {
+            rows: data.rows,
+            counts: data.counts,
+            labels: data.labels,
+            workspaceRoot: root,
+            backend: backendArg,
+            partial: data.partial === true,
+          },
           { planDeckCounts: planDeckCounts, rowCountsOf: rowCountsOf }
         )
       );
@@ -1186,6 +1616,8 @@ function apply(ctx) {
       return null;
     }
     st.snapMode = "real";
+    renderedBackendId = backendArg && backendArg.id === "github" ? "github" : "markdown";
+    deckChip.fetchError = null;
     return data;
   };
   const refreshActiveProject = function (target) {
@@ -1196,6 +1628,11 @@ function apply(ctx) {
       const root = workspace && workspace.root ? String(workspace.root) : st.cwd;
       const data = await fetchDeckData(clientRef);
       if (!data) return st;
+      // 票 07:重取失败保留已显示内容(store 与导航一字不动),只把原因挂到 chip 警告位。
+      if (data.error) {
+        setFetchError(data.error);
+        return st;
+      }
       if (!applyDeckData(st, data, root)) return st;
       deckRevision = data.revision; // 列表跟随:换项目后以新项目的修订号为基准
       const fresh = makeStore();
@@ -1275,6 +1712,11 @@ function apply(ctx) {
           // 解析,会落到 home 的同号卡上。所以根一变就整体重取,并把回退说明亮出来。
           const after = sc.active ? String(sc.active.path || "") : "";
           if (before && after && before !== after) return followActiveChange(sc, before);
+          // 票 07:后端 id 变了(锚文件被改/会话里手选/清单回包翻面)才整体重取 —— 与切项目
+          // 同一条路(refreshActiveProject 清导航与详情缓存、换修订号基准);没变不重画。
+          const nextBackend = sc.active && sc.active.backend && sc.active.backend.id === "github" ? "github" : "markdown";
+          if (nextBackend !== renderedBackendId) return followBackendChange();
+          if (nextBackend === "github" && deckChip.backendBlock === undefined) refreshBackendBlock();
           // 这一拍没有发生根变化:上一拍的回退说明已经过期(清单现在就是 home,没有「正在回退」
           // 这回事),撤掉。只撤回退说明自己 —— chip 切换被拒时写进同一个字段的错误要留到
           // 用户下一次操作,不在这里动。
@@ -1321,6 +1763,17 @@ function apply(ctx) {
       .catch(function () {})
       .then(function () { return true; });
   };
+  // 票 07:后端 id 变了之后 —— 走与切项目同一条整体重取(refreshActiveProject),再重拉一次
+  // 检查块。上一套取数失败的原因不再适用于新后端,清掉;重取失败会由 setFetchError 重新挂上。
+  const followBackendChange = function () {
+    deckChip.fetchError = null;
+    deckChip.backendBlock = undefined;
+    rerenderPanels();
+    return Promise.resolve(refreshActiveProject())
+      .catch(function () {})
+      .then(function () { return refreshBackendBlock(); })
+      .then(function () { return true; });
+  };
   // ---- 票 02(0.6.1):清单状态刷新拍 ----
   // 本仓面板没有看板周期刷新可挂(旧层的 counts 轮询随 U06 删除,上游复刻没补回),所以
   // 清单状态自成一拍:面板在就跑,不挑页签;页面隐藏跳过;上一拍未回、或切项目在途时跳过,
@@ -1333,7 +1786,7 @@ function apply(ctx) {
   // 每拍读一次 deck_issue_counts(轻量,只回三个数和修订号),修订号与基准不同才拉整套数据。
   // 重取走 applyDeckData,只换数据,用户开着的卡、筛选、导航栈原样保留。
   // 基准只在重取成功后更新:重取失败时基准不动,下一拍发现修订号仍然不同,会再试一次。
-  const deckTick = async function () {
+  const deckTick = async function (force) {
     if (deckTickBusy) return;
     const st = deckPanelState.st || null;
     const client = clientRef;
@@ -1344,7 +1797,8 @@ function apply(ctx) {
     try {
       let res;
       try {
-        res = await client.callTool("deck_issue_counts", {});
+        // 票 07:force = 回到前台那一拍,跳过服务端限速尽快补上(普通拍读缓存,零出站)。
+        res = await client.callTool("deck_issue_counts", force === true ? { force: true } : {});
       } catch (e) {
         return; // 读失败:保留已显示的内容,下一拍再试
       }
@@ -1358,6 +1812,10 @@ function apply(ctx) {
       if (seen === deckRevision) return;
       const data = await fetchDeckData(client);
       if (!data) return; // 重取失败:store 一字不动,基准也不动
+      if (data.error) {
+        setFetchError(data.error); // 票 07:原因挂 chip 警告位,已显示的内容保留
+        return;
+      }
       // 重取在途期间可能切了项目(切项目走 refreshActiveProject,自己重取并换基准)。那时这份
       // 取给旧项目的数据不能写回去,基准也不归这里管。凭工作区根判断,不凭 busy —— 切换结束
       // 时 busy 就清了,迟到的重取往往在那之后才回来。
@@ -1385,9 +1843,12 @@ function apply(ctx) {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return settle();
     try {
       deckTick(); // 列表跟随:与清单状态的读取并行,自己吞失败
-      const p = loadProjectChip();
-      if (p && typeof p.then === "function") p.then(settle, settle);
-      else settle();
+      const tasks = [loadProjectChip()];
+      // 票 07:后端是 GitHub 时每拍额外拉一次检查块(不带 force;服务端按探测间隔缓存,
+      // 零出站),拿 blockingCheck 与原因喂 chip 的警告态。与清单读取同一互斥,不叠发。
+      if (activeBackendId() === "github") tasks.push(refreshBackendBlock());
+      const p = Promise.all(tasks);
+      p.then(settle, settle);
     } catch (e) {
       settle();
     }
@@ -1401,8 +1862,29 @@ function apply(ctx) {
     registryTickId = setInterval(registryTick, REGISTRY_TICK_MS);
   };
   // 停拍并放行在途的清单入口。DeckBody 卸载时的收尾与对外的 unmount() 共用这一处。
+  // 票 07:GitHub 后端回到前台先强制探测一次计数(跳过服务端限速),再走常规一拍;
+  // 本地 Markdown 保持现状(registryTick)。
   const onVisibilityChange = function () {
     if (typeof document === "undefined" || document.visibilityState === "hidden") return;
+    if (activeBackendId() === "github") {
+      const client = clientRef;
+      let forced = null;
+      if (client && typeof client.callTool === "function") {
+        try {
+          forced = client.callTool("deck_issue_counts", { force: true });
+        } catch (e) {
+          forced = null; // 一拍失败不挡下一拍
+        }
+      }
+      // 先让强制探测落定,再走常规一拍 —— 常规拍的计数读到的是刚刷新过的缓存,
+      // 修订号一变就整体重取(「回到前台尽快补上」)。
+      Promise.resolve(forced)
+        .catch(function () {})
+        .then(function () {
+          return deckTick();
+        });
+      return;
+    }
     registryTick();
   };
   const disarmRegistryTick = function () {
@@ -1625,6 +2107,12 @@ async function fetchWorkspace(client) {
   }
 }
 
+function toolErrorText(res, fallback) {
+  const sc = res && res.structuredContent;
+  const e = sc && sc.error;
+  return String((res && res.content && res.content[0] && res.content[0].text) || (e && e.message) || fallback);
+}
+
 async function fetchDeckData(client) {
   if (!client || typeof client.callTool !== "function") return null;
   try {
@@ -1632,7 +2120,11 @@ async function fetchDeckData(client) {
       client.callTool("deck_issue_list", {}),
       client.callTool("deck_issue_counts", {}),
     ]);
-    const rows = (listRes && listRes.structuredContent && listRes.structuredContent.rows) || [];
+    // 票 07:首屏取数失败不再回 null(面板会留白壳) —— 回 {error: 人话},boot 用空数据起面板,
+    // chip 进警告态、列表区写明原因。工具回 isError 与桥异常同等对待。
+    if (listRes && listRes.isError) return { error: toolErrorText(listRes, "议题列表读取失败。") };
+    const listSc = listRes && listRes.structuredContent;
+    const rows = (listSc && listSc.rows) || [];
     const counts = (countsRes && countsRes.structuredContent && countsRes.structuredContent.counts) || null;
     // 数据修订号:面板靠它判断磁盘上的卡片有没有变(列表跟随)。读不到时为 undefined,
     // 调用方按「未知」处理,不拿它去比。
@@ -1652,10 +2144,19 @@ async function fetchDeckData(client) {
     } catch (e2) {
       void e2; // 色板缺席走聚合兜底
     }
-    return { rows: rows, counts: counts, labels: labels, revision: revision };
+    // 票 07:后端现读活动项目清单回包(首屏 chip 未到手 → 按 markdown,到手后由 loadProjectChip
+    // 的「后端 id 变了」分支整体重取补上);partial 让列表不全如实标成不完整。
+    return {
+      rows: rows,
+      counts: counts,
+      labels: labels,
+      revision: revision,
+      partial: !!(listSc && listSc.partial === true),
+      backend: backendArgRef ? backendArgRef() : { id: "markdown", repoName: "", repoUrl: "" },
+    };
   } catch (e) {
     if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 工具数据拉取失败:", e);
-    return null;
+    return { error: String((e && e.message) || e || "工具数据拉取失败。") };
   }
 }
 
@@ -1677,7 +2178,30 @@ async function boot(deps) {
   const data = d.deckData || (d.fetchData === true ? await fetchDeckData(client) : null);
   if (data && showDeckDataRef) {
     try {
-      showDeckDataRef({ rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: (workspace && workspace.root) || "", revision: data.revision });
+      const root = (workspace && workspace.root) || "";
+      if (data.error) {
+        // 票 07:首屏取数失败用空数据起面板(不返回 null 让面板空白);snapMode='err' 由
+        // showDeckDataRef 拨上,上游 ListTab 的失败提示与 chip 警告态都据此出。
+        showDeckDataRef({
+          rows: [],
+          counts: null,
+          labels: null,
+          workspaceRoot: root,
+          revision: undefined,
+          backend: backendArgRef ? backendArgRef() : undefined,
+          error: data.error,
+        });
+      } else {
+        showDeckDataRef({
+          rows: data.rows,
+          counts: data.counts,
+          labels: data.labels,
+          workspaceRoot: root,
+          revision: data.revision,
+          partial: data.partial === true,
+          backend: data.backend,
+        });
+      }
     } catch (e) {
       if (typeof console !== "undefined" && console.warn) console.warn("[upstream] ingest 接驳失败:", e);
     }

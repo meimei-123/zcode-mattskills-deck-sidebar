@@ -150,18 +150,31 @@ export function trackerDeckOf(rows) {
  *   workspaceRoot 工作区根(workspace.json 资源给的那个)
  *   labels        可选,标签色板([{name,color}],deck_issue_list_labels 的数据;不给则从行面聚合名)
  *   atMs          可选,计数时刻(缺省 Date.now())
+ *   backend       可选,{id:"github",repoName,repoUrl}(票 07):给了且 id=github 时仓库身份来自
+ *                 后端回包(owner/name 与网页地址);不给/ markdown 时逐字保持 0.6.1 的本地口径。
+ *   partial       可选,列表不全(整表读取被截断/降级):不全的行面不能当「完整枚举」写计数。
  * k = { planDeckCounts, rowCountsOf }:上游计数函数注入(闭包真源;与上游宿主 snapshot.ts
  * 同一套判定:后端可信走 backend 口径,行并集重算,拿不到不猜)。
  */
-export function ingestSnapshot({ rows, counts, workspaceRoot, labels, atMs }, k) {
+export function ingestSnapshot({ rows, counts, workspaceRoot, labels, atMs, backend, partial }, k) {
   const { maps, issues } = panelSnapshotOf(rows);
+  const github = !!(backend && backend.id === "github");
+  const repoName = github ? String(backend.repoName || "") : "";
   const snapshot = {
-    repository: {
-      backend: "markdown",
-      name: String(workspaceRoot || "").split(/[\\/]/).filter(Boolean).pop() || "",
-      refId: "",
-      path: workspaceRoot || "",
-    },
+    repository: github
+      ? {
+          backend: "github",
+          name: repoName,
+          refId: repoName,
+          url: String(backend.repoUrl || ""),
+          path: workspaceRoot || "",
+        }
+      : {
+          backend: "markdown",
+          name: String(workspaceRoot || "").split(/[\\/]/).filter(Boolean).pop() || "",
+          refId: "",
+          path: workspaceRoot || "",
+        },
     maps,
     issues,
     thinTickets: [], // 关容器里已关子票的瘦身行:U05 详情/工作路线需要时补
@@ -180,7 +193,8 @@ export function ingestSnapshot({ rows, counts, workspaceRoot, labels, atMs }, k)
     // 计数行 = 非容器票(容器是看板容器不是工单;上游 GitHub 通路里地图是带标签 issue 才进后端计数,
     // 本地后端的 counts 契约本就不含容器 —— 两边对齐,别让 rowCountsOf 把容器当开放行掺进去)
     rows: k.rowCountsOf({ issues: (Array.isArray(rows) ? rows : []).filter((r) => r && r.type !== "map" && r.type !== "spec").map(panelRowOf) }),
-    rowsComplete: true, // 本地枚举:scanWorkspace 全量清点,无分页截断
+    // 本地枚举:scanWorkspace 全量清点,无分页截断;GitHub 整表读取被截断/降级时如实标不全
+    rowsComplete: partial !== true,
     previousCounts: null,
     previousAtMs: 0,
     nowMs: typeof atMs === "number" && atMs > 0 ? atMs : Date.now(),
@@ -193,8 +207,8 @@ export function ingestSnapshot({ rows, counts, workspaceRoot, labels, atMs }, k)
   return {
     cwd: root,
     workspaceRoot: root,
-    selection: { backendId: "markdown" },
-    backendModules: [{ id: "markdown", capabilities: { pullRequests: false } }],
+    selection: { backendId: github ? "github" : "markdown" },
+    backendModules: [{ id: github ? "github" : "markdown", capabilities: { pullRequests: false } }],
     snapshot,
   };
 }
@@ -245,8 +259,10 @@ export function bodySectionOf(card) {
   return out.join("\n").trim();
 }
 
-/** 详情 issue 投影:card(全量卡) + pool(list 薄行池,给子票/被阻塞邻居补边)。 */
-export function detailIssueOf(card, pool) {
+/** 详情 issue 投影:card(全量卡) + pool(list 薄行池,给子票/被阻塞邻居补边)。
+ *  commentsPage 可选(票 07):GitHub 后端的 deck_issue_get 回包带 {hasNextPage,endCursor},
+ *  直接用它做评论连接的分页信息;不给仍是「一页装完」的本地口径。 */
+export function detailIssueOf(card, pool, commentsPage) {
   const c = card || {};
   const rows = Array.isArray(pool) ? pool : [];
   const effortId = String(c.effortId || "");
@@ -262,6 +278,9 @@ export function detailIssueOf(card, pool) {
     .map((ref) => (ref && ref.key != null ? rowOf(String(ref.key)) : null))
     .filter(Boolean);
   const comments = Array.isArray(c.comments) ? c.comments : [];
+  const page = commentsPage && typeof commentsPage === "object"
+    ? { hasNextPage: commentsPage.hasNextPage === true, endCursor: String(commentsPage.endCursor == null ? comments.length : commentsPage.endCursor) }
+    : { hasNextPage: false, endCursor: String(comments.length) };
   const claimed = Array.isArray(c.assignees) && c.assignees.length ? c.assignees[0] : null;
   return {
     number: parseInt(key, 10) || 0,
@@ -280,7 +299,7 @@ export function detailIssueOf(card, pool) {
     closedAt: c.closedAt || null,
     subIssues: { nodes: children.map(panelRowOf), totalCount: children.length },
     blockedBy: blockers.map(panelRowOf),
-    comments: { nodes: comments, pageInfo: { hasNextPage: false, endCursor: String(comments.length) } },
+    comments: { nodes: comments, pageInfo: page },
   };
 }
 

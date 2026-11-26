@@ -1100,10 +1100,18 @@
   function trackerDeckOf(rows) {
     return groupDeck(rows, (r3) => r3);
   }
-  function ingestSnapshot({ rows, counts, workspaceRoot, labels, atMs }, k4) {
+  function ingestSnapshot({ rows, counts, workspaceRoot, labels, atMs, backend, partial }, k4) {
     const { maps, issues } = panelSnapshotOf(rows);
+    const github = !!(backend && backend.id === "github");
+    const repoName = github ? String(backend.repoName || "") : "";
     const snapshot = {
-      repository: {
+      repository: github ? {
+        backend: "github",
+        name: repoName,
+        refId: repoName,
+        url: String(backend.repoUrl || ""),
+        path: workspaceRoot || ""
+      } : {
         backend: "markdown",
         name: String(workspaceRoot || "").split(/[\\/]/).filter(Boolean).pop() || "",
         refId: "",
@@ -1123,8 +1131,8 @@
       // 计数行 = 非容器票(容器是看板容器不是工单;上游 GitHub 通路里地图是带标签 issue 才进后端计数,
       // 本地后端的 counts 契约本就不含容器 —— 两边对齐,别让 rowCountsOf 把容器当开放行掺进去)
       rows: k4.rowCountsOf({ issues: (Array.isArray(rows) ? rows : []).filter((r3) => r3 && r3.type !== "map" && r3.type !== "spec").map(panelRowOf) }),
-      rowsComplete: true,
-      // 本地枚举:scanWorkspace 全量清点,无分页截断
+      // 本地枚举:scanWorkspace 全量清点,无分页截断;GitHub 整表读取被截断/降级时如实标不全
+      rowsComplete: partial !== true,
       previousCounts: null,
       previousAtMs: 0,
       nowMs: typeof atMs === "number" && atMs > 0 ? atMs : Date.now()
@@ -1137,8 +1145,8 @@
     return {
       cwd: root,
       workspaceRoot: root,
-      selection: { backendId: "markdown" },
-      backendModules: [{ id: "markdown", capabilities: { pullRequests: false } }],
+      selection: { backendId: github ? "github" : "markdown" },
+      backendModules: [{ id: github ? "github" : "markdown", capabilities: { pullRequests: false } }],
       snapshot
     };
   }
@@ -1174,7 +1182,7 @@
     }
     return out.join("\n").trim();
   }
-  function detailIssueOf(card, pool) {
+  function detailIssueOf(card, pool, commentsPage) {
     const c3 = card || {};
     const rows = Array.isArray(pool) ? pool : [];
     const effortId = String(c3.effortId || "");
@@ -1187,6 +1195,7 @@
     );
     const blockers = (Array.isArray(c3.blockedBy) ? c3.blockedBy : []).map((ref) => ref && ref.key != null ? rowOf(String(ref.key)) : null).filter(Boolean);
     const comments = Array.isArray(c3.comments) ? c3.comments : [];
+    const page = commentsPage && typeof commentsPage === "object" ? { hasNextPage: commentsPage.hasNextPage === true, endCursor: String(commentsPage.endCursor == null ? comments.length : commentsPage.endCursor) } : { hasNextPage: false, endCursor: String(comments.length) };
     const claimed = Array.isArray(c3.assignees) && c3.assignees.length ? c3.assignees[0] : null;
     return {
       number: parseInt(key, 10) || 0,
@@ -1205,7 +1214,7 @@
       closedAt: c3.closedAt || null,
       subIssues: { nodes: children.map(panelRowOf), totalCount: children.length },
       blockedBy: blockers.map(panelRowOf),
-      comments: { nodes: comments, pageInfo: { hasNextPage: false, endCursor: String(comments.length) } }
+      comments: { nodes: comments, pageInfo: page }
     };
   }
   function commentsPageOf(card, after) {
@@ -1245,6 +1254,7 @@
   var deckPanelState = { st: null };
   var showDeckDataRef = null;
   var clientRef = null;
+  var backendArgRef = null;
   function apply(ctx) {
     const DswsCtx = React.createContext(null);
     function createCx(deps) {
@@ -1278,6 +1288,31 @@
       localStorage.setItem("dsws.readProjection", "legacy");
     } catch (eProj) {
     }
+    const activeBackendId = function() {
+      const active = deckChip.data && deckChip.data.active;
+      const b3 = active && active.backend;
+      return b3 && b3.id === "github" ? "github" : "markdown";
+    };
+    const snapshotPoolOf = function() {
+      const snap = deckPanelState.st && deckPanelState.st.snapshot;
+      const pool = [];
+      if (snap) {
+        for (const m3 of Array.isArray(snap.maps) ? snap.maps : []) {
+          if (m3 && Array.isArray(m3.tickets)) pool.push.apply(pool, m3.tickets);
+        }
+        if (Array.isArray(snap.issues)) pool.push.apply(pool, snap.issues);
+      }
+      return pool;
+    };
+    const phoneErrorOf = function(res, fallback) {
+      const sc = res && res.structuredContent;
+      const e3 = sc && sc.error;
+      return {
+        kind: e3 && e3.kind || "network",
+        message: e3 && e3.message || res && res.content && res.content[0] && res.content[0].text || fallback,
+        raw: e3 && e3.raw || ""
+      };
+    };
     const issuesPageOverList = function(args) {
       const o3 = args || {};
       const client = clientRef;
@@ -1285,6 +1320,23 @@
         return Promise.resolve({ ok: false, error: { kind: "unsupported", message: "ZCode 宿主适配:无工具桥", raw: "" } });
       }
       const state = o3.state === "open" || o3.state === "closed" ? String(o3.state) : "all";
+      if (activeBackendId() === "github") {
+        const cursor = typeof o3.cursor === "string" ? o3.cursor : "";
+        return client.callTool("deck_issue_list", { state, cursor }).then(function(res) {
+          if (res && res.isError) return { ok: false, error: phoneErrorOf(res, "议题列表读取失败。") };
+          const sc = res && res.structuredContent;
+          if (!sc) return { ok: false, error: { kind: "parse", message: "list reply missing", raw: "" } };
+          const rows = Array.isArray(sc.rows) ? sc.rows : [];
+          return {
+            ok: true,
+            items: rows.map(panelRowOf),
+            nextCursor: typeof sc.nextCursor === "string" && sc.nextCursor ? sc.nextCursor : null,
+            total: typeof sc.total === "number" ? sc.total : rows.length
+          };
+        }).catch(function(e3) {
+          return { ok: false, error: { kind: "network", message: String(e3 && e3.message || e3), raw: "" } };
+        });
+      }
       return client.callTool("deck_issue_list", { state }).then(function(res) {
         const rows = res && res.structuredContent && res.structuredContent.rows || [];
         let pool = rows.slice();
@@ -1313,6 +1365,18 @@
       const num = Number(o3.number);
       if (isNaN(num) || num < 0) {
         return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
+      }
+      if (activeBackendId() === "github") {
+        const key2 = String(num);
+        return client.callTool("deck_issue_get", { key: key2, commentsFirst: 50 }).then(function(res) {
+          if (res && res.isError) return { ok: false, error: phoneErrorOf(res, "议题详情读取失败。") };
+          const sc = res && res.structuredContent;
+          const card = sc && sc.card;
+          if (!card) return { ok: false, error: { kind: "parse", message: "issue missing", raw: "" } };
+          return { ok: true, issue: detailIssueOf(card, snapshotPoolOf(), sc.commentsPage) };
+        }).catch(function(e3) {
+          return { ok: false, error: { kind: "network", message: String(e3 && e3.message || e3), raw: "" } };
+        });
       }
       const nn2 = String(num).padStart(2, "0");
       const key = o3.effortId ? String(o3.effortId) + "/" + nn2 : nn2;
@@ -1343,6 +1407,27 @@
       if (isNaN(num) || num < 0) {
         return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
       }
+      if (activeBackendId() === "github") {
+        const key2 = String(num);
+        const first = typeof o3.limit === "number" && o3.limit > 0 ? o3.limit : 50;
+        return client.callTool("deck_issue_get", {
+          key: key2,
+          commentsFirst: first,
+          commentsAfter: typeof o3.after === "string" ? o3.after : ""
+        }).then(function(res) {
+          if (res && res.isError) return { ok: false, error: phoneErrorOf(res, "评论读取失败。") };
+          const sc = res && res.structuredContent;
+          const card = sc && sc.card;
+          if (!card) return { ok: false, error: { kind: "parse", message: "issue missing", raw: "" } };
+          return {
+            ok: true,
+            nodes: Array.isArray(card.comments) ? card.comments : [],
+            pageInfo: sc.commentsPage || { hasNextPage: false, endCursor: String((card.comments || []).length) }
+          };
+        }).catch(function(e3) {
+          return { ok: false, error: { kind: "network", message: String(e3 && e3.message || e3), raw: "" } };
+        });
+      }
       const nn2 = String(num).padStart(2, "0");
       const key = o3.effortId ? String(o3.effortId) + "/" + nn2 : nn2;
       return client.callTool("deck_issue_get", { key }).then(function(res) {
@@ -1365,8 +1450,8 @@
       if (isNaN(num) || num < 0) {
         return Promise.resolve({ ok: false, error: { kind: "parse", message: "invalid number", raw: "" } });
       }
-      const nn2 = String(num).padStart(2, "0");
-      const key = o3.effortId ? String(o3.effortId) + "/" + nn2 : nn2;
+      const nn2 = activeBackendId() === "github" ? String(num) : String(num).padStart(2, "0");
+      const key = activeBackendId() === "github" ? nn2 : o3.effortId ? String(o3.effortId) + "/" + nn2 : nn2;
       return client.callTool("deck_issue_comment", { key, body: String(o3.body || ""), actor: "panel" }).then(function(res) {
         if (res && res.isError) {
           const text2 = res.content && res.content[0] && res.content[0].text || "comment failed";
@@ -24010,8 +24095,8 @@ ${formatProgressEntry(entry)}
     styles.insert(
       [
         "[data-deck-chip-wrap]{position:relative;margin-left:auto;flex:none}",
-        "[data-deck-chip]{display:inline-flex;align-items:center;gap:4px;max-width:220px;padding:2px 8px;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary,#8b949e);background:var(--dsw-alias-bg-layer-2,#1c2128);border:1px solid var(--dsw-alias-border-l1,#2a2d35);border-radius:99px;cursor:pointer;white-space:nowrap}",
-        "[data-deck-chip]:hover{border-color:var(--dsw-alias-border-l2,#3d444d);color:var(--dsw-alias-label-primary,#e6edf3)}",
+        "[data-deck-chip],[data-deck-backend-chip]{display:inline-flex;align-items:center;gap:4px;max-width:220px;padding:2px 8px;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary,#8b949e);background:var(--dsw-alias-bg-layer-2,#1c2128);border:1px solid var(--dsw-alias-border-l1,#2a2d35);border-radius:99px;cursor:pointer;white-space:nowrap}",
+        "[data-deck-chip]:hover,[data-deck-backend-chip]:hover{border-color:var(--dsw-alias-border-l2,#3d444d);color:var(--dsw-alias-label-primary,#e6edf3)}",
         "[data-deck-chip].dsws-pchip-warn{border-color:var(--dsw-alias-state-warning-primary,#d29922);color:var(--dsw-alias-state-warn-label,#e3b341)}",
         "[data-deck-chip].dsws-pchip-busy{opacity:.55;pointer-events:none}",
         "[data-deck-chip-name]{overflow:hidden;text-overflow:ellipsis;max-width:150px}",
@@ -24030,7 +24115,25 @@ ${formatProgressEntry(entry)}
         "[data-deck-chip-entry].dsws-pchip-busy{opacity:.55;pointer-events:none}",
         // 展开层末行的修正动作:通栏文字按钮,与 warning 行同一道虚线分隔
         "[data-deck-chip-fix]{display:block;width:100%;text-align:left;padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-primary,#e6edf3);background:transparent;border:0;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35);border-radius:0 0 5px 5px;cursor:pointer}",
-        "[data-deck-chip-fix]:hover{background:var(--dsw-alias-interactive-bg-hover,#21262d)}"
+        "[data-deck-chip-fix]:hover{background:var(--dsw-alias-interactive-bg-hover,#21262d)}",
+        // 票 07:后端 chip(紧挨项目 chip,同一套按钮底样式;四态各一枚类名)。令牌族与回退值
+        // 同项目 chip 口径;窄档只收文案,尺寸不另设。
+        "[data-deck-backend-wrap]{position:relative;flex:none;margin-left:4px}",
+        "[data-deck-backend-chip]{max-width:170px}",
+        "[data-deck-backend-chip].dsws-bchip-warn{border-color:var(--dsw-alias-state-warning-primary,#d29922);color:var(--dsw-alias-state-warn-label,#e3b341)}",
+        "[data-deck-backend-chip].dsws-bchip-busy{opacity:.55;pointer-events:none}",
+        "[data-deck-backend-chip].dsws-bchip-hint{border-color:var(--dsw-alias-state-info-primary,#58a6ff);color:var(--dsw-alias-state-info-label,#79c0ff)}",
+        "[data-deck-backend-caret]{font-size:9px;opacity:.75}",
+        "[data-deck-backend-pop]{position:absolute;top:calc(100% + 6px);right:0;z-index:41;min-width:220px;max-width:320px;padding:4px;background:var(--dsw-alias-bg-layer-1,#161b22);border:1px solid var(--dsw-alias-border-l1,#2a2d35);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45)}",
+        "[data-deck-backend-item]{display:block;width:100%;text-align:left;padding:5px 8px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-primary,#e6edf3);background:transparent;border:0;border-radius:5px;cursor:pointer}",
+        "[data-deck-backend-item]:hover{background:var(--dsw-alias-interactive-bg-hover,#21262d)}",
+        "[data-deck-backend-item].dsws-pchip-active{color:var(--dsw-alias-state-success-primary,#3fb950)}",
+        "[data-deck-backend-repo]{display:block;font-size:10px;color:var(--dsw-alias-label-caption,#7d8590);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+        "[data-deck-backend-warnrow]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#e3b341);white-space:normal;word-break:break-all;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35)}",
+        "[data-deck-backend-hintrow]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-info-label,#79c0ff);white-space:normal;word-break:break-all;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35)}",
+        "[data-deck-backend-error]{padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#e3b341);white-space:normal;word-break:break-all}",
+        "[data-deck-backend-anchor],[data-deck-backend-checks]{display:block;width:100%;text-align:left;padding:5px 8px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-primary,#e6edf3);background:transparent;border:0;border-top:1px dashed var(--dsw-alias-border-l1,#2a2d35);border-radius:0 0 5px 5px;cursor:pointer}",
+        "[data-deck-backend-anchor]:hover,[data-deck-backend-checks]:hover{background:var(--dsw-alias-interactive-bg-hover,#21262d)}"
       ].join("\n")
     );
     const CHAIN_RENDERER_VERSION = 1;
@@ -43881,12 +43984,13 @@ ${formatProgressEntry(entry)}
         return h3(DswsCtx.Provider, { value: cx }, h3(Comp, props));
       };
     };
-    const deckChip = { data: null, open: false, busy: false, error: null, errorIsFallback: false, entryBusy: false };
+    const deckChip = { data: null, open: false, busy: false, error: null, errorIsFallback: false, entryBusy: false, backendOpen: false, backendError: null, fetchError: null, backendBlock: void 0 };
     let registryTickId = null;
     let registryTickArmed = false;
     let registryTickBusy = false;
     let entryRelease = null;
     let deckRevision = void 0;
+    let renderedBackendId = "markdown";
     let deckTickBusy = false;
     const chipToggle = function(e3) {
       if (deckChip.busy) return;
@@ -43997,6 +44101,228 @@ ${formatProgressEntry(entry)}
         deckChip.open ? chipPopNode(data, narrow, busy) : null
       ]);
     };
+    const backendOfChip = function() {
+      const active = deckChip.data && deckChip.data.active;
+      return active && active.backend || null;
+    };
+    const isGithubBackend = function(b3) {
+      return !!(b3 && b3.id === "github");
+    };
+    const backendLabelOf = function(b3, narrow) {
+      if (isGithubBackend(b3)) return "GitHub";
+      return narrow ? "本地" : "本地 Markdown";
+    };
+    const backendWarnText = function(b3) {
+      if (isGithubBackend(b3) && !b3.repo) return "没有关联仓库";
+      const block = deckChip.backendBlock;
+      if (block && isGithubBackend(b3)) {
+        if (block.check === "gh:installed") return "没装 gh";
+        if (block.check === "gh:authed") return "没登录 GitHub";
+        if (block.check === "gh:repoAccess") return "仓库访问不到" + (block.desc ? ":" + block.desc : "");
+        if (block.check === "env:check") return "环境检查失败" + (block.desc ? ":" + block.desc : "");
+      }
+      if (deckChip.fetchError) return "上次取数失败:" + deckChip.fetchError;
+      return "";
+    };
+    const backendArgOfChip = function() {
+      const b3 = backendOfChip();
+      if (isGithubBackend(b3)) {
+        return { id: "github", repoName: b3.repo && b3.repo.name || "", repoUrl: b3.repo && b3.repo.url || "" };
+      }
+      return { id: "markdown", repoName: "", repoUrl: "" };
+    };
+    backendArgRef = backendArgOfChip;
+    const backendToggle = function(e3) {
+      if (deckChip.busy) return;
+      try {
+        if (e3 && e3.stopPropagation) e3.stopPropagation();
+      } catch (eT) {
+      }
+      deckChip.backendOpen = !deckChip.backendOpen;
+      rerenderPanels();
+    };
+    const refreshBackendBlock = function() {
+      const client = clientRef;
+      if (!client || typeof client.callTool !== "function" || activeBackendId() !== "github") {
+        if (deckChip.backendBlock !== null) deckChip.backendBlock = null;
+        return Promise.resolve(null);
+      }
+      const prev = deckChip.backendBlock;
+      const rootAtStart = String(deckPanelState.st && deckPanelState.st.workspaceRoot || "");
+      const store = function(next) {
+        const nowRoot = String(deckPanelState.st && deckPanelState.st.workspaceRoot || "");
+        const value = activeBackendId() === "github" && nowRoot === rootAtStart ? next : null;
+        const changed = JSON.stringify(prev === void 0 ? null : prev) !== JSON.stringify(value === void 0 ? null : value);
+        deckChip.backendBlock = value;
+        if (changed) rerenderPanels();
+        return value;
+      };
+      return client.callTool("deck_env_check", {}).then(function(res) {
+        if (res && res.isError) {
+          const text2 = res.content && res.content[0] && res.content[0].text || "环境检查失败。";
+          return store({ check: "env:check", desc: text2 });
+        }
+        const snap = res && res.structuredContent && res.structuredContent.snapshot;
+        const checkId = snap && typeof snap.blockingCheck === "string" ? snap.blockingCheck : "";
+        if (!checkId) return store(null);
+        const step = (Array.isArray(snap.steps) ? snap.steps : []).find(function(s3) {
+          return s3 && s3.id === checkId;
+        });
+        const desc = step && step.show && typeof step.show.desc === "string" ? step.show.desc : "";
+        return store({ check: checkId, desc });
+      }).catch(function(e3) {
+        return store({ check: "env:check", desc: String(e3 && e3.message || e3 || "环境检查失败。") });
+      });
+    };
+    const backendAnchorText = function() {
+      const active = deckChip.data && deckChip.data.active;
+      const st = deckPanelState.st;
+      const root = String(active && active.path || st && st.workspaceRoot || "").replace(/[\\/]+$/, "");
+      return [
+        root + '/docs/agents/issue-tracker.md 的首行写入 "# Issue tracker: GitHub"',
+        "锚文件只认一级标题,标题必须是文件的第一行;保留文件其余内容,不要改动其它段落。",
+        "写完用 deck_project_list 确认活动项目的 backend 块变成 GitHub(id=github、source=anchor),再告诉用户结果。"
+      ].join("\n");
+    };
+    const sendBackendAnchor = function() {
+      const st = deckPanelState.st;
+      if (!st || typeof st.injector !== "function") return;
+      try {
+        st.injector(backendAnchorText());
+      } catch (e3) {
+      }
+    };
+    const openBackendChecks = function() {
+      const st = deckPanelState.st;
+      if (!st) return;
+      st.tab = "checks";
+      deckChip.backendOpen = false;
+      rerenderPanels();
+    };
+    const switchBackend = function(id) {
+      const client = clientRef;
+      if (!client || typeof client.callTool !== "function") return;
+      if (deckChip.busy) return;
+      const target = id === "github" ? "github" : "markdown";
+      deckChip.busy = true;
+      deckChip.backendError = null;
+      rerenderPanels();
+      const finish = function() {
+        deckChip.busy = false;
+        rerenderPanels();
+      };
+      client.callTool("deck_backend_use", { backend: target }).then(function(res) {
+        if (res && res.isError) {
+          deckChip.backendError = res.content && res.content[0] && res.content[0].text || "切换后端失败。";
+          finish();
+          return;
+        }
+        const sc = res && res.structuredContent;
+        if (!(sc && sc.ok === true)) {
+          deckChip.backendError = "切换后端失败:回包不可用。";
+          finish();
+          return;
+        }
+        const before = activeBackendId();
+        deckChip.data = sc;
+        if (activeBackendId() === before) {
+          finish();
+          return;
+        }
+        deckChip.backendError = null;
+        deckChip.fetchError = null;
+        deckChip.backendBlock = void 0;
+        Promise.resolve(refreshActiveProject()).catch(function() {
+        }).then(function() {
+          return refreshBackendBlock();
+        }).then(finish);
+      }).catch(function(e3) {
+        deckChip.backendError = String(e3 && e3.message || e3 || "切换后端失败。");
+        finish();
+      });
+    };
+    const backendPopNode = function(data, busy) {
+      const b3 = data && data.active && data.active.backend;
+      const current = isGithubBackend(b3) ? "github" : "markdown";
+      const kids = [];
+      if (deckChip.backendError) {
+        kids.push(h3("div", { "data-deck-backend-error": "" }, [String(deckChip.backendError)]));
+      }
+      const itemOf = function(bid, label) {
+        const active = bid === current;
+        const line = [h3("span", { "data-deck-backend-name": "" }, [(active ? "✓ " : "") + label])];
+        if (bid === "github" && isGithubBackend(b3) && b3.repo && b3.repo.name) {
+          const perm = b3.writable === true ? "可写" : b3.writable === false ? "只读" : "权限未知";
+          line.push(h3("span", { "data-deck-backend-repo": "" }, [" " + String(b3.repo.name) + " · " + perm]));
+        }
+        return h3(
+          "button",
+          {
+            type: "button",
+            key: bid,
+            "data-deck-backend-item": "",
+            "data-id": bid,
+            className: "dsws-pchipitem" + (active ? " dsws-pchip-active" : ""),
+            disabled: busy,
+            onClick: function() {
+              if (!active) switchBackend(bid);
+            }
+          },
+          line
+        );
+      };
+      kids.push(itemOf("markdown", "本地 Markdown"));
+      kids.push(itemOf("github", "GitHub"));
+      if (isGithubBackend(b3) && b3.source === "session") {
+        kids.push(
+          h3("button", { type: "button", "data-deck-backend-anchor": "", className: "dsws-pchipfix", disabled: busy, onClick: sendBackendAnchor }, [
+            "让 agent 写进锚文件"
+          ])
+        );
+      }
+      const hint = b3 && typeof b3.hint === "string" ? b3.hint : "";
+      if (hint) kids.push(h3("div", { "data-deck-backend-hintrow": "" }, [hint]));
+      const warn = backendWarnText(b3);
+      if (warn) {
+        kids.push(h3("div", { "data-deck-backend-warnrow": "" }, [warn]));
+        kids.push(
+          h3("button", { type: "button", "data-deck-backend-checks": "", className: "dsws-pchipfix", onClick: openBackendChecks }, ["去环境检查"])
+        );
+      }
+      return h3("div", { "data-deck-backend-pop": "", role: "listbox" }, kids);
+    };
+    const BackendChip = function(props) {
+      const data = deckChip.data;
+      if (!data || !data.registry || data.registry.status === "missing") return null;
+      const narrow = !!(props && props.narrow);
+      const b3 = backendOfChip();
+      const busy = deckChip.busy === true;
+      const warn = backendWarnText(b3);
+      const hint = !!(b3 && typeof b3.hint === "string" && b3.hint);
+      const cls = "dsws-bchip" + (warn ? " dsws-bchip-warn" : "") + (busy ? " dsws-bchip-busy" : "") + (hint ? " dsws-bchip-hint" : "");
+      return h3("div", { "data-deck-backend-wrap": "" }, [
+        h3(
+          "button",
+          {
+            type: "button",
+            "data-deck-backend-chip": "",
+            "data-backend": isGithubBackend(b3) ? "github" : "markdown",
+            className: "dsws-pchipbtn " + cls,
+            title: warn || "切换议题后端",
+            "aria-haspopup": "true",
+            "aria-expanded": deckChip.backendOpen ? "true" : "false",
+            "aria-busy": busy ? "true" : "false",
+            disabled: busy,
+            onClick: backendToggle
+          },
+          [
+            h3("span", { "data-deck-backend-name": "" }, [backendLabelOf(b3, narrow)]),
+            narrow ? null : h3("span", { "data-deck-backend-caret": "" }, ["▾"])
+          ]
+        ),
+        deckChip.backendOpen ? backendPopNode(data, busy) : null
+      ]);
+    };
     const registryEntryText = function(data) {
       const d3 = data || {};
       const reg = d3.registry || {};
@@ -44046,17 +44372,29 @@ ${formatProgressEntry(entry)}
     const isRegistryEntryText = function(text2) {
       return String(text2 == null ? "" : text2).split("\n")[0] === CHIP_ENTRY_COMMAND;
     };
+    const isBackendAnchorText = function(text2) {
+      return /\/docs\/agents\/issue-tracker\.md\s*的首行写入/.test(String(text2 == null ? "" : text2).split("\n")[0]);
+    };
     const projectActionText = function(text2) {
       const body = String(text2 == null ? "" : text2);
-      if (isRegistryEntryText(body)) return body;
+      if (isRegistryEntryText(body) || isBackendAnchorText(body)) return body;
       const a3 = deckChip.data && deckChip.data.active;
-      if (!a3 || a3.isHome !== false) return body;
-      const name = String(a3.name || "");
-      const root = String(a3.path || "");
-      if (!name || !root) return body;
-      const head = "项目：" + name + "（" + root + "）；以下操作都在该项目内进行。";
-      if (body.startsWith(head)) return body;
-      return head + "\n" + body;
+      if (!a3) return body;
+      const b3 = a3.backend;
+      const github = !!(b3 && b3.id === "github");
+      const repo = github && b3.repo && b3.repo.name ? String(b3.repo.name) : "仓库未解析出";
+      const backendLine = github ? "后端：GitHub（" + repo + "）；议题用本插件的 deck_* 工具读写" : "";
+      let out = body;
+      if (backendLine && out.indexOf(backendLine) < 0) out = backendLine + "\n" + out;
+      if (a3.isHome === false) {
+        const name = String(a3.name || "");
+        const root = String(a3.path || "");
+        if (name && root) {
+          const head = "项目：" + name + "（" + root + "）；以下操作都在该项目内进行。";
+          if (!out.startsWith(head)) out = head + "\n" + out;
+        }
+      }
+      return out;
     };
     const DeckShell = function() {
       if (!deckPanelState.st) return h3("div", { className: "dsws-hold" });
@@ -44189,7 +44527,8 @@ ${formatProgressEntry(entry)}
       const narrow = dw < 380;
       return h3("div", { ref: panelRef, className: "dsws-panel" + (narrow ? " dsws-narrow" : "") }, [
         // 票 04 分叉(本仓补件):头部右侧项目 chip;无清单时 chip 位置是清单入口(票 02)。
-        h3("div", { className: "dsws-head" }, [h3("span", { className: "dsws-mtitle" }, [tr("panel.title")]), h3(ProjectChip, { narrow })]),
+        // 票 07:紧挨其后是后端 chip(本地 Markdown / GitHub)。
+        h3("div", { className: "dsws-head" }, [h3("span", { className: "dsws-mtitle" }, [tr("panel.title")]), h3(ProjectChip, { narrow }), h3(BackendChip, { narrow })]),
         h3(
           "div",
           { className: "dsws-tabs dsws-ink-host", ref: function(el) {
@@ -44231,11 +44570,27 @@ ${formatProgressEntry(entry)}
       });
     };
     showDeckDataRef = function(data) {
+      const backendArg = data.backend || backendArgOfChip();
       const st = Object.assign(makeStore(), ingestSnapshot(
-        { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: data.workspaceRoot },
+        {
+          rows: data.rows,
+          counts: data.counts,
+          labels: data.labels,
+          workspaceRoot: data.workspaceRoot,
+          backend: backendArg,
+          partial: data.partial === true
+        },
         { planDeckCounts, rowCountsOf }
       ));
-      st.snapMode = "real";
+      if (data.error) {
+        st.snapMode = "err";
+        st.snapError = String(data.error);
+        deckChip.fetchError = String(data.error);
+      } else {
+        st.snapMode = "real";
+        deckChip.fetchError = null;
+      }
+      renderedBackendId = backendArg && backendArg.id === "github" ? "github" : "markdown";
       st.workspaceRoot = data.workspaceRoot || st.cwd;
       deckRevision = data.revision;
       try {
@@ -44267,13 +44622,27 @@ ${formatProgressEntry(entry)}
       rerenderPanels();
       return st;
     };
+    const setFetchError = function(reason) {
+      const next = reason ? String(reason) : null;
+      if (deckChip.fetchError === next) return;
+      deckChip.fetchError = next;
+      rerenderPanels();
+    };
     const applyDeckData = function(st, data, root) {
       if (!st || !data) return null;
+      const backendArg = data.backend || backendArgOfChip();
       try {
         Object.assign(
           st,
           ingestSnapshot(
-            { rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: root },
+            {
+              rows: data.rows,
+              counts: data.counts,
+              labels: data.labels,
+              workspaceRoot: root,
+              backend: backendArg,
+              partial: data.partial === true
+            },
             { planDeckCounts, rowCountsOf }
           )
         );
@@ -44282,6 +44651,8 @@ ${formatProgressEntry(entry)}
         return null;
       }
       st.snapMode = "real";
+      renderedBackendId = backendArg && backendArg.id === "github" ? "github" : "markdown";
+      deckChip.fetchError = null;
       return data;
     };
     const refreshActiveProject = function(target) {
@@ -44292,6 +44663,10 @@ ${formatProgressEntry(entry)}
         const root = workspace && workspace.root ? String(workspace.root) : st.cwd;
         const data = await fetchDeckData(clientRef);
         if (!data) return st;
+        if (data.error) {
+          setFetchError(data.error);
+          return st;
+        }
         if (!applyDeckData(st, data, root)) return st;
         deckRevision = data.revision;
         const fresh = makeStore();
@@ -44351,6 +44726,9 @@ ${formatProgressEntry(entry)}
           if (registryChanged) deckChip.open = false;
           const after = sc.active ? String(sc.active.path || "") : "";
           if (before && after && before !== after) return followActiveChange(sc, before);
+          const nextBackend = sc.active && sc.active.backend && sc.active.backend.id === "github" ? "github" : "markdown";
+          if (nextBackend !== renderedBackendId) return followBackendChange();
+          if (nextBackend === "github" && deckChip.backendBlock === void 0) refreshBackendBlock();
           let fallbackNoteCleared = false;
           if (deckChip.errorIsFallback) {
             deckChip.error = null;
@@ -44386,7 +44764,18 @@ ${formatProgressEntry(entry)}
         return true;
       });
     };
-    const deckTick = async function() {
+    const followBackendChange = function() {
+      deckChip.fetchError = null;
+      deckChip.backendBlock = void 0;
+      rerenderPanels();
+      return Promise.resolve(refreshActiveProject()).catch(function() {
+      }).then(function() {
+        return refreshBackendBlock();
+      }).then(function() {
+        return true;
+      });
+    };
+    const deckTick = async function(force) {
       if (deckTickBusy) return;
       const st = deckPanelState.st || null;
       const client = clientRef;
@@ -44396,7 +44785,7 @@ ${formatProgressEntry(entry)}
       try {
         let res;
         try {
-          res = await client.callTool("deck_issue_counts", {});
+          res = await client.callTool("deck_issue_counts", force === true ? { force: true } : {});
         } catch (e3) {
           return;
         }
@@ -44410,6 +44799,10 @@ ${formatProgressEntry(entry)}
         if (seen === deckRevision) return;
         const data = await fetchDeckData(client);
         if (!data) return;
+        if (data.error) {
+          setFetchError(data.error);
+          return;
+        }
         if (String(st.workspaceRoot || st.cwd || "") !== rootAtStart || deckChip.busy) return;
         if (!applyDeckData(st, data, rootAtStart)) return;
         deckRevision = Number.isFinite(data.revision) ? data.revision : seen;
@@ -44431,9 +44824,10 @@ ${formatProgressEntry(entry)}
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return settle();
       try {
         deckTick();
-        const p3 = loadProjectChip();
-        if (p3 && typeof p3.then === "function") p3.then(settle, settle);
-        else settle();
+        const tasks = [loadProjectChip()];
+        if (activeBackendId() === "github") tasks.push(refreshBackendBlock());
+        const p3 = Promise.all(tasks);
+        p3.then(settle, settle);
       } catch (e3) {
         settle();
       }
@@ -44451,6 +44845,22 @@ ${formatProgressEntry(entry)}
     };
     const onVisibilityChange = function() {
       if (typeof document === "undefined" || document.visibilityState === "hidden") return;
+      if (activeBackendId() === "github") {
+        const client = clientRef;
+        let forced = null;
+        if (client && typeof client.callTool === "function") {
+          try {
+            forced = client.callTool("deck_issue_counts", { force: true });
+          } catch (e3) {
+            forced = null;
+          }
+        }
+        Promise.resolve(forced).catch(function() {
+        }).then(function() {
+          return deckTick();
+        });
+        return;
+      }
       registryTick();
     };
     const disarmRegistryTick = function() {
@@ -44713,6 +45123,11 @@ ${formatProgressEntry(entry)}
       return null;
     }
   }
+  function toolErrorText(res, fallback) {
+    const sc = res && res.structuredContent;
+    const e3 = sc && sc.error;
+    return String(res && res.content && res.content[0] && res.content[0].text || e3 && e3.message || fallback);
+  }
   async function fetchDeckData(client) {
     if (!client || typeof client.callTool !== "function") return null;
     try {
@@ -44720,7 +45135,9 @@ ${formatProgressEntry(entry)}
         client.callTool("deck_issue_list", {}),
         client.callTool("deck_issue_counts", {})
       ]);
-      const rows = listRes && listRes.structuredContent && listRes.structuredContent.rows || [];
+      if (listRes && listRes.isError) return { error: toolErrorText(listRes, "议题列表读取失败。") };
+      const listSc = listRes && listRes.structuredContent;
+      const rows = listSc && listSc.rows || [];
       const counts = countsRes && countsRes.structuredContent && countsRes.structuredContent.counts || null;
       const revision = countsRes && countsRes.structuredContent && Number.isFinite(countsRes.structuredContent.revision) ? countsRes.structuredContent.revision : void 0;
       let labels = null;
@@ -44736,10 +45153,17 @@ ${formatProgressEntry(entry)}
         }
       } catch (e22) {
       }
-      return { rows, counts, labels, revision };
+      return {
+        rows,
+        counts,
+        labels,
+        revision,
+        partial: !!(listSc && listSc.partial === true),
+        backend: backendArgRef ? backendArgRef() : { id: "markdown", repoName: "", repoUrl: "" }
+      };
     } catch (e3) {
       if (typeof console !== "undefined" && console.warn) console.warn("[upstream] 工具数据拉取失败:", e3);
-      return null;
+      return { error: String(e3 && e3.message || e3 || "工具数据拉取失败。") };
     }
   }
   async function boot(deps) {
@@ -44759,7 +45183,28 @@ ${formatProgressEntry(entry)}
     const data = d3.deckData || (d3.fetchData === true ? await fetchDeckData(client) : null);
     if (data && showDeckDataRef) {
       try {
-        showDeckDataRef({ rows: data.rows, counts: data.counts, labels: data.labels, workspaceRoot: workspace && workspace.root || "", revision: data.revision });
+        const root2 = workspace && workspace.root || "";
+        if (data.error) {
+          showDeckDataRef({
+            rows: [],
+            counts: null,
+            labels: null,
+            workspaceRoot: root2,
+            revision: void 0,
+            backend: backendArgRef ? backendArgRef() : void 0,
+            error: data.error
+          });
+        } else {
+          showDeckDataRef({
+            rows: data.rows,
+            counts: data.counts,
+            labels: data.labels,
+            workspaceRoot: root2,
+            revision: data.revision,
+            partial: data.partial === true,
+            backend: data.backend
+          });
+        }
       } catch (e3) {
         if (typeof console !== "undefined" && console.warn) console.warn("[upstream] ingest 接驳失败:", e3);
       }
